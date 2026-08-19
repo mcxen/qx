@@ -17,6 +17,7 @@ const steps = [
   ["island", "scripts/check-qx-island.mjs"],
   ["module-ports", "scripts/check-module-ports.mjs"],
   ["plugin-shortcuts", "scripts/smoke-plugin-shortcuts.mjs"],
+  ["workbench-html-export", "scripts/check-workbench-html-export.mjs"],
   ["qx-ai-agent", "scripts/check-qx-ai-agent.mjs"],
 ];
 

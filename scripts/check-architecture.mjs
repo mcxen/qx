@@ -85,6 +85,36 @@ if (pluginApi) {
   if (!/body_base64|bodyBase64/.test(pluginApi)) {
     fail("plugin_api.rs: HttpResponse must expose body_base64 for binary plugin fetch (port, not per-plugin curl forks)");
   }
+  if (!pluginApi.includes("fn encode_http_response_body")
+      || !pluginApi.includes("fn content_type_is_image")) {
+    fail("plugin_http_fetch must keep UTF-8 image bodies on the binary body_base64 port");
+  }
+}
+
+const imageInlining = exists("src/plugin/workbenchImageInlining.ts")
+  ? read("src/plugin/workbenchImageInlining.ts")
+  : "";
+if (!imageInlining.includes("inlineRemoteImagesInHtml")
+    || !imageInlining.includes("Referer")
+    || !imageInlining.includes("collectHtmlRemoteImageUrls")) {
+  fail("Workbench image inlining must fetch with Referer and rewrite HTML images onto data URIs");
+}
+const rssArticleUtils = exists("src/modules/rss/article-utils.ts")
+  ? read("src/modules/rss/article-utils.ts")
+  : "";
+if (rssArticleUtils) {
+  if (!rssArticleUtils.includes("inlineRemoteImagesInHtml")) {
+    fail("RSS offline HTML must use the Workbench image-inlining port");
+  }
+  if (rssArticleUtils.includes("createObjectURL")) {
+    fail("RSS offline HTML must not save remote-linked documents via blob URLs");
+  }
+}
+const rssArticleList = exists("src/modules/rss/ArticleList.tsx")
+  ? read("src/modules/rss/ArticleList.tsx")
+  : "";
+if (rssArticleList && !rssArticleList.includes("runHostOfflineHtmlExport")) {
+  fail("RSS article download must reuse the host offline HTML export port");
 }
 
 // Plugin persistence is an IPC port: keep filesystem work off async runtime

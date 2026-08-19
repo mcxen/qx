@@ -104,10 +104,11 @@ Enter handler。
 资讯、文章和社区帖子只要在详情发布 `body`、有序 `content[]` 或 `replies.items[]`，宿主就会在
 详情态自动加入“保存离线 HTML”。插件不要重复声明导出 Action，也不需要为此申请 `system` 权限；
 宿主只序列化已通过 Workbench 信任边界的当前快照，包含正文、图片、字段、分节和当前已加载的
-评论树。已有 Data URL、HTTPS 图片与包内 `asset-image` 由宿主有界并发读取并按文件魔数校验；
-SVG 可能继续引用外部资源，因此不进入严格离线导出。其余图片转成 Data URL；单图上限 12 MiB、
-一次导出新增图片总量上限 64 MiB。任一图片无法嵌入时不会生成
-仍依赖网络的半成品；全部图片完成后才无覆盖地写入用户 Downloads。若评论 `total` 大于当前 `items.length`，HTML 会明确
+评论树。已有 Data URL、HTTP(S) 图片与包内 `asset-image` 由宿主有界并发读取，请求带文档 Referer
+与浏览器 UA，并按文件魔数（优先于 Content-Type）校验；SVG 可能继续引用外部资源，因此不进入严格离线导出。
+其余图片转成 Data URL；单图上限 12 MiB、一次导出新增图片总量上限 64 MiB。
+内置 RSS 的「下载文章」走同一嵌入端口，把正文 HTML 里的 `img` / 懒加载地址改写成 Data URL，而不是保留在线 `src`。
+任一图片无法嵌入时不会生成仍依赖网络的半成品；全部图片完成后才无覆盖地写入用户 Downloads。若评论 `total` 大于当前 `items.length`，HTML 会明确
 标注已保存数量；插件若要求全量评论，应先通过自己的分页/加载流程把它们发布到 `items[]`。
 
 ## 2. 文档地图

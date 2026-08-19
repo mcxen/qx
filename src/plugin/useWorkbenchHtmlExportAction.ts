@@ -1,18 +1,10 @@
 import { useCallback, useMemo, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { QxShellAction } from "../components/QxShell";
 import { useLocale, useT } from "../i18n";
-import { islandHost } from "../island";
 import type { PluginWorkbenchAction, PluginWorkbenchDetail } from "./workbenchTypes";
-import {
-  buildWorkbenchHtmlExport,
-  isWorkbenchHtmlExportable,
-  utf8TextToBase64,
-} from "./workbenchHtmlExport";
-import {
-  inlineWorkbenchDetailImages,
-  WorkbenchImageInliningError,
-} from "./workbenchImageInlining";
+import { buildWorkbenchHtmlExport, isWorkbenchHtmlExportable } from "./workbenchHtmlExport";
+import { inlineWorkbenchDetailImages } from "./workbenchImageInlining";
+import { runHostOfflineHtmlExport } from "./offlineHtmlExport";
 
 const WORKBENCH_HTML_EXPORT_ACTION_ID = "__qx:workbench-save-html";
 
@@ -48,94 +40,32 @@ export function useWorkbenchHtmlExportAction({
   const save = useCallback(async () => {
     if (!detail || !isWorkbenchHtmlExportable(detail) || savingRef.current) return;
     savingRef.current = true;
-    const sessionId = `plugin.workbench-export.${pluginId}`;
-    islandHost.show({
-      id: sessionId,
-      priority: "task",
-      source: "shell",
-      placement: "docked",
-      sticky: true,
-      progressSilent: true,
-      content: {
-        primary: t("plugins.workbench.export.saving", "Saving HTML…"),
-        secondary: itemTitle || detail.title,
-        meter: { kind: "activity", activity: "wave" },
-      },
-    });
     try {
-      const offlineDetail = await inlineWorkbenchDetailImages(pluginId, detail, ({ completed, total }) => {
-        islandHost.update(sessionId, {
-          content: {
-            secondary: t(
-              "plugins.workbench.export.embeddingImages",
-              "Embedding images {completed}/{total}",
-            )
-              .replace("{completed}", String(completed))
-              .replace("{total}", String(total)),
-            meter: {
-              kind: "progress",
-              progress: total > 0 ? (completed / total) * 100 : 100,
+      await runHostOfflineHtmlExport({
+        sessionId: `plugin.workbench-export.${pluginId}`,
+        title: itemTitle || detail.title,
+        t,
+        embed: async (onProgress) => {
+          const offlineDetail = await inlineWorkbenchDetailImages(pluginId, detail, onProgress);
+          return buildWorkbenchHtmlExport({
+            detail: offlineDetail,
+            itemTitle,
+            panelTitle,
+            pluginName,
+            locale,
+            labels: {
+              savedFrom: t("plugins.workbench.export.savedFrom", "Saved from {source} with Qx"),
+              savedAt: t("plugins.workbench.export.savedAt", "Saved at {time}"),
+              replies: t("plugins.workbench.replies", "Replies"),
+              replyTo: t("plugins.workbench.replies.replyTo", "Reply to {author}"),
+              originalPoster: t("plugins.workbench.replies.op", "OP"),
+              likes: t("plugins.workbench.export.likes", "♥ {count}"),
+              loadedReplies: t(
+                "plugins.workbench.export.loadedReplies",
+                "This snapshot contains {loaded} of {total} replies available upstream.",
+              ),
             },
-          },
-        });
-      });
-      const exported = buildWorkbenchHtmlExport({
-        detail: offlineDetail,
-        itemTitle,
-        panelTitle,
-        pluginName,
-        locale,
-        labels: {
-          savedFrom: t("plugins.workbench.export.savedFrom", "Saved from {source} with Qx"),
-          savedAt: t("plugins.workbench.export.savedAt", "Saved at {time}"),
-          replies: t("plugins.workbench.replies", "Replies"),
-          replyTo: t("plugins.workbench.replies.replyTo", "Reply to {author}"),
-          originalPoster: t("plugins.workbench.replies.op", "OP"),
-          likes: t("plugins.workbench.export.likes", "♥ {count}"),
-          loadedReplies: t(
-            "plugins.workbench.export.loadedReplies",
-            "This snapshot contains {loaded} of {total} replies available upstream.",
-          ),
-        },
-      });
-      const path = await invoke<string>("plugin_system_save_download", {
-        filename: exported.filename,
-        mimeType: "text/html;charset=utf-8",
-        dataBase64: utf8TextToBase64(exported.html),
-      });
-      islandHost.show({
-        id: sessionId,
-        priority: "toast",
-        source: "shell",
-        placement: "docked",
-        sticky: false,
-        ttlMs: 5_000,
-        content: {
-          primary: t("plugins.workbench.export.saved", "Offline HTML saved"),
-          secondary: path,
-          tone: "success",
-        },
-      });
-    } catch (error) {
-      const detailText = error instanceof WorkbenchImageInliningError
-        ? t(
-          "plugins.workbench.export.imageFailed",
-          "Could not embed {failed} of {total} images. No file was saved.",
-        )
-          .replace("{failed}", String(error.failed))
-          .replace("{total}", String(error.total))
-        : String(error);
-      islandHost.show({
-        id: sessionId,
-        priority: "error",
-        source: "shell",
-        placement: "docked",
-        sticky: false,
-        ttlMs: 8_000,
-        content: {
-          primary: t("plugins.workbench.export.failed", "Could not save HTML"),
-          secondary: detailText,
-          tone: "danger",
+          });
         },
       });
     } finally {

@@ -15,10 +15,11 @@ import { useRssStore, type RssArticle } from "./store";
 import {
   classifyArticleTime,
   collectArticleImageUrls,
-  downloadArticleHtml,
+  buildOfflineArticleHtml,
   formatDate,
   sanitizeHtml,
 } from "./article-utils";
+import { runHostOfflineHtmlExport } from "../../plugin/offlineHtmlExport";
 import { prepareArticleImage, prewarmArticleImages } from "./articleImageCache";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import {
@@ -159,6 +160,7 @@ export default function ArticleList() {
   const [v2exLoading, setV2exLoading] = useState(false);
   const [pzaiOpen, setPzaiOpen] = useState(false);
   const [pzaiConversationIds, setPzaiConversationIds] = useState<Record<number, string>>({});
+  const savingArticleRef = useRef(false);
 
   const rememberPzaiConversation = useCallback((articleId: number, conversationId: string) => {
     setPzaiConversationIds((current) => (
@@ -482,6 +484,24 @@ export default function ArticleList() {
   });
 
   const focusArticle = currentArticle ?? selectedArticle;
+  const saveOfflineArticle = useCallback(() => {
+    if (!focusArticle || savingArticleRef.current) return;
+    savingArticleRef.current = true;
+    const content = currentArticle?.id === focusArticle.id
+      ? (originalContent ?? focusArticle.content)
+      : focusArticle.content;
+    void runHostOfflineHtmlExport({
+      sessionId: `rss.article-export.${focusArticle.id}`,
+      title: focusArticle.title,
+      t,
+      embed: (onProgress) => buildOfflineArticleHtml({
+        ...focusArticle,
+        content,
+      }, onProgress),
+    }).finally(() => {
+      savingArticleRef.current = false;
+    });
+  }, [currentArticle?.id, focusArticle, originalContent, t]);
   const actions = useMemo<QxShellAction[]>(() => {
     const list: QxShellAction[] = [
       {
@@ -532,9 +552,7 @@ export default function ArticleList() {
         label: t("rss.downloadArticle", "Download Article"),
         kbd: "CmdOrCtrl+S",
         disabled: !focusArticle,
-        onClick: () => {
-          if (focusArticle) downloadArticleHtml(focusArticle);
-        },
+        onClick: saveOfflineArticle,
       },
       {
         id: "open-browser",
@@ -602,7 +620,7 @@ export default function ArticleList() {
       });
     }
     return list;
-  }, [closeArticleToList, currentArticle, focusArticle, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, pzaiEnabled, refreshAll, refreshFeed, refreshingFeedId, selectedFeedId, t, toggleStar]);
+  }, [closeArticleToList, currentArticle, focusArticle, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, pzaiEnabled, refreshAll, refreshFeed, refreshingFeedId, saveOfflineArticle, selectedFeedId, t, toggleStar]);
 
   const primaryActionId = currentArticle ? "return-to-article-list" : "read-article";
   const articleActionIds = [

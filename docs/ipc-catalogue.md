@@ -1,6 +1,6 @@
 # IPC 命令目录
 
-> 状态：Current · 适用版本：v0.6.96 · Owner：Backend · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.97 · Owner：Backend · 最后复核：2026-08-19
 >
 > 事实来源：`src-tauri/src/lib.rs` 中的 `tauri::generate_handler!`
 
@@ -148,7 +148,7 @@ bucket 报告，`qx_storage_clear_qxai_sessions` 仅在用户显式确认后清�
 
 ## plugin 通用宿主 API
 
-`plugin_clipboard_read/write`、`plugin_perform_paste`、`plugin_perform_paste_at_cursor`、`plugin_http_fetch(req)`（只允许 http/https + 超时）、`plugin_notification_show(req)`、`plugin_resolve_asset(id, asset_path)`。
+`plugin_clipboard_read/write`、`plugin_perform_paste`、`plugin_perform_paste_at_cursor`、`plugin_http_fetch(req)`（只允许 http/https + 超时；`image/*` 即使是合法 UTF-8 也必须填 `body_base64`，供离线 HTML 嵌入）、`plugin_notification_show(req)`、`plugin_resolve_asset(id, asset_path)`。
 
 文件管理器输入端口：`context.files.selection()` 需要 `file-selection`，只读取宿主在唤起前捕获的不可变快照；`context.files.performSelectionOperation(request)` 需要 `file-operations`，请求必须携带当前快照 `revision`。插件不能用这两个权限把任意路径伪装成用户选择。
 

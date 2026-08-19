@@ -1,6 +1,6 @@
 # 插件存储系统设计
 
-> 状态：Current · 适用：Qx ≥ 0.6.96 · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用：Qx ≥ 0.6.97 · Owner：Core · 最后复核：2026-08-19
 > 作者侧端口摘要见 [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) §存储。  
 > 本文定义**宿主如何存放、升级、清理**插件数据，便于长期维护。
 

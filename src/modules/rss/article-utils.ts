@@ -1,4 +1,11 @@
 import {
+  collectHtmlRemoteImageUrls,
+  inlineRemoteImagesInHtml,
+  lastSrcsetCandidate,
+  resolveRemoteImageUrl,
+  type WorkbenchImageInliningProgress,
+} from "../../plugin/workbenchImageInlining";
+import {
   stripAuthorThemeStyles,
   stripDangerousHtmlAttributes,
 } from "../../utils/sanitize-html";
@@ -47,29 +54,32 @@ function downloadFilename(title: string): string {
   return `${stem || "article"}.html`;
 }
 
-/** Download a readable, sanitized article snapshot to the user's Downloads folder. */
-export function downloadArticleHtml(article: {
-  title: string;
-  link: string;
-  author: string;
-  published_at: number;
-  content: string;
-  summary: string;
-}): void {
+/** Build a readable article snapshot with every remote image embedded as a data URI. */
+export async function buildOfflineArticleHtml(
+  article: {
+    title: string;
+    link: string;
+    author: string;
+    published_at: number;
+    content: string;
+    summary: string;
+  },
+  onProgress?: (progress: WorkbenchImageInliningProgress) => void,
+): Promise<{ filename: string; html: string }> {
   const title = article.title.trim() || "Article";
   const content = sanitizeHtml(article.content || article.summary, article.link, "webview");
+  const offlineContent = await inlineRemoteImagesInHtml(content, {
+    baseUrl: article.link,
+    referer: article.link,
+    onProgress,
+  });
   const source = absoluteHttpUrl(article.link);
   const byline = [article.author.trim(), formatDate(article.published_at)].filter(Boolean).join(" · ");
   const htmlDocument = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title><style>body{max-width:760px;margin:40px auto;padding:0 20px;color:#202124;font:17px/1.65 system-ui,sans-serif}img{max-width:100%;height:auto}a{color:#1463d9}pre{overflow:auto}</style>
-</head><body><article><h1>${escapeHtml(title)}</h1>${byline ? `<p>${escapeHtml(byline)}</p>` : ""}${source ? `<p><a href="${escapeHtml(source)}">${escapeHtml(source)}</a></p>` : ""}${content}</article></body></html>`;
-  const url = URL.createObjectURL(new Blob([htmlDocument], { type: "text/html;charset=utf-8" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = downloadFilename(title);
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+</head><body><article><h1>${escapeHtml(title)}</h1>${byline ? `<p>${escapeHtml(byline)}</p>` : ""}${source ? `<p><a href="${escapeHtml(source)}">${escapeHtml(source)}</a></p>` : ""}${offlineContent}</article></body></html>`;
+  return { filename: downloadFilename(title), html: htmlDocument };
 }
 
 const TRANSPARENT_PIXEL =
@@ -86,34 +96,21 @@ function absoluteHttpUrl(value: string, baseUrl?: string): string | null {
   }
 }
 
-function lastSrcsetCandidate(value: string): string {
-  const candidates = value
-    .split(",")
-    .map((candidate) => candidate.trim().split(/\s+/)[0] ?? "")
-    .filter(Boolean);
-  return candidates[candidates.length - 1] ?? "";
-}
-
 function imageRemoteSource(img: HTMLImageElement, baseUrl?: string): string | null {
   const source =
-    img.getAttribute("data-src")
+    img.getAttribute("data-qx-remote-src")
+    || img.getAttribute("data-src")
     || img.getAttribute("data-original")
     || img.getAttribute("data-lazy-src")
     || img.getAttribute("data-url")
     || img.getAttribute("src")
     || lastSrcsetCandidate(img.getAttribute("data-srcset") || img.getAttribute("srcset") || "");
-  return absoluteHttpUrl(source, baseUrl);
+  return resolveRemoteImageUrl(source, baseUrl);
 }
 
 /** Returns the article's original HTTP(S) images for Rust cache prewarming. */
 export function collectArticleImageUrls(html: string, baseUrl?: string): string[] {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const urls = new Set<string>();
-  doc.querySelectorAll("img").forEach((element) => {
-    const source = imageRemoteSource(element as HTMLImageElement, baseUrl);
-    if (source) urls.add(source);
-  });
-  return [...urls];
+  return collectHtmlRemoteImageUrls(html, baseUrl);
 }
 
 export type ArticleImageLoadingMode = "webview" | "rust-cache";

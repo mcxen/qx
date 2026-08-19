@@ -868,6 +868,40 @@ fn content_type_is_text(headers: &std::collections::BTreeMap<String, String>) ->
         || lower.contains("+xml")
 }
 
+fn content_type_is_image(headers: &std::collections::BTreeMap<String, String>) -> bool {
+    headers
+        .get("content-type")
+        .or_else(|| headers.get("Content-Type"))
+        .is_some_and(|raw| raw.to_ascii_lowercase().starts_with("image/"))
+}
+
+/// Image responses stay binary even when the payload happens to be valid UTF-8
+/// (tiny GIFs, ASCII-only headers). JSON/text still omit the duplicate base64
+/// copy.
+fn encode_http_response_body(
+    bytes: Vec<u8>,
+    headers: &std::collections::BTreeMap<String, String>,
+) -> (String, String, bool) {
+    let text_hint = content_type_is_text(headers);
+    let image = content_type_is_image(headers);
+    match String::from_utf8(bytes) {
+        Ok(text) if image => {
+            let base64 = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
+            (String::new(), base64, true)
+        }
+        Ok(text) => (text, String::new(), false),
+        Err(err) => {
+            let raw = err.into_bytes();
+            let base64 = base64::engine::general_purpose::STANDARD.encode(&raw);
+            if text_hint {
+                (String::from_utf8_lossy(&raw).into_owned(), base64, true)
+            } else {
+                (String::new(), base64, true)
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, String> {
     let url = reqwest::Url::parse(&req.url).map_err(|e| format!("invalid URL: {e}"))?;
@@ -941,21 +975,7 @@ pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, St
         }
         bytes.extend_from_slice(&chunk);
     }
-    let text_hint = content_type_is_text(&headers);
-    let (body, body_base64, binary) = match String::from_utf8(bytes) {
-        Ok(text) => (text, String::new(), false),
-        Err(err) => {
-            let raw = err.into_bytes();
-            let base64 = base64::engine::general_purpose::STANDARD.encode(&raw);
-            if text_hint {
-                // Preserve the historical text fallback for servers that send
-                // a non-UTF-8 body while still marking the response as binary.
-                (String::from_utf8_lossy(&raw).into_owned(), base64, true)
-            } else {
-                (String::new(), base64, true)
-            }
-        }
-    };
+    let (body, body_base64, binary) = encode_http_response_body(bytes, &headers);
 
     Ok(HttpResponse {
         status,
@@ -1181,8 +1201,38 @@ fn powershell_xml_text(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{plugin_virtual_relative_path, powershell_xml_text};
+    use super::{encode_http_response_body, plugin_virtual_relative_path, powershell_xml_text};
+    use base64::Engine;
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
+
+    #[test]
+    fn utf8_image_bodies_still_return_base64() {
+        let mut headers = BTreeMap::new();
+        headers.insert("content-type".into(), "image/gif".into());
+        let gif = b"GIF89a ascii-only-payload".to_vec();
+        let (body, body_base64, binary) = encode_http_response_body(gif.clone(), &headers);
+        assert!(binary);
+        assert!(body.is_empty());
+        assert!(!body_base64.is_empty());
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(body_base64)
+                .expect("base64"),
+            gif
+        );
+    }
+
+    #[test]
+    fn utf8_json_bodies_omit_duplicate_base64() {
+        let mut headers = BTreeMap::new();
+        headers.insert("content-type".into(), "application/json".into());
+        let (body, body_base64, binary) =
+            encode_http_response_body(br#"{"ok":true}"#.to_vec(), &headers);
+        assert!(!binary);
+        assert_eq!(body, r#"{"ok":true}"#);
+        assert!(body_base64.is_empty());
+    }
 
     #[test]
     fn plugin_virtual_paths_accept_both_desktop_separators() {

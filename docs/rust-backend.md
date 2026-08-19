@@ -1,6 +1,6 @@
 # Rust 后端模块导览
 
-> 状态：Current · 适用版本：v0.6.96 · Owner：Backend · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.97 · Owner：Backend · 最后复核：2026-08-19
 
 `src-tauri/src/` 下每个模块的职责和依赖点。核心入口是 `lib.rs` 的 `run()`（`main.rs` 只转调）。启动顺序、模块初始化、Tauri 命令注册全部在 `lib.rs` 的 `setup(|app| { ... })` 里。
 

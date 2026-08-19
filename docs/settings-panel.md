@@ -1,6 +1,6 @@
 # Settings 面板
 
-> 状态：Current · 适用版本：v0.6.96 · Owner：Frontend · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.97 · Owner：Frontend · 最后复核：2026-08-19
 >
 > 开发者文档。Settings 使用 **线性分区（liner）**，不是营销式大卡片。导航分组见 `SettingsPanel.tsx` 的 `NAV_GROUPS`（General、Search、Shortcuts、Appearance、Extensions、Features、System），不是固定 6 个标签。
 

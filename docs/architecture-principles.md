@@ -1,6 +1,6 @@
 # 架构与接口原则（SOLID）
 
-> 状态：Current · 适用版本：v0.6.96+ · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.97+ · Owner：Core · 最后复核：2026-08-19
 
 本文约定 Qx 在**抽象边界、接口形状、模块依赖**上的长期标准。  
 实现功能时优先满足这些原则；文档与代码同级演进——改边界时同步改文档，禁止文档落后成「历史实现说明」。
@@ -43,6 +43,8 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
 保存为 HTML）使用保留的 `__qx:*` id 在信任边界追加；它们不回传插件 `onAction`，插件也不得
 声明或覆盖这些 id。通用能力只能消费 Workbench 已发布的纯数据，不读取插件私有 `raw`；图片
 离线化只复用受限 HTTP 二进制端口和已校验的包内 asset 解析，不允许把任意本地路径扩成导出输入。
+抓取时带文档 Referer 与浏览器 UA，按文件魔数（优先于 Content-Type）校验后改写成 `data:image`；
+HTML 片段（内置 RSS）与 Workbench 结构化 `image` 走同一 `inlineRemoteImagesInHtml` / `inlineWorkbenchDetailImages` 端口，失败则整次导出取消。
 
 新增文件时先问：它的「唯一变化原因」是什么？说不清就拆。
 

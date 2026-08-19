@@ -1,6 +1,6 @@
 # Module Surfaces — 主搜索直达模块子界面
 
-> 状态：Current · 适用版本：v0.6.96 · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.97 · Owner：Core · 最后复核：2026-08-19
 > 事实来源：`src/search/moduleSurfaces.ts`、`src/components/QxShell.tsx`、`src/App.tsx`、`src/modules/settings/store.ts`、`src/modules/*`
 
 ## 1. 目标

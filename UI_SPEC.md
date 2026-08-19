@@ -13,7 +13,7 @@
 - Enter 执行当前有效操作，Esc 经 `useQxModuleShell` 逐层返回。运行中以 Bottom Island 的真实 indeterminate 状态反馈，不造成布局跳动；错误保留在操作区，选择列表仍可使用。
 - 所有参数输入使用 Qx shadcn 控件和主题变量。写操作不得静默覆盖已有目标；完成后左栏切换为宿主返回的输出项快照。
 
-> 状态：Current · 适用版本：v0.6.96 · Owner：Frontend · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.97 · Owner：Frontend · 最后复核：2026-08-19
 >
 > 事实来源：`src/components/QxShell.tsx`、`src/hooks/useEscBack.ts`、`src/styles/shell.css`、`src/island/`、`src/home-island/`、`src/modules/settings/plugins/`、`src/i18n.ts`
 >
@@ -489,9 +489,9 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
   由宿主自动提供“保存为 HTML”Action；插件不得重复声明。导出以触发瞬间的可信详情快照为准，
   同时包含标题、正文、结构化图片/字段/分节和当前已加载的完整评论树，并在上游总数大于已加载数时
   写明快照范围。所有远程图片和插件包内 `asset-image` 必须在有界并发、单图 12 MiB / 总计
-  64 MiB 预算内转为 `data:image`；已有 Data URL 和包内资源同样必须通过图片魔数校验，可能继续引用
+  64 MiB 预算内转为 `data:image`；抓取带文档 Referer，魔数优先于 Content-Type。已有 Data URL 和包内资源同样必须通过图片魔数校验，可能继续引用
   外部资源的 SVG 不进入离线导出；任一图片下载、类型校验或嵌入失败时整个导出失败，不得保存仍依赖 URL
-  的伪离线文件。文件通过宿主 Downloads 端口异步保存且不覆盖同名文件，进度/成功/失败进入 Bottom Island。
+  的伪离线文件。内置 RSS 下载文章复用同一嵌入端口改写正文 HTML。文件通过宿主 Downloads 端口异步保存且不覆盖同名文件，进度/成功/失败进入 Bottom Island。
 - Workbench 管理型详情可在 `detail.form.actions` 发布表单底部动作；同一业务对象的连续 controls 可用稳定 `group.id` 合并为一个 fieldset，并由首个 control 的 `group.action` 提供组内操作。宿主统一渲染按钮、危险色和事件 selectedId，插件不得为参数删除等常规管理重新自绘 DOM。
 - Settings → Extensions 的 Installed / Plugin Store 与当前页工具必须共用一行紧凑工具栏。Plugin Store 在该行依次放仓库筛选、仓库源管理与唯一的“重新扫描”；每个仓库及“全部插件库”的插件数量直接显示在筛选下拉项，内容区不得再画数量标签或重复一行“刷新仓库源”。“重新扫描”在商店页强制重新读取当前仓库源。
 - Top Bar 必须保持单行。筛选、状态和 trailing 操作不得换行，不得移动到第二行，也不得用 `grid-column: 1 / -1` 做窄屏兜底。

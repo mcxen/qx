@@ -1,5 +1,18 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — 离线保存文章时嵌入图片（Workbench 通用端口）
+
+**状态**：代码与自动验证完成，等待桌面交互复核。
+
+- 根因：RSS「下载文章」把清洗后的 `<img src=http(s)>` 直接写成 HTML；Workbench 导出只收集结构化 HTTPS 字段，抓取不带 Referer，且 `plugin_http_fetch` 对恰好是 UTF-8 的图片不返回 `body_base64`。
+- 对齐 SingleFile：受限 HTTP 端口拉字节 → 魔数校验（优先于 Content-Type）→ `data:image` 改写；请求带文档 Referer 与浏览器 UA；http / https / 协议相对 / 懒加载属性一并处理。
+- `inlineRemoteImagesInHtml` 是共享端口。资讯 Workbench「保存离线 HTML」与 RSS `Cmd/Ctrl+S` 都走该嵌入器 + `runHostOfflineHtmlExport`（Downloads + Island），任一图片失败则不落盘。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run check`（含 workbench-html-export 契约）
+- [ ] 桌面态：RSS 下载的 HTML 在断网浏览器中图片仍可见；V2EX / 贴吧等 Workbench 离线 HTML 同样嵌入图片。
+
 ## Feature — 已安装插件后台检查更新并就地升级
 
 **状态**：代码完成，等待桌面交互复核。
@@ -33,7 +46,7 @@
 
 - 已打开且含正文、结构化内容或评论的声明式 Workbench 由宿主自动提供“保存为 HTML”，插件无需逐个声明或申请文件权限。
 - HTML 使用触发瞬间的可信快照，包含标题、正文、图片、字段、分节与评论树；评论保留楼层、作者、父子层级、回复对象、点赞和时间。
-- 已有非 SVG Data URL、普通 HTTPS 图片和插件包内表情/资源统一嵌入 HTML，并按图片魔数校验；4 路有界并发，单图 12 MiB、总计 64 MiB，任一图片失败则不保存需要联网的半成品。
+- 已有非 SVG Data URL、HTTP(S) 图片和插件包内表情/资源统一嵌入 HTML；抓取带 Referer，并按图片魔数（优先于 Content-Type）校验；4 路有界并发，单图 12 MiB、总计 64 MiB，任一图片失败则不保存需要联网的半成品。内置 RSS 下载文章复用同一 HTML 改写端口。
 - 上游评论总数大于当前已加载数时在文件内明确标注范围；保存走跨平台 Downloads 端口，同名文件不覆盖，结果由 Bottom Island 反馈。
 
 ### 验证

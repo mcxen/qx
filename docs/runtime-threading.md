@@ -1,6 +1,6 @@
 # Runtime 线程模型（主线程 UI + 多线程算力）
 
-> 状态：Current · 适用版本：v0.6.96+ · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.97+ · Owner：Core · 最后复核：2026-08-19
 > 实现：`src-tauri/src/runtime/` · 兼容别名：`main_thread::run_on_main`
 
 ## 1. 问题
