@@ -1,6 +1,6 @@
 # 前端子系统总览
 
-> 状态：Current · 适用版本：v0.6.95 · Owner：Frontend · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.96 · Owner：Frontend · 最后复核：2026-08-19
 
 Qx 前端是 React 19 + Zustand + Tauri v2 API + shadcn 组件。入口 `src/main.tsx` → `App.tsx`（或 `surface=island` / `view=recording-controls`）。本文件描述各子系统的边界与关键文件；组件视觉规范另见 [UI_SPEC.md](../UI_SPEC.md)、[docs/settings-panel.md](./settings-panel.md)。灵动岛统一层见 [qx-island-architecture.md](./qx-island-architecture.md)。
 

@@ -79,7 +79,9 @@ Workbench 是插件 UI 的声明模型，QxShell 是宿主呈现层：
 - 列表、Grid、Detail 和 Form 使用宿主组件与主题；
 - `actions[]` 是唯一动作源，主动作 ID 驱动 Bottom Bar 与 Enter；
 - Actions 入口、Context Panel 与 Esc 由宿主统一组织；
-- Island 会话由宿主仲裁位置、样式、进度与窗口间迁移。
+- Island 会话由宿主仲裁位置、样式、进度与窗口间迁移；最近浏览与动作弹簧是宿主
+  chrome，插件不得注入 Motion 或浮窗几何。
+- 语言用无权限 `context.locale`，不是 `context.i18n`。
 
 完整 UI 契约只在 [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md) 维护。
 

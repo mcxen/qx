@@ -31,6 +31,8 @@ QxShell（Top Bar / Main Area / Bottom Bar）
 - 趋势和时间序列使用 `detail.chart` 结构化数据；宿主统一用 Qx shadcn/Radix 主题绘制，插件不得
   提交自绘 SVG/Canvas 或硬编码业务颜色。历史图表只能展示真实源数据或持久化真实采样。
 - 平台差异由宿主端口处理，插件不要判断 macOS/Windows 后自行拼系统命令。
+- 文案语言用无权限的 `context.locale.current`（`en` / `zh-CN`），不要读
+  `navigator.language`，也不存在 `context.i18n`。
 
 ### 1.2 发现、兼容与权限不是同一件事
 
@@ -66,7 +68,7 @@ QxShell（宿主固定）
 ├─ Top Bar       主搜索 + tabs/filters
 ├─ Main Area     Workbench List / Grid / Detail / Form
 ├─ Context       当前对象 → 非主 Actions → 后台状态 → About
-└─ Bottom Bar    Home → Island → primary → Esc
+└─ Bottom Bar    Home → Island → primary → Actions → Esc
 ```
 
 插件只发布 Main Area 的数据模型和 Context 所需的 action/status 元数据；Top Bar、Context
@@ -90,14 +92,14 @@ context.ui.mountWorkbench(
 `items[].actions` 只描述当前条目的真实业务操作。宿主 Enter 约定：
 
 1. **列表且条目有 `detail`** → Enter 打开详情（阅读）
-2. **详情已打开且条目/面板有 `primary: true` 业务动作** → Enter 执行该动作（安装、设壁纸、打开原页、暂停番茄钟…）
-3. **详情已打开且没有 primary 业务动作** → Enter 返回列表；Esc 始终可关闭详情
-4. **列表且无 detail** → Enter 执行 `primary: true`（或第一个可用动作）
+2. **详情已打开** → Enter 返回列表；Esc 同样可关闭详情
+3. **列表且无 detail** → Enter 执行 `primary: true`（或第一个可用动作）
 
-因此「打开原文 / 安装 / 设壁纸」等在详情态要用的动作必须标 `primary: true`。不要给
-open-detail / close-detail 再声明插件 action，也不要假设 `kbd: "Enter"` 会覆盖宿主
-主导航。Raycast 的 `ActionPanel` 映射为同一份 `actions[]`，不再额外声明 Bottom Bar
-或 Enter handler。
+有集合与详情的 Workbench，「打开原文 / 安装 / 设壁纸」等业务动作**不得**标
+`primary: true`，也不得用 `kbd: "Enter"` 覆盖宿主导航；它们留在 Context，并用
+`CmdOrCtrl+…` 等带修饰键。不要给 open-detail / close-detail 再声明插件 action。
+Raycast 的 `ActionPanel` 映射为同一份 `actions[]`，不再额外声明 Bottom Bar 或
+Enter handler。
 
 资讯、文章和社区帖子只要在详情发布 `body`、有序 `content[]` 或 `replies.items[]`，宿主就会在
 详情态自动加入“保存离线 HTML”。插件不要重复声明导出 Action，也不需要为此申请 `system` 权限；
@@ -249,7 +251,7 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 | Launcher Home 入口 | `manifest.homeWidgets[]`（把宿主源关联到插件 Panel）或 `manifest.surfaceProviders[]`（把受支持轻量信息源透出到 Home） | 自绘首页卡片、私有轮询 |
 | 托盘状态 | `context.tray` | 直接调用系统托盘库 |
 | Tray/Home 标准控件 | `manifest.surfaceProviders[]`（受支持语义源） | 为常驻展示加载完整 Panel 运行时 |
-| 翻译 | `context.i18n` | 硬编码单一语言 UI |
+| 翻译 | `context.locale.current` / `preference` / `onChange` | `navigator.language` 或虚构的 `context.i18n` |
 
 文件管理器输入是唤起前快照，不是实时查询当前焦点窗口：
 
@@ -283,12 +285,13 @@ if (selection.items.length === 1) {
 直接提供一张宿主卡片，应声明 `surfaceProviders[]`，并且只能使用 Qx 已登记的语义源。
 `agent.usage` 约定插件把无凭据的归一化快照写入 `agent-usage.snapshot.v1`；Home 只读该缓存，
 不启动插件 runtime，也不代替插件执行登录或网络刷新。
-当前可用的 Home 信息源包括 `rss.unread-latest`：Qx 统一读取 RSS 未读快照、先画缓存、
-按主窗口可见性节流刷新并绘制最新帖子；定时、数据完成事件和窗口激活统一 single-flight
-合并，慢请求最多保留一次尾随刷新，失败保留最近可用快照。插件只声明稳定 id、双语标题/说明和 `surfaces: ["home"]`，不提交
-数据请求、DOM、CSS、轮询周期或尺寸。展示 Home/Tray Provider 不会启动完整插件运行时；
-点击后才按需进入 RSS 模块或插件 Panel。新增信息能力必须先在宿主注册原子适配器，再加入
-Manifest 校验，禁止用一个泛化 JSON 卡片端口绕过这个边界。
+当前可用的 Home 信息源包括 `rss.unread-latest` 与 `agent.usage`。前者由宿主读取 RSS
+未读快照；后者只读插件已保存的无凭据归一化快照（如 `agent-usage.snapshot.v1`），不启动
+插件 runtime、不代替登录或网络刷新。Qx 先画缓存，按主窗口可见性节流，定时/事件/激活
+single-flight 合并，慢请求最多一次尾随刷新，失败保留最近快照。插件只声明稳定 id、
+双语标题/说明和 `surfaces`，不提交数据请求、DOM、CSS、轮询周期或尺寸。展示 Home/Tray
+Provider 不会启动完整插件运行时；点击后才按需进入对应模块或 Panel。新增信息能力必须
+先在宿主注册原子适配器，再加入 Manifest 校验，禁止用一个泛化 JSON 卡片端口绕过这个边界。
 
 ## 5. Panel 生命周期
 
@@ -347,9 +350,9 @@ Base64/Data URL 缓存应使用 `context.state.createLru({ maxEntries, maxSize, 
 不得把预取条目标记为已读，也不要预取整页原图。用户改变选择、tab 或销毁 panel 后，
 旧预取队列必须停止继续扩展。
 
-插件面板的 Esc 阶梯由宿主统一处理：关闭内层详情、清空查询、离开插件、清空启动器
-查询、隐藏窗口。插件不要注册全局 Esc，也不要调用内部的 `tryModuleEscapeStep`；
-它只属于宿主模块端口。
+插件面板的 Esc 阶梯由宿主统一处理：先关岛上最近浏览切换器（宿主 chrome，插件不实现），
+再关闭内层详情、清空查询、离开插件、清空启动器查询、隐藏窗口。插件不要注册全局 Esc，
+也不要调用内部的 `tryModuleEscapeStep` 或 `tryCloseRecentSwitcher`；它们只属于宿主。
 
 ## 6. Workbench 与动作
 
@@ -378,7 +381,9 @@ Base64/Data URL 缓存应使用 `context.state.createLru({ maxEntries, maxSize, 
 未加载的父回复。回复树是 Workbench 公共接口，QxTieba、V2EX、Hacker News 等消费者
 只能适配源数据，不得复制宿主树算法或 CSS。
 
-动作对象必须有稳定、非翻译的 `id`。最多一个动作标记 `primary: true`：
+动作对象必须有稳定、非翻译的 `id`。最多一个动作标记 `primary: true`。
+下面示例适用于**没有详情**的命令面板；有 List → Detail 时不要把业务动作标成 primary，
+也不要把 `kbd` 写成 `Enter`：
 
 ```js
 actions: [
@@ -387,7 +392,7 @@ actions: [
     label: "Open Result",
     primary: true,
     menuKey: "o",
-    kbd: "Enter",
+    kbd: "CmdOrCtrl+O",
   },
   {
     id: "refresh",
@@ -461,7 +466,8 @@ Top Bar 右侧只发布内容筛选模型，由宿主绘制固定下拉框。Bot
   继续抛给宿主，不能 catch 后伪装成成功。
 
 Island 内容必须有稳定会话标识。插件可选择宿主支持的进度样式，默认是浅蓝色从左到右
-填充；位置、尺寸与动画稳定性由宿主管理。协议与示例见
+填充；位置、尺寸、浮出与动画稳定性由宿主管理。双击 docked 岛展开最近浏览、动作胶囊
+弹簧进出属于宿主 chrome，插件不得注入图标、Motion 或窗口坐标。协议与示例见
 [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)。
 
 ## 8. 真实接口测试（上架门禁）
@@ -526,6 +532,8 @@ Island 内容必须有稳定会话标识。插件可选择宿主支持的进度�
   `npm run store:build`，确认 Pages 列表与详情页能显示新插件和图标。
 - [ ] `panel.render()` 不等待长任务。
 - [ ] 用户可从错误状态重试。
+- [ ] 可见文案跟随 `context.locale.current`，未使用 `navigator.language`。
+- [ ] 未申请 Island 时不调用 `context.island`；未注入最近浏览、Motion 或浮窗坐标。
 
 ## 11. 老插件迁移
 

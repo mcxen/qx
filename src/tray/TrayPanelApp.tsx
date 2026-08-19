@@ -31,12 +31,18 @@ import {
 } from "../plugin/surfaceProviders";
 import {
   TrayControlCard,
-  TrayActionRow,
   TraySection,
+  TrayShortcutButton,
+  TrayShortcutGrid,
   TrayStatusRow,
   TraySurfaceFrame,
 } from "./TraySurface";
-import { measureTraySurface, type TraySurfaceRow, type TraySurfaceSize } from "./surface";
+import {
+  measureTraySurface,
+  trayShortcutRows,
+  type TraySurfaceRow,
+  type TraySurfaceSize,
+} from "./surface";
 
 interface NetworkCounters {
   totalBytesIn: number;
@@ -54,10 +60,10 @@ type TraySegment =
   | { kind: "actions"; actions: TrayActionConfig[] };
 
 function formatRate(bytesPerSecond: number): string {
-  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return "0 B/s";
-  if (bytesPerSecond < 1024) return `${Math.round(bytesPerSecond)} B/s`;
-  if (bytesPerSecond < 1024 ** 2) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`;
-  return `${(bytesPerSecond / 1024 ** 2).toFixed(1)} MB/s`;
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return "0B";
+  if (bytesPerSecond < 1024) return `${Math.round(bytesPerSecond)}B`;
+  if (bytesPerSecond < 1024 ** 2) return `${(bytesPerSecond / 1024).toFixed(1)}K`;
+  return `${(bytesPerSecond / 1024 ** 2).toFixed(1)}M`;
 }
 
 function segmentActions(actions: TrayActionConfig[]): TraySegment[] {
@@ -261,7 +267,7 @@ function TrayContent() {
       if (segment.kind === "actions") {
         if (!hasActionLabel) rows.push({ kind: "section-label" });
         hasActionLabel = true;
-        segment.actions.forEach(() => rows.push({ kind: "action" }));
+        rows.push({ kind: "shortcut-grid", rows: trayShortcutRows(segment.actions.length, surfaceSize) });
       } else {
         if (!hasStatusLabel) rows.push({ kind: "section-label" });
         hasStatusLabel = true;
@@ -406,8 +412,10 @@ function TrayContent() {
   };
   const statusValue = (id: string) => {
     if (id === "status_cpu") return stats ? `${Math.round(stats.cpu)}%` : "—";
-    if (id === "status_network") return `↓ ${formatRate(networkRates.down)} · ↑ ${formatRate(networkRates.up)}`;
-    return stats ? `${stats.memoryUsedGb.toFixed(1)} / ${stats.memoryTotalGb.toFixed(0)} GB · ${Math.round(stats.memory)}%` : "—";
+    if (id === "status_network") {
+      return `↓${formatRate(networkRates.down)} ↑${formatRate(networkRates.up)}`;
+    }
+    return stats ? `${stats.memoryUsedGb.toFixed(1)}G · ${Math.round(stats.memory)}%` : "—";
   };
   const firstActionSegment = segments.findIndex((segment) => segment.kind === "actions");
   const firstStatusSegment = segments.findIndex((segment) => segment.kind === "status");
@@ -436,15 +444,17 @@ function TrayContent() {
     >
       {segments.map((segment, index) => segment.kind === "actions" ? (
         <TraySection key={`actions-${index}`} title={index === firstActionSegment ? t("tray.actions", "Quick Actions") : undefined}>
-          {segment.actions.map((action) => (
-            <TrayActionRow
-              key={action.id}
-              icon={actionIcon(action.id)}
-              title={actionTitle(action)}
-              trailing={actionTrailing(action.id)}
-              onClick={() => runAction(action.id)}
-            />
-          ))}
+          <TrayShortcutGrid>
+            {segment.actions.map((action) => (
+              <TrayShortcutButton
+                key={action.id}
+                icon={actionIcon(action.id)}
+                title={actionTitle(action)}
+                description={actionTrailing(action.id)}
+                onClick={() => runAction(action.id)}
+              />
+            ))}
+          </TrayShortcutGrid>
         </TraySection>
       ) : (
         <TraySection key={`status-${index}`} title={index === firstStatusSegment ? t("tray.status", "System Status") : undefined}>
@@ -459,13 +469,16 @@ function TrayContent() {
         </TraySection>
       ))}
       {brightnessEnabled && (
-        <TraySection title={enabledActions.length > 0 ? providerTitle : undefined}>
-          {orderedVisibleDisplays.map((display) => (
+        <TraySection
+          className="is-controls"
+          title={enabledActions.length > 0 ? providerTitle : undefined}
+        >
+          {orderedVisibleDisplays.map((display, displayIndex) => (
             <TrayControlCard
               key={display.id}
               title={display.name}
               value={`${Math.round(display.current ?? 0)}%`}
-              leading={<span className="qx-tray-sun" aria-hidden="true">☀︎</span>}
+              current={displayIndex === 0 && focusedDisplayId != null}
             >
               <Slider
                 value={display.current ?? 0}

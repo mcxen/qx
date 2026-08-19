@@ -1,6 +1,6 @@
 # Rust 后端模块导览
 
-> 状态：Current · 适用版本：v0.5.13 · Owner：Backend · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.6.96 · Owner：Backend · 最后复核：2026-08-19
 
 `src-tauri/src/` 下每个模块的职责和依赖点。核心入口是 `lib.rs` 的 `run()`（`main.rs` 只转调）。启动顺序、模块初始化、Tauri 命令注册全部在 `lib.rs` 的 `setup(|app| { ... })` 里。
 
@@ -13,6 +13,11 @@
 | `main.rs` | thin wrapper，只调 `qx::run()` |
 | `lib.rs` | 应用装配：托盘、全局快捷键、`generate_handler!`、`ActivationPolicy::Accessory`、`safe_init` 启动子系统 |
 | `floating_panel.rs` | 主窗口面板化；`PANEL_OPEN` / `ACTIVE_ROUTE`；`toggle` / `toggle_route`；hide 必须经此模块；Windows 在此关闭会退化成矩形黑边的 DWM undecorated shadow（见 shell-and-shortcuts） |
+| `island_window.rs` | 通用桌面浮岛 webview（`island` label）；几何/拖动/缩小与 session 快照推送；不是 main NSPanel |
+| `file_manager.rs` | Finder / Explorer 选择快照与重命名/归拢/ZIP 写操作（blocking worker） |
+| `file_preview.rs` | 选择快照范围内的有界预览元数据与字节流；WebView 无通用本地路径读取 |
+| `terminal.rs` | QxTTY PTY |
+| `text_toolbox.rs` | 文本工具箱磁盘条目 |
 
 ## 输入 / 索引
 
@@ -36,7 +41,7 @@
 | 文件 | 数据库 | 说明 |
 |---|---|---|
 | `clipboard.rs` + `clipboard/{native,capture,file_list,history}.rs` | `Application Support/qx/clipboard.db` | 始终 `manage(ClipboardDb(Option<Connection>))`；失败可 lazy 重连；后台按系统序号轮询，读取成功后才提交游标；Windows `CF_HDROP` / macOS file URL 统一为有序 file-list，捕获时不因 UNC/离线路径暂不可达而丢弃。**热/冷历史**：磁盘保留未置顶约 5000 条 / 90 天；UI 首屏热窗口 ~80 条，滚到底经 `get_clipboard_history_page` 游标加载冷页 |
-| `rss/mod.rs` + `fetcher.rs` + `icon_cache.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` + `cache/rss-icons` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；schema 升级在事务内先补旧库列、再创建依赖索引；feed-rs / OPML / folders；文章 `reading_progress` 归一化持久化；`rss_dashboard_snapshot` 以一次受控查询返回未读计数和有界最新文章投影，供 Home/Provider 先画缓存后异步刷新；首次打开写入默认订阅目录；订阅图标按 feed icon/logo → 站点 favicon 解析后压为最长边 64px 的本地 PNG，30 天内直接复用并以 stale cache 抵御网络失败 |
+| `rss/mod.rs` + `fetcher.rs` + `icon_cache.rs` + `article_image_cache.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` + `cache/rss-icons` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；schema 升级在事务内先补旧库列、再创建依赖索引；feed-rs / OPML / folders；文章 `reading_progress` 归一化持久化；`rss_dashboard_snapshot` 以一次受控查询返回未读计数和有界最新文章投影，供 Home/Provider 先画缓存后异步刷新；首次打开写入默认订阅目录；订阅图标按 feed icon/logo → 站点 favicon 解析后压为最长边 64px 的本地 PNG，30 天内直接复用并以 stale cache 抵御网络失败；正文图经 `rss_cache_article_image` 落盘并扩展 asset protocol |
 | `v2ex.rs` | `cache/v2ex/*.json` | 抓 v2ex.com JSON；**内存 + 磁盘 TTL 缓存**（topics ~3min，replies ~2min，失败可回退 stale）；hot/latest 无需 token，node/notification 需 token（命令可接收插件 preference 的 `token` 覆盖）；市场插件 `v2ex` 走 `invoke:v2ex_*` + 插件 persist SWR |
 | `weather.rs` (host API for marketplace **Weather** plugin + optional built-in) | 无 | ipapi.co 定位 → Open-Meteo（默认）或 OpenWeatherMap（需 key） |
 | `github_calendar.rs` | 无 | 抓 GitHub profile 页面提取 `ContributionCalendar` |

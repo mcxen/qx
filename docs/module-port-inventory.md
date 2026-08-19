@@ -1,6 +1,6 @@
 # Built-in modules & marketplace plugins — port inventory
 
-> 状态：Current · 适用版本：v0.6.95+ · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.96+ · Owner：Core · 最后复核：2026-08-19
 > 目的：一次看清**可复用抽象**落在哪些模块、还有哪些缝。写新插件/新内置时先读这份 + 作者手册。
 
 相关：

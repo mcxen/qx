@@ -4,7 +4,7 @@
 
 文件管理器上下文由根级 `file_manager` 服务承担：`floating_panel` 在显示 Qx 前只采集轻量来源提示（Windows Explorer HWND / macOS Finder 前台状态），worker 随后解析有序选择并发布 revision 快照。内置 File Actions、只读 `file-preview` route 与插件 `context.files.*` 都依赖该快照；两个内置 surface 通过 `useFileManagerSelection` 消费同一 revision，模块启停统一归属 `file-actions`。重命名、归拢、ZIP 压缩/解压在 blocking worker 执行并再次校验 revision。根级 `file_preview` 只按当前 revision/index 提供有界元数据、目录和字节流，WebView 不获得通用本地路径读取能力；PDF/Office/压缩包渲染器按格式懒加载，PPTX 渲染器监听可用区域并动态适宽。
 
-> 状态：Current · 适用版本：v0.5.13 · Owner：Core · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.6.96 · Owner：Core · 最后复核：2026-08-19
 >
 > 桌面启动器（Raycast 风格）| Tauri v2 + React + TypeScript + Rust
 >
@@ -14,7 +14,7 @@
 
 ## 1. 项目概述
 
-Qx 是一个以 macOS 为当前交付平台的桌面启动器，定位为 Raycast / Alfred 的开源替代。核心功能包括：应用搜索与启动、剪贴板历史、RSS 阅读器、AI、屏幕录制、宏录制、插件市场以及外接显示器控制。Windows/Linux 仍是方向性规划，不代表当前已具备可交付兼容性。
+Qx 是跨平台桌面启动器，定位为 Raycast / Alfred 的开源替代。当前交付平台是 **macOS 与 Windows**；Linux 仅有可移植回退，不是对等交付目标。核心功能包括：应用/文件搜索、剪贴板历史、RSS、QxAI、截图录屏、文件操作、宏录制、插件市场与外接显示器控制。
 
 ### 技术栈
 
@@ -30,7 +30,7 @@ Qx 是一个以 macOS 为当前交付平台的桌面启动器，定位为 Raycas
 | 宏录制 | rdev (捕捉) + enigo (回放) | 最新 |
 | RSS | feed-rs + reqwest + rusqlite | 最新 |
 | DB | SQLite via rusqlite | — |
-| 操作系统绑定 | macOS (优先), Windows/Linux (规划) | — |
+| 操作系统绑定 | macOS + Windows（交付）；其它目标可移植回退 | — |
 
 ---
 
@@ -44,13 +44,15 @@ Qx/
 │   ├── store.ts                  # 全局 Zustand store
 │   ├── ThemeProvider.tsx         # light/dark/system 主题
 │   ├── i18n.ts                   # 语言解析 + useT
-│   ├── Launcher.tsx              # 搜索壳；idle island → home-island
-│   ├── home-island/              # 可插拔灵动岛 + 异步 metrics 总线
-│   ├── components/               # 公共 UI（QxShell、Matrix、ui）
+│   ├── Launcher.tsx              # 搜索壳；idle home 经 islandHost 单写
+│   ├── island/                   # QxIsland session / DockHost / recents / float
+│   ├── home-island/              # 可插拔空闲 HUD + 异步 metrics 总线
+│   ├── components/               # 公共 UI（QxShell、ui）
 │   ├── launcher/                 # context、quick entries、actions
 │   ├── modules/
 │   │   ├── clipboard/  screencap/  rss/  qx-ai/
-│   │   ├── macros/  weather/  documents/
+│   │   ├── macros/  weather/  documents/  file-actions/
+│   │   ├── qx-tty/  p-zai/
 │   │   └── settings/
 │   └── plugin/                   # 插件系统
 ├── src-tauri/                    # Rust 后端
@@ -75,13 +77,10 @@ Qx/
 │       ├── settings/             # 设置读写 (JSON)
 │       │   ├── mod.rs
 │       │   └── ...
-│       ├── rss/                  # RSS 引擎
-│       │   ├── mod.rs
-│       │   ├── types.rs
-│       │   ├── storage.rs        # SQLite CRUD
-│       │   └── fetcher.rs        # 网络抓取 + feed-rs 解析
+│       ├── rss/                  # RSS 引擎（含 icon/article image cache）
+│       ├── file_manager.rs / file_preview.rs
+│       ├── island_window.rs
 │       └── marketplace/          # 插件市场
-│           └── mod.rs
 ```
 
 ---
@@ -203,12 +202,12 @@ tab = "plugin:*"   → PluginPanelViewport
 
 ### 4.1 Launcher / 应用搜索
 
-- 输入搜索 → 100ms debounce → `doSearch()`
-- 同时搜索: 插件命令 + 本地应用 (`search_apps`)
+- 输入搜索 → 非空 query 约 45ms debounce → `doSearch()`（空 query 立即走首页缓存）
+- 同时搜索: 插件命令 + 本地应用 (`search_apps`) + 可选文件/剪贴板/模块表面
 - 结果排序: `rankSearchResults`（匹配档位优先；同档按 30 天搜索点击量 `clickCount` 加权；文件同档再按类型偏置：PDF/Word/Excel 等办公文档优于源码/日志）
 - 点击落库: `record_search_click` → `history.db` 表 `search_click_events`（滚动 30 天）；`get_search_click_stats` 后台异步召回，不阻塞主搜索
-- 空闲底部 HUD：`resolveHomeIsland`（`src/home-island`）
-- 键盘: ↑↓ 导航, Enter 打开 / 切换 tab, Esc 级联 / hide
+- 空闲底部 HUD：`useHomeIslandContribution` 写 `islandHost` home session（`src/home-island` + `src/island`）
+- 键盘: ↑↓ 导航, Enter 打开 / 切换 tab, Esc 级联（先关岛最近浏览）/ hide
 
 ### 4.2 剪贴板历史
 
@@ -226,7 +225,8 @@ tab = "plugin:*"   → PluginPanelViewport
 - 本地缓存: `rss.db` (订阅源 + 文章)
 - 离线缓存: 可选开关
 - 三视图: Feeds 列表 → Articles 列表 (按 today/yesterday/earlier 分组) → Article 详情
-- 键盘全覆盖: ↑↓/j/k 导航, S 星标, U 读/未读, O 浏览器打开, R 刷新, N 添加, E 编辑
+- 键盘走 Shell 协议：↑↓ 列表，Enter 阅读层级，Esc 级联；不注册 `F/J/K/R/S/U/O/L` 裸键。修饰键：`⌘/Ctrl+R` 刷新当前订阅，`⌘/Ctrl+D` 星标，`⌘/Ctrl+S` 下载 HTML，`⌘/Ctrl+Shift+R` 全部刷新
+- Settings → Reader View 图片模式：全宽 / 固定大小 / 小图；小图点击 `QxMediaViewer`
 - 支持 OPML 导入/导出
 - 单 Feed 刷新执行一条真实 HTTP 流程并用 activity 表达不可测的请求阶段；刷新全部从数据库读取完整订阅集合逐个抓取，通过 `rss:refresh-progress` 发布当前 Feed、completed/total 和失败数，Bottom Island 不使用固定模拟百分比。
 - RSS 后台调度属于 Rust 领域服务：默认每天刷新，Settings 可选择 6 / 12 / 24 小时或关闭。
@@ -240,11 +240,11 @@ tab = "plugin:*"   → PluginPanelViewport
   单 Feed、手动全量和后台全量共享异步刷新锁，数据库阶段通过 blocking pool 执行，任务不依赖
   React 面板挂载且不改变窗口可见性或焦点。
 
-### 4.5 屏幕录制 GIF
+### 4.5 截图与录屏
 
-- Rust: scrap (画面捕捉) + gifski (GIF 编码)
-- 支持: 区域选择、文件大小预估、历史列表
-- **缺失: 键盘处理** — 无 ↑↓ 导航、Enter/删除快捷键
+- Rust: `screencap/` 编排圈选/截图/录制；画面与 GIF 走根级 `media/`（OpenH264 / gifski）
+- 截图 PNG、录屏 MP4/MOV，可按需转 GIF；历史分截图/录屏两组，列表与图库键盘走 `useQxListSelection`
+- 捕获控制条是独立受保护工具栏，不占用 Bottom Island
 
 ### 4.6 宏录制
 
@@ -261,10 +261,10 @@ tab = "plugin:*"   → PluginPanelViewport
 
 ### 4.7 设置
 
-- 6 个标签页: General, Extensions, Shortcuts, Appearance, RSS, Advanced
-- Rust 后端: JSON 文件 `~/.config/qx/settings.json`
+- 分组导航（General / Search / Shortcuts / Appearance / Extensions / AI Agent / OCR / RSS / Permissions / Storage / Advanced / About），不是固定 6 个标签
+- Rust 后端: `~/.qx/settings.json`
 - 快捷键自定义: 键盘录制绑定 UI
-- **缺失: 标签页 ↑↓ 键盘切换**
+- 打开/关闭只走 `openSettings` / `closeSettings`（见 `docs/settings-panel.md`）
 
 ### 4.8 插件市场
 
@@ -284,7 +284,7 @@ tab = "plugin:*"   → PluginPanelViewport
 
 ### 5.1 Tauri 命令注册
 
-`lib.rs` 的 `invoke_handler!` 注册 ~45 个 Tauri 命令。命令按模块分组:
+`lib.rs` 的 `generate_handler!` 注册命令以 [`ipc-catalogue.md`](./ipc-catalogue.md) 文末基线为准（当前约 196 个）。领域分组示例:
 
 ```
 apps::* (search_apps)
@@ -306,7 +306,7 @@ updater::* (check/download_and_install/helper_replace)
 | `rss.db` | `~/Library/Application Support/qx/` | 订阅源 & 文章 |
 | `clipboard.db` | 同上 | 剪贴板历史 |
 | `screencap.db` | 同上 | 录制历史 |
-| `settings.json` | `~/.config/qx/` | 用户设置 |
+| `settings.json` | `~/.qx/` | 用户设置 |
 
 ### 5.3 后台服务
 
@@ -317,29 +317,12 @@ updater::* (check/download_and_install/helper_replace)
 
 ---
 
-## 6. 键盘导航审计
+## 6. 键盘导航
 
-### 当前覆盖
-
-| Tab | 键盘操作 | 缺失快捷键 |
-|-----|---------|-----------|
-| Launcher | Type, ↑↓, Enter, Esc, ⌘, | — |
-| Clipboard | ↑↓, Enter, ⌘P, ⌘⌫, Esc | 类型过滤无快捷键 |
-| RSS Feeds | ↑↓, Enter, R, Shift+R, N, E, Esc | — |
-| RSS Articles | ↑↓/j/k, Enter, S, U, O, R, Esc | — |
-| RSS Detail | j/k, S, U, O, Esc | — |
-| ScreenRecorder | **无** | ↑↓, Enter, ⌫, Esc |
-| MacroRecorder | Esc（录制/草稿/详情/播放逐层退出）, Enter（详情/播放/保存） | — |
-| Settings | Esc, 搜索过滤 | ↑↓ 切换标签页 |
-| Plugin Mgr | 搜索过滤 | ↑↓ 列表导航 |
-
-### 推荐改进
-
-1. **ScreenRecorder**: 添加 `handleKeyDown` — ↑↓ 历史导航, Enter 选中, ⌫ 删除, Esc 关闭
-2. **MacroRecorder**: 已接入 Workbench 列表/详情与动作面；后续可补充跨平台真实录制回归矩阵
-3. **Settings**: Ctrl+Tab / Ctrl+数字 切换标签页
-4. **Clipboard**: Ctrl+数字 快速切换类型过滤
-5. **通用**: 所有模块页面增加 ⌘K 唤起命令面板
+模块键盘统一走 QxShell：`useQxListSelection` / `useQxMasterDetail` + `useEscBack`。
+Esc 先关岛最近浏览，再 inner → query → leave。Actions 菜单是 `⌘/Ctrl+K`。
+内置 RSS **不**注册 `F/J/K/R/S/U/O/L` 裸键。截图录屏历史用标准列表/图库导航，
+不是“无键盘”。细节以 `UI_SPEC.md` 与 `docs/module-port-inventory.md` 为准。
 
 ---
 
@@ -354,7 +337,7 @@ updater::* (check/download_and_install/helper_replace)
 ### 7.2 优化方向
 
 **前端**:
-- [x] 搜索 debounce (100ms)
+- [x] 搜索 debounce（非空约 45ms；空 query 走首页缓存）
 - [x] 图标缓存（应用：sips + `~/.qx/icons/`，最长边 128px；RSS：`cache/rss-icons`，最长边 64px + 30 天复用）
 - [ ] 虚拟列表 (react-window / tanstack-virtual) — 剪贴板、文章列表大数量时
 - [ ] 模块懒加载 (`React.lazy` + Suspense)
@@ -438,20 +421,19 @@ npm run tauri build -- --bundles app
 
 ---
 
-## 10. 附录: 关键文件清单
+## 10. 附录: 关键文件
 
-| 文件 | 行数 | 说明 |
-|------|------|------|
-| `src/App.tsx` | 775 | 主应用壳，包含渲染逻辑、键盘处理、窗口管理 |
-| `src/modules/settings/PluginManager.tsx` | 935 | 插件库 UI，Installed/Browse 已可用，后续需要拆分 |
-| `src/modules/clipboard/ClipboardPanel.tsx` | 379 | 剪贴板面板 + 工具函数混在一起 |
-| `src/modules/macros/MacroRecorder.tsx` | 684 | 宏录制 Workbench 列表/详情与播放进度界面 |
-| `src/modules/macros/playbackBridge.ts` | 195 | 宏播放事件、WorkBench/灵动岛任务桥接 |
-| `src/modules/screencap/ScreenRecorder.tsx` | 402 | 屏幕录制，缺失键盘 |
-| `src/modules/rss/RssPanel.tsx` | 293 | RSS 订阅列表 |
-| `src/modules/rss/ArticleList.tsx` | 321 | RSS 文章列表 |
-| `src/modules/rss/store.ts` | 321 | RSS store + 辅助函数 |
-| `src-tauri/src/lib.rs` | 175 | Tauri 启动 + 45 个命令注册 |
-| `src-tauri/src/macro_playback.rs` | 689 | 可延迟、可停止的后台宏播放 worker |
-| `src-tauri/src/rss/storage.rs` | 266 | RSS SQLite CRUD |
-| `src-tauri/src/rss/fetcher.rs` | 202 | RSS 网络抓取 + 解析 |
+行数会漂移，以仓库为准。入口：
+
+| 文件 | 说明 |
+|------|------|
+| `src/App.tsx` | 主应用壳：tab、搜索编排、host Esc、最近浏览记录 |
+| `src/island/` | Docked/floating 岛、recents、recentMotion |
+| `src/modules/settings/plugins/PluginManager.tsx` | 插件库 Installed / Browse |
+| `src/modules/clipboard/ClipboardPanel.tsx` | 剪贴板 |
+| `src/modules/file-actions/` | File Actions / QxPreview |
+| `src/modules/screencap/ScreenRecorder.tsx` | 截图录屏工作流 |
+| `src/modules/rss/` | RSS 订阅/文章/阅读 |
+| `src-tauri/src/lib.rs` | Tauri 装配 + `generate_handler!`（命令表见 ipc-catalogue） |
+| `src-tauri/src/file_manager.rs` | 文件选择快照与写操作 |
+| `src-tauri/src/rss/` | RSS SQLite、抓取、图片缓存 |

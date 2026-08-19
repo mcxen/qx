@@ -126,7 +126,7 @@ my-plugin/
 | `panel` | 否 | 注册面板入口；`title` 应省略或与 `name` 相同，以便宿主使用 `names` 本地化 |
 | `storage.cacheTargets` | 否 | 可重建缓存的 persist `keys` / `keyPrefixes` 白名单；用于固定列表和逐主题动态缓存 |
 | `homeWidgets` | 否 | 将宿主支持的语义系统数据源关联到本插件 Panel；不提供视觉代码 |
-| `surfaceProviders` | 否 | 声明宿主登记的轻量 Tray/Home 数据源；当前 Home 支持 `rss.unread-latest`，可用 `presentation` 选择 `compact` / `standard` / `wide`，不加载插件入口、不提供视觉代码 |
+| `surfaceProviders` | 否 | 声明宿主登记的轻量 Tray/Home 数据源；当前 Home 支持 `rss.unread-latest` 与 `agent.usage`，可用 `presentation` 选择 `compact` / `standard` / `wide`，不加载插件入口、不提供视觉代码 |
 | `min_app_version` | 否 | 最低 Qx 版本 |
 | `pubkey`, `signature` | 否 | 可选 ed25519 签名 |
 

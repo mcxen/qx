@@ -7,9 +7,10 @@ Qx has two Tray surfaces with different jobs:
 
 The two surfaces consume the same ordered `settings.tray_actions` list. Presence
 in the list means visible; removing an entry hides it, so there is no second
-visibility switch. Built-in status entries become status rows in the left-click surface, while each
-contiguous run of ordinary actions becomes a shortcut grid in that exact list
-position. Provider controls are appended as standard host-rendered cards. The
+visibility switch. Built-in status entries become compact status rows (tabular trailing values).
+Each contiguous run of ordinary actions becomes a shortcut grid in that exact
+list position. Provider controls are appended as standard host-rendered cards
+with full-width sliders and no extra leading icon column. The
 settings page is therefore the single source of truth for visibility and order;
 there is no second left-click menu configuration.
 
@@ -63,7 +64,7 @@ Panel chrome is 40 pt header, 38 pt footer, 8 pt content padding, and 6 pt inter
 | Action | 34 | 28 pt leading icon, flexible title, 56–112 pt trailing value/shortcut |
 | Action with description | 46 | same columns; secondary text is 11 pt and no more than two lines |
 | Status | 32 | non-clickable action geometry with tabular trailing value |
-| Control card | 68 | title/value header plus control body; suited to sliders |
+| Control card | 68 | title + tabular percent, full-width slider; focused display uses a quiet accent border |
 | Shortcut tile | 64 | minimum 88 pt width; icon, title, optional two-line description |
 | Section label | 22 | quiet secondary label above a related group |
 

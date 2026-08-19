@@ -43,9 +43,17 @@ export function TraySurfaceFrame({
   );
 }
 
-export function TraySection({ title, children }: { title?: string; children: ReactNode }) {
+export function TraySection({
+  title,
+  className,
+  children,
+}: {
+  title?: string;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <section className="qx-tray-section">
+    <section className={["qx-tray-section", className].filter(Boolean).join(" ")}>
       {title && <div className="qx-tray-section-title">{title}</div>}
       {children}
     </section>
@@ -56,17 +64,25 @@ export function TrayControlCard({
   title,
   value,
   leading,
+  current,
   children,
 }: {
   title: string;
   value?: ReactNode;
   leading?: ReactNode;
+  current?: boolean;
   children: ReactNode;
 }) {
   return (
-    <article className="qx-tray-display">
-      <div className="qx-tray-display-head"><strong>{title}</strong><span>{value}</span></div>
-      <div className="qx-tray-display-control">{leading}<div className="qx-tray-control-body">{children}</div></div>
+    <article className={`qx-tray-display${current ? " is-current" : ""}`}>
+      <div className="qx-tray-display-head">
+        <strong>{title}</strong>
+        {value != null && <span>{value}</span>}
+      </div>
+      <div className="qx-tray-display-control">
+        {leading}
+        <div className="qx-tray-control-body">{children}</div>
+      </div>
     </article>
   );
 }

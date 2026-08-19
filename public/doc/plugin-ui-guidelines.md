@@ -19,7 +19,7 @@ Main Area
 Bottom Bar
 ├─ 可选 Home
 ├─ Bottom Island
-└─ 主动作 + Esc（Esc 始终最右）
+└─ 主动作 + Actions + Esc（Esc 始终最右）
 ```
 
 - 插件不得自行绘制第二套 Top Bar、筛选 tabs、Bottom Bar 或 Actions 入口。
@@ -219,11 +219,12 @@ actions[]
 
 Esc 永远不是普通动作：
 
-1. 关闭弹窗、详情、预览等内层；
-2. 清空模块查询；
-3. 离开模块；
-4. 清空启动器查询；
-5. 隐藏窗口。
+1. 宿主先关岛上最近浏览切换器（插件不实现）；
+2. 关闭弹窗、详情、预览等内层；
+3. 清空模块查询；
+4. 离开模块；
+5. 清空启动器查询；
+6. 隐藏窗口。
 
 每次只退一层。插件不要绑定 `kbd: "Esc"`，不要注册进程级 Esc，也不要绘制第二个返回键。
 
@@ -239,6 +240,9 @@ Island 用于位置、状态和可恢复的短操作，不替代主内容。
 - 插件可选择宿主公开的其他样式，例如内容列短轨道或图标环形进度；插件只传样式 ID，
   不自行绘制定位。
 - 240px 紧凑浮岛、桌面浮岛与停靠岛使用同一语义，宿主决定响应式细节。
+- 双击 docked 岛展开最近浏览、动作胶囊弹簧进出是宿主 chrome。插件只发布 slots
+  （文案、真实 progress、受限 action）；不得注入图标切换器、`framer-motion`、
+  窗口坐标或自动浮出。浮窗只由用户从 Qx 底部岛手动弹出。
 
 ### 进度
 
@@ -273,7 +277,8 @@ filters: [
 - 使用 Qx 语义 token，不硬编码业务颜色作为容器背景。
 - 支持浅色、深色和透明主题；低透明度下仍满足正文和次要文字对比。
 - 使用宿主控件，不显示原生 `<select>`、range、checkbox 或 radio 外观。
-- 动效只表达状态变化，尊重减少动态效果设置。
+- 动效只表达状态变化，尊重减少动态效果设置。插件不要引入 `framer-motion`；
+  岛与菜单动画由宿主统一处理。
 - 错误、空状态、加载和局部刷新不得替换仍可安全使用的缓存内容。
 
 ## 8. 焦点与响应
@@ -299,6 +304,7 @@ filters: [
 - [ ] 键盘、IME、焦点恢复和滚动位置正确。
 - [ ] Context About 使用 Manifest 元数据并由宿主渲染，没有重复自绘。
 - [ ] `panel.destroy` 能停止所有后台工作，不依赖 render 返回值清理。
+- [ ] 文案跟随 `context.locale`，未引入 `framer-motion` 或自绘岛切换器。
 
 安装、Manifest 与权限见 [`plugin-marketplace.md`](./plugin-marketplace.md)；开发流程见
 [`plugin-development-guide.md`](./plugin-development-guide.md)。
