@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, type MouseEvent as ReactMouseEvent } from "react";
 import {
   getSnapshot,
   subscribe,
@@ -14,6 +14,24 @@ import { islandHost } from "../session/hostApi";
 import { useIslandRotation } from "../session/useIslandRotation";
 import { islandRouteForTarget } from "../session/openTarget";
 import { useIslandProgress } from "./useIslandProgress";
+import { useStore } from "../../store";
+import IslandRecentSwitcher from "../recents/IslandRecentSwitcher";
+import {
+  isRecentSwitcherOpen,
+  loadRecentViews,
+  recentsForSwitcher,
+  setRecentSwitcherOpen,
+  subscribeRecentSwitcher,
+  subscribeRecentViews,
+  tryCloseRecentSwitcher,
+} from "../recents/recentViews";
+
+const RECENT_IGNORE_SELECTOR = [
+  ".qx-island-shell-actions",
+  ".qx-island-dock-controls",
+  ".qx-island-host-control",
+  ".qx-island-recents",
+].join(",");
 
 /**
  * Renders the docked store winner inside QxIslandSurface.
@@ -34,11 +52,63 @@ export default function QxIslandDockHost() {
     ? sessions.find((session) => session.id === winnerId) ?? null
     : null;
   const progressState = useIslandProgress(winner?.content);
+  const currentRoute = useStore((state) => String(state.tab));
+  const recentViews = useSyncExternalStore(subscribeRecentViews, loadRecentViews, () => []);
+  const recentsOpen = useSyncExternalStore(subscribeRecentSwitcher, isRecentSwitcherOpen, () => false);
+  const recents = recentsForSwitcher(recentViews, currentRoute);
+  const openRoute = winner ? islandRouteForTarget(winner.openTarget) : null;
+  const hasOriginIcon = Boolean(openRoute);
+
+  useEffect(() => {
+    if (!recentsOpen) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".qx-island-surface")) return;
+      tryCloseRecentSwitcher();
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => window.removeEventListener("pointerdown", onPointerDown, true);
+  }, [recentsOpen]);
+
+  const handleDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(RECENT_IGNORE_SELECTOR)) return;
+    event.preventDefault();
+    if (recents.length === 0) {
+      setRecentSwitcherOpen(false);
+      return;
+    }
+    setRecentSwitcherOpen(!recentsOpen);
+  };
+
+  const openRecent = (route: string) => {
+    setRecentSwitcherOpen(false);
+    window.dispatchEvent(new CustomEvent("qx:navigate", { detail: route }));
+  };
+
+  const recentsNode = recents.length > 0
+    ? (
+      <IslandRecentSwitcher
+        open={recentsOpen}
+        items={recents}
+        hasOriginIcon={hasOriginIcon}
+        onOpen={openRecent}
+      />
+    )
+    : null;
+  const recentsClass = recentsOpen ? "is-recents-open" : "";
 
   if (!winner) {
     return (
-      <QxIslandSurface placement="docked" empty variant="shell">
+      <QxIslandSurface
+        placement="docked"
+        empty
+        variant="shell"
+        className={recentsClass}
+        onDoubleClick={handleDoubleClick}
+      >
         <ShellContent content={null} />
+        {recentsNode}
       </QxIslandSurface>
     );
   }
@@ -61,8 +131,11 @@ export default function QxIslandDockHost() {
           variant={variant}
           tone={winner.content.tone}
           aria-label={winner.content.primary}
+          className={recentsClass}
+          onDoubleClick={handleDoubleClick}
         >
           <Comp {...(winner.content.componentProps ?? {})} />
+          {recentsNode}
         </QxIslandSurface>
       );
     }
@@ -73,7 +146,6 @@ export default function QxIslandDockHost() {
     floatEnabled &&
     winner.placement !== "docked" &&
     winner.priority !== "home";
-  const openRoute = islandRouteForTarget(winner.openTarget);
 
   return (
     <QxIslandSurface
@@ -83,7 +155,8 @@ export default function QxIslandDockHost() {
       progress={progressState.progress}
       progressStyle={winner.content.meter?.presentation}
       aria-label={winner.content.primary}
-      className={canFloat ? "qx-island-dock-popout" : undefined}
+      className={[canFloat ? "qx-island-dock-popout" : "", recentsClass].filter(Boolean).join(" ") || undefined}
+      onDoubleClick={handleDoubleClick}
     >
       <div className="qx-island-dock-content">
         <ShellContent
@@ -97,6 +170,7 @@ export default function QxIslandDockHost() {
             : undefined}
         />
       </div>
+      {recentsNode}
       {canFloat && (
         <span className="qx-island-dock-controls">
           <Button

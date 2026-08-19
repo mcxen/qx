@@ -136,6 +136,10 @@ macOS adapter | Windows adapter | portable fallback
 - `src/utils/keyboard.ts` owns shortcut parsing, editable-target detection, and
   native editing shortcut protection.
 - `src/hooks/useEscBack.ts` owns the cascading Esc protocol.
+- `src/island/` owns docked/floating Island chrome. Recents and trailing action
+  enter/exit use `src/island/recents/recentMotion.ts` (existing `framer-motion`).
+  Do not add a second Island spring or let plugins import Motion. `QxBottomIsland`
+  is a deprecated type adapter only; render through `QxIslandDockSlot`.
 - `src-tauri/src/lib.rs` is the Tauri composition root. Keep command registration,
   app lifecycle, startup policy, and plugin wiring there; move feature work into
   focused modules.
@@ -231,16 +235,17 @@ Full rules live in `UI_SPEC.md` (Bottom Bar + Interaction). Summary for agents:
   the **parent view**, not always the launcher.
 - Each Esc press steps **one** layer. Full staircase until the panel hides:
 
-1. `inner`: close detail, preview, stop recording, etc.
-2. `query`: clear module-local search text.
-3. `launcher`: leave module / return to parent view.
-4. Host: clear launcher query (if any).
-5. Host: `floating_hide_restore_focus`.
+1. Host chrome: close the docked Island recents switcher (`tryCloseRecentSwitcher`) if open.
+2. `inner`: close detail, preview, stop recording, etc.
+3. `query`: clear module-local search text.
+4. `launcher`: leave module / return to parent view.
+5. Host: clear launcher query (if any).
+6. Host: `floating_hide_restore_focus`.
 
 - Module keyboard: `useEscBack` → `onKeyDown` + `stepBack` for `escapeAction.onClick`.
 - Host safety net: `App.performHostEscape` on window `keydown` for **every** tab
-  when the event is not already `defaultPrevented`. Non-launcher tabs first call
-  `tryModuleEscapeStep()` (registered by `useQxModuleShell`) so nested views
+  when the event is not already `defaultPrevented`. First close Island recents,
+  then `tryModuleEscapeStep()` (registered by `useQxModuleShell`) so nested views
   (RSS articles → feeds) step before leaving the module. Do not jump straight to
   `setTab("launcher")` while a module handler is registered.
 - Prefer `useQxModuleShell` so button Esc and keyboard share `stepBack`.

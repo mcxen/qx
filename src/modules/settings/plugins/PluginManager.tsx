@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
+import { useMarketplaceCatalog } from "../../../plugin/marketplaceCatalog";
 import { usePluginRegistry } from "../../../plugin/registry";
 import { resolvePluginAssetUrl } from "../../../plugin/runtime";
 import {
@@ -99,7 +100,12 @@ import {
   type TranslateFn,
 } from "../../../plugin/pluginLabels";
 import InstalledModuleCard from "./InstalledModuleCard";
-import { BUILTIN_PLUGIN_ICONS, isPluginUpdateAvailable } from "./helpers";
+import {
+  BUILTIN_PLUGIN_ICONS,
+  isPluginUpdateAvailable,
+  selectInstalledPluginUpdate,
+  type InstalledPluginUpdate,
+} from "./helpers";
 import BetaBadge from "../../../components/BetaBadge";
 import PluginBackgroundBadge from "../../../components/PluginBackgroundBadge";
 import { showPluginInstallStatus } from "../../../island";
@@ -747,6 +753,54 @@ function ExtensionShortcutsCard({
 /*  Plugin detail panel                                                */
 /* ------------------------------------------------------------------ */
 
+async function upgradeInstalledPlugin(
+  offer: InstalledPluginUpdate,
+  t: Translate,
+  locale: Locale,
+) {
+  if (offer.kind !== "ready") return;
+  const entry = offer.entry;
+  const name = localizeMarketplaceEntryName(entry, t, locale);
+  try {
+    await useMarketplaceCatalog.getState().installUpdate(entry, {
+      onQueued: () => {
+        showPluginInstallStatus({
+          kind: "activity",
+          label: t("plugins.marketplace.queued", "Queued"),
+          detail: name,
+        });
+      },
+      onStart: () => {
+        showPluginInstallStatus({
+          kind: "activity",
+          label: t("plugins.marketplace.updating", "Updating..."),
+          detail: name,
+        });
+      },
+    });
+    const message = t("plugins.upgradedNamed", "{name} updated to v{version}.")
+      .replace("{name}", name)
+      .replace("{version}", entry.version);
+    const current = useMarketplaceCatalog.getState();
+    if (current.installingId && current.installingId !== entry.id) {
+      window.dispatchEvent(new CustomEvent("qx:toast", { detail: message }));
+      return;
+    }
+    showPluginInstallStatus({ kind: "success", label: message });
+  } catch (err) {
+    const message = t("plugins.installFailed", "Install failed: {message}").replace(
+      "{message}",
+      String(err),
+    );
+    const current = useMarketplaceCatalog.getState();
+    if (current.installingId && current.installingId !== entry.id) {
+      window.dispatchEvent(new CustomEvent("qx:toast", { detail: message }));
+      return;
+    }
+    showPluginInstallStatus({ kind: "error", label: message });
+  }
+}
+
 function PluginDetail({
   plugin,
   onToggle,
@@ -772,6 +826,16 @@ function PluginDetail({
   const aliasMetadata = metadataForKey(settings, aliasMetadataKey);
   const displayName = localizePluginName(plugin, t, locale);
   const displayDescription = localizePluginDescription(plugin, t, locale);
+  const catalogEntries = useMarketplaceCatalog((state) => state.entries);
+  const catalogHostVersion = useMarketplaceCatalog((state) => state.hostVersion);
+  const installingId = useMarketplaceCatalog((state) => state.installingId);
+  const queuedIds = useMarketplaceCatalog((state) => state.queuedIds);
+  const updateOffer = useMemo(
+    () => selectInstalledPluginUpdate(plugin, catalogEntries, catalogHostVersion),
+    [catalogEntries, catalogHostVersion, plugin],
+  );
+  const updating = installingId === plugin.id;
+  const queued = queuedIds.includes(plugin.id);
 
   /* ---- preference values ---- */
   const [prefValues, setPrefValues] = useState<Record<string, string | number | boolean>>({});
@@ -918,6 +982,28 @@ function PluginDetail({
           )}
         </div>
         <div className="qx-plugin-detail-header-actions">
+          {updateOffer?.kind === "ready" && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={updating || queued}
+              onClick={() => void upgradeInstalledPlugin(updateOffer, t, locale)}
+            >
+              {updating ? (
+                <LoadingLabel>{t("plugins.marketplace.updating", "Updating")}</LoadingLabel>
+              ) : queued ? (
+                <LoadingLabel>{t("plugins.marketplace.queued", "Queued")}</LoadingLabel>
+              ) : (
+                <>
+                  <ArrowUpCircle size={14} aria-hidden="true" />
+                  {t("plugins.marketplace.update", "Update to v{version}").replace(
+                    "{version}",
+                    updateOffer.entry.version,
+                  )}
+                </>
+              )}
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={launchPlugin}
@@ -969,6 +1055,21 @@ function PluginDetail({
               .replace("{version}", plugin.manifest?.min_app_version || "—")}
           </PluginBadge>
         )}
+        {updateOffer?.kind === "ready" && (
+          <PluginBadge tone="accent">
+            {updating
+              ? t("plugins.marketplace.updating", "Updating")
+              : queued
+                ? t("plugins.marketplace.queued", "Queued")
+                : t("plugins.marketplace.updateAvailable", "Update available")}
+          </PluginBadge>
+        )}
+        {updateOffer?.kind === "needs-qx" && (
+          <PluginBadge tone="warning">
+            {t("plugins.marketplace.requiresQx", "Requires Qx {version}")
+              .replace("{version}", updateOffer.entry.min_app_version || "—")}
+          </PluginBadge>
+        )}
       </div>
 
       {displayDescription ? (
@@ -996,6 +1097,34 @@ function PluginDetail({
               "plugins.installed.requiresQxMessage",
               "This plugin is installed but cannot run until Qx is updated to {required} or newer.",
             ).replace("{required}", plugin.manifest?.min_app_version || "—")}
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setActiveTab("about")}>
+            <ArrowUpCircle size={13} aria-hidden="true" />
+            {t("plugins.marketplace.updateQx", "Update Qx")}
+          </Button>
+        </div>
+      )}
+
+      {updateOffer?.kind === "ready" && (
+        <div className="qx-plugin-update-hint">
+          {t(
+            "plugins.marketplace.updateHint",
+            "Installed v{local} → marketplace v{market}. Preferences and plugin data are kept.",
+          )
+            .replace("{local}", plugin.version || "—")
+            .replace("{market}", updateOffer.entry.version)}
+        </div>
+      )}
+
+      {updateOffer?.kind === "needs-qx" && (
+        <div className="qx-plugin-compat-warning">
+          <div>
+            {t(
+              "plugins.installed.updateNeedsQx",
+              "v{version} is available but requires Qx {required} or newer.",
+            )
+              .replace("{version}", updateOffer.entry.version)
+              .replace("{required}", updateOffer.entry.min_app_version || "—")}
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => setActiveTab("about")}>
             <ArrowUpCircle size={13} aria-hidden="true" />
@@ -1956,6 +2085,12 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
   const locale = useLocale();
   const { plugins, install, uninstall, setEnabled, refresh, loaded, loading } =
     usePluginRegistry();
+  const catalogEntries = useMarketplaceCatalog((state) => state.entries);
+  const catalogHostVersion = useMarketplaceCatalog((state) => state.hostVersion);
+  const catalogLoading = useMarketplaceCatalog((state) => state.loading);
+  const installingId = useMarketplaceCatalog((state) => state.installingId);
+  const queuedIds = useMarketplaceCatalog((state) => state.queuedIds);
+  const ensureCatalog = useMarketplaceCatalog((state) => state.ensureIndex);
   const searchMetadata = useSettingsStore((state) => state.settings.search_metadata);
   const builtinModules = useSettingsStore((state) => state.settings.builtin_modules);
   const patchSettings = useSettingsStore((state) => state.patch);
@@ -1992,6 +2127,16 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
       /* ignore */
     }
   }, [plugins]);
+
+  const registriesSignature = useSettingsStore((state) =>
+    (state.settings.plugin_registries ?? [])
+      .map((registry) => `${registry.id}\0${registry.enabled ? 1 : 0}\0${registry.index_url}`)
+      .join("\n"),
+  );
+
+  useEffect(() => {
+    void ensureCatalog();
+  }, [ensureCatalog, registriesSignature]);
 
   /* ---- actions ---- */
 
@@ -2101,10 +2246,14 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
 
   const handleRefresh = async () => {
     try {
-      await refresh();
+      await Promise.all([refresh(), ensureCatalog({ forceRefresh: true })]);
     } catch (err) {
       console.error("Rescan failed", err);
     }
+  };
+
+  const handleUpgrade = async (offer: InstalledPluginUpdate) => {
+    await upgradeInstalledPlugin(offer, t, locale);
   };
 
   /* ---- derived ---- */
@@ -2133,6 +2282,14 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
         .localeCompare(localizePluginName(b, t, locale), locale === "zh-CN" ? "zh-CN" : "en"));
   }, [displayPlugins, installedFilter, locale, searchMetadata, searchQuery, t]);
   const configPlugin = displayPlugins.find((p) => p.id === configId) ?? null;
+  const updateOffers = useMemo(() => {
+    const map = new Map<string, InstalledPluginUpdate>();
+    for (const plugin of displayPlugins) {
+      const offer = selectInstalledPluginUpdate(plugin, catalogEntries, catalogHostVersion);
+      if (offer) map.set(plugin.id, offer);
+    }
+    return map;
+  }, [catalogEntries, catalogHostVersion, displayPlugins]);
 
   /* ---- render ---- */
 
@@ -2173,10 +2330,10 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
                 variant="outline"
                 size="sm"
                 onClick={handleRefresh}
-                disabled={loading || !loaded}
+                disabled={loading || catalogLoading || !loaded}
                 title={t("plugins.rescan.desc", "Rescan plugins")}
               >
-                {loading ? (
+                {loading || catalogLoading ? (
                   <LoadingLabel>{t("plugins.marketplace.rescanning", "Rescanning")}</LoadingLabel>
                 ) : (
                   <>
@@ -2301,15 +2458,65 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
                   {showHeadings && (
                     <div className="qx-ext-card-section">{section.label}</div>
                   )}
-                  {section.items.map((plugin) => (
+                  {section.items.map((plugin) => {
+                    const updateOffer = updateOffers.get(plugin.id);
+                    const updating = installingId === plugin.id;
+                    const queued = queuedIds.includes(plugin.id);
+                    const badges = updateOffer
+                      ? [{
+                          id: "update",
+                          label: updating
+                            ? t("plugins.marketplace.updating", "Updating")
+                            : queued
+                              ? t("plugins.marketplace.queued", "Queued")
+                              : updateOffer.kind === "ready"
+                                ? t("plugins.marketplace.updateAvailable", "Update available")
+                                : t("plugins.marketplace.requiresQx", "Requires Qx {version}")
+                                  .replace("{version}", updateOffer.entry.min_app_version || "—"),
+                          tone: updateOffer.kind === "ready" ? "accent" as const : "warning" as const,
+                        }]
+                      : [];
+                    return (
                     <div key={plugin.id} role="listitem">
                       <InstalledModuleCard
                         plugin={plugin}
                         onOpen={() => setConfigId(plugin.id)}
                         onToggle={() => void handleToggle(plugin)}
+                        badges={badges}
+                        actions={updateOffer?.kind === "ready" ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="qx-ext-card-update"
+                            disabled={updating || queued}
+                            onClick={() => void handleUpgrade(updateOffer)}
+                            title={queued
+                              ? t("plugins.marketplace.queuedHint", "Waiting for the current update to finish.")
+                              : t("plugins.marketplace.update", "Update to v{version}").replace(
+                                  "{version}",
+                                  updateOffer.entry.version,
+                                )}
+                          >
+                            {updating ? (
+                              <LoadingLabel>{t("plugins.marketplace.updating", "Updating")}</LoadingLabel>
+                            ) : queued ? (
+                              <LoadingLabel>{t("plugins.marketplace.queued", "Queued")}</LoadingLabel>
+                            ) : (
+                              <>
+                                <ArrowUpCircle size={13} aria-hidden="true" />
+                                {t("plugins.marketplace.update", "Update to v{version}").replace(
+                                  "{version}",
+                                  updateOffer.entry.version,
+                                )}
+                              </>
+                            )}
+                          </Button>
+                        ) : undefined}
                       />
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ));
             })()}

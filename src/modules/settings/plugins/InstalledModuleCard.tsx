@@ -40,6 +40,8 @@ export type ExtensionCardProps = {
   toggleDisabled?: boolean;
   /** Extra chips after built-in status chips. */
   badges?: ExtensionCardBadge[];
+  /** Compact actions before the enable toggle (e.g. Update). */
+  actions?: ReactNode;
   /** Right-side slot (version, chevron, actions…). */
   trailing?: ReactNode;
   /** Optional footer under subtitle (progress, errors…). */
@@ -86,6 +88,7 @@ export default function InstalledModuleCard({
   onToggle,
   toggleDisabled = false,
   badges = [],
+  actions,
   trailing,
   footer,
   className = "",
@@ -198,6 +201,7 @@ export default function InstalledModuleCard({
       </button>
 
       <span className="qx-ext-card-trailing">
+        {actions}
         {onToggle && (
           <Toggle
             value={plugin.enabled}

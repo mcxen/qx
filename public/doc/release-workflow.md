@@ -310,10 +310,12 @@ the UI also polls `qx_update_progress_snapshot` as a progress fallback.
 
 When the same automatic-update setting is enabled, installed community plugins
 use the separate marketplace lane described in
-[`plugin-marketplace.md`](./plugin-marketplace.md#52-已安装插件自动升级). That lane selects only
+[`plugin-marketplace.md`](./plugin-marketplace.md#52-已安装插件更新检查与升级). That lane selects only
 packages compatible with the running Qx build and platform, verifies the
 marketplace metadata and package manifest, and isolates per-plugin failures; it
 does not alter the Qx binary release asset or require a manual plugin update.
+The installed list can still check the marketplace catalog and offer a manual
+upgrade when automatic installation is off.
 
 ## Dirty Files After Push
 

@@ -13,9 +13,9 @@
 - Enter 执行当前有效操作，Esc 经 `useQxModuleShell` 逐层返回。运行中以 Bottom Island 的真实 indeterminate 状态反馈，不造成布局跳动；错误保留在操作区，选择列表仍可使用。
 - 所有参数输入使用 Qx shadcn 控件和主题变量。写操作不得静默覆盖已有目标；完成后左栏切换为宿主返回的输出项快照。
 
-> 状态：Current · 适用版本：v0.5.13 · Owner：Frontend · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.6.96 · Owner：Frontend · 最后复核：2026-08-19
 >
-> 事实来源：`src/components/QxShell.tsx`、`src/hooks/useEscBack.ts`、`src/styles/shell.css`、`src/styles/settings-actions.css`、`src/home-island/`、`src/modules/settings/plugins/`、`src/i18n.ts`
+> 事实来源：`src/components/QxShell.tsx`、`src/hooks/useEscBack.ts`、`src/styles/shell.css`、`src/island/`、`src/home-island/`、`src/modules/settings/plugins/`、`src/i18n.ts`
 >
 > 本文件是 UI 布局与交互的单一事实来源。实现与本文冲突时，以代码为据并回写本文件。
 
@@ -174,7 +174,7 @@ QxShell 的纵向结构高度不得因为窗口左右缩窄、文字变长、筛
 | 可见 Esc | `escapeAction` | 最右侧返回入口；`variant="escape"` 显示 **文案 + Esc**（Back/Hide）；非主搜索左侧有小房子回主界面 |
 | 键盘 Esc 级联 | `useEscBack` → `onKeyDown` / `stepBack` | 每按一次退一层：inner → query → leave module；命中后 `preventDefault` + `stopPropagation` |
 | Shell 最终兜底 | `QxShell` 内置 | 若模块 `onKeyDown` 未消费 Esc，则触发 `escapeAction.onClick`（应与 `stepBack` 同语义） |
-| Host 阶梯兜底 | `App.performHostEscape` + `moduleEscapeHost` | 焦点不在 Shell 内时仍生效：先 `tryModuleEscapeStep`（`useQxModuleShell` 注册的 `stepBack`，含 RSS 文章列表→源列表），再 leave module → 清空 launcher query → hide。模块已 `preventDefault` 时不二次步进。**禁止**非 launcher 时直接 `setTab("launcher")` 跳过模块内阶梯 |
+| Host 阶梯兜底 | `App.performHostEscape` + `moduleEscapeHost` | 焦点不在 Shell 内时仍生效：先关闭灵动岛最近浏览切换器，再 `tryModuleEscapeStep`（`useQxModuleShell` 注册的 `stepBack`，含 RSS 文章列表→源列表），再 leave module → 清空 launcher query → hide。模块已 `preventDefault` 时不二次步进。**禁止**非 launcher 时直接 `setTab("launcher")` 跳过模块内阶梯 |
 | 搜索 / 内容筛选 / trailing | `search` / `topbarFilters` / `trailing` | 搜索在 Top Bar 主列；内容筛选只发布数据给宿主固定 Select；`trailing` 仅保留不可归入筛选或 Actions 的短状态 |
 | 状态 | `island` / `customIsland` | 轻量任务与位置信息，见 Bottom Island |
 | 动作 | `actions` + `primaryActionId` | 单一动作集合；稳定 ID 指定 Bottom Bar 与 Enter 的主动作，Shell 自行生成 Actions 入口 |
@@ -603,12 +603,18 @@ Context Panel：
   点击直接回到该内置模块或插件 Panel。内置 `QxShell` 默认从稳定 `islandKey` 命名空间
   绑定模块目标；插件目标和已解析的插件图标资产只由可信 bridge 绑定，缺图时使用宿主
   通用插件图标。业务内容不得自绘图标按钮或伪造跳转。
+- 双击底部灵动岛（动作按钮、悬浮控件除外）展开 **最近浏览切换器**：从左侧模块图标向右
+  依次弹出最多 5 个最近打开过的界面图标（去重、排除当前界面）。弹出/收回由岛内窄端口
+  `island/recents/recentMotion.ts` 驱动已有 `framer-motion` 弹簧（可中途打断、原路收回），
+  透明度单独短淡入。点击图标经 `qx:navigate` 进入对应 Launcher / 内置模块 / 插件 Panel。
+  高度仍为 34px，不得撑高底栏；Esc、岛外点击或再次双击关闭。无最近项时双击不展开。
+  `prefers-reduced-motion` 关闭弹簧。桌面浮窗 v1 不提供该切换器。插件不得注入 Motion。
 - 暂停的 `countdown` 必须保持静止：冻结剩余时间与底边进度，并由 `ShellContent`
   抑制 `wave / dots / spinner / pulse`，即使旧 producer 仍误传 activity 也不得播放。
 - Island action 使用统一 22px 胶囊按钮：受限 `pause/play/stop/open` 图标、可见 hover/active/focus 状态，永远位于 trailing 最右；宿主模块最多可并列两个紧凑动作，插件仍只允许一个；动作可由宿主显示平台化快捷键提示（例如 Space），插件不得注入自定义按钮 DOM/CSS。
 - Island business action 只能由 `IslandActionButton` 渲染；执行期间按钮进入 busy/disabled
-  状态，防止重复提交。浮窗的缩小/展开与打开 Qx 是独立的宿主窗口控件，不占用
-  producer action 配额。
+  状态，防止重复提交。进出与最近任务共用 `recentMotion` 弹簧（可打断、缩小浮窗时收回）。
+  浮窗的缩小/展开与打开 Qx 是独立的宿主窗口控件，不占用 producer action 配额。
 - 为空时 `visibility: hidden` 保持布局稳定。
 - Appearance → Desktop Floating Island 是 Qx 级总开关，不归番茄钟或任一插件所有。
   总开关只决定底部灵动岛是否显示宿主“悬浮到桌面”按钮；浮窗**不得**因 session 更新、
@@ -852,6 +858,8 @@ RSS：
 - 刷新灵动岛不得使用计时器或固定百分比模拟网络进度。单个 Feed 请求中显示 activity；刷新全部时按 `已完成订阅数 / 全部订阅数` 计算确定进度，并显示当前 Feed 与失败数。解析、图标解析和数据库提交完成后，该 Feed 才计入 completed。
 - Feed 图标必须优先读取 Qx 持久化的小尺寸本地缓存；远程 icon/favicon 只用于首次填充或低频过期刷新，打开阅读器不得为每个订阅重复下载图标。缓存图标保持适合列表显示的尺寸并保留字母占位降级。
 - 正文与封面图片按平台加载：macOS 交给 WebView 直接加载原始 HTTP(S) 地址，不得先替换成透明占位等待 Rust 回填；Windows 使用 Rust 磁盘缓存并对相邻文章做有界预热和解码。任一平台加载失败都不得永久保留一块不可见图片占位。
+- Settings → RSS Reader → Reader View 提供图片显示模式：全宽、固定大小、小图。小图模式把正文
+  与封面收成 72px 缩略图，点击后用共享 `QxMediaViewer` 查看大图，并可在当前文章已显示图片间切换。
 - Article List / Detail 使用 `useQxListSelection` + `useQxMasterDetail` 标准端口；左侧文章列表不得另造键盘导航或选中状态。
 - 三栏宽度可以拖拽调整，宽度写入本地状态或设置。
 - 每栏必须有最小宽度，拖拽时不得产生横向页面滚动。
@@ -957,6 +965,17 @@ Settings：
 Plugin Store 工具栏保持单行：市场搜索为主列，仓库筛选与“仓库源”弹窗入口紧邻搜索框右侧，
 刷新位于尾部；不得把仓库源单独换成第二行。窄宽度优先压缩筛选宽度并把仓库源入口
 图标化，Top/toolbar 高度不变。
+
+已安装列表必须自己消费市场目录，不得要求用户先打开 Plugin Store。宿主在插件
+空闲加载后后台拉取已启用插件库索引（走 `fetch_plugin_index` 的 15 分钟缓存），
+并在 Settings → Extensions → Installed 打开时补一次。发现当前 OS 与 Qx 都兼容
+的更高版本时，已安装行显示 `accent`「有可用更新」芯片，并在行尾提供紧凑
+「升级到 vX」按钮；详情 Dialog 同步提供同一升级入口。仅因 `min_app_version`
+不满足而不可装的更高版本使用 `warning`「需要 Qx x」，并指向 About，不得提供
+安装按钮。多个已安装更新串行排队：当前下载/安装不中断，再点其它插件只入队，
+完成后自动开始下一项；单项失败不取消队列。Rescan 同时重扫本地插件目录并强制
+刷新市场目录。后台自动安装仍只由 `general.auto_update` 触发，与这份
+「检查 + 列表升级」分离。
 
 Plugin Store 详情必须展示插件库提供的版本说明与历史版本（最新在前）。当
 `min_app_version` 高于当前 Qx 时，列表显示紧凑的“需要 Qx x”警告徽章，详情说明

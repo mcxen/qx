@@ -1,6 +1,6 @@
 # 架构与接口原则（SOLID）
 
-> 状态：Current · 适用版本：v0.5.18+ · Owner：Core · 最后复核：2026-07-15
+> 状态：Current · 适用版本：v0.6.95+ · Owner：Core · 最后复核：2026-08-19
 
 本文约定 Qx 在**抽象边界、接口形状、模块依赖**上的长期标准。  
 实现功能时优先满足这些原则；文档与代码同级演进——改边界时同步改文档，禁止文档落后成「历史实现说明」。
@@ -55,6 +55,8 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
   不得混称为同一注册机制。
 - Home 灵动岛模式：`home-island/registry` + content-only modes。
 - Island session：producer 推 session / 注册 action；surface 只订阅。
+- Island 最近浏览与动作胶囊进出：只经 `src/island/recents/recentMotion.ts`。
+  不要在 Shell CSS 再写一套弹簧，也不要把 `framer-motion` 扩散到模块或插件。
 - Raycast 转换器处于 Frozen 状态，仅保留历史入口；正式插件从上游源代码出发，直接依赖 Qx host ports，不继续扩展 converter shim。
 - 设置页：tab 导航 + 独立 `*Settings.tsx`，不要把所有表单塞进一个文件。
 
@@ -87,6 +89,8 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
 
 - 插件：权限按能力拆分（`http`、`invoke:…`），不给「超级 context」。
 - Frontend host API：shell / island / plugin 各自最小 surface，避免一个 `GodHost` 包办一切。
+- Island 动效：`recentMotion` 只服务 recents 与 `IslandActionButton`；循环指示（转圈、
+  萤火虫进度、跑马灯）和 Radix Presence 菜单仍走 CSS，不做成全局 Motion 封装。
 - Rust：public command 参数只含该命令所需字段；内部 helper 不要泄漏到 `invoke` 签名。
 - Converter shim：按包隔离（`@raycast/api`、`fs-extra`、`node-fetch`），禁止巨型万能 polyfill 绑死所有扩展。
 

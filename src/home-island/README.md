@@ -2,7 +2,7 @@
 
 Idle launcher bottom HUD modes. Modes are **registered**, not hard-wired into Launcher or Settings.
 
-Docked chrome and session priority live in **`src/island/`** (see `docs/qx-island-architecture.md`). Home modes are **content-only** — no absolute positioning or outer width/height.
+Docked chrome and session priority live in **`src/island/`** (see `docs/qx-island-architecture.md` Current facts). Home modes are **content-only** — no absolute positioning or outer width/height. Recents switcher and action-capsule motion are host chrome in `src/island/recents/`, not Home modes.
 
 ## Layout
 

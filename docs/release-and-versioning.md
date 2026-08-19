@@ -48,7 +48,10 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
 - 同一个 `general.auto_update` 开关默认开启时，前端还会独立调用
   `marketplace_update_compatible_plugins`，按当前 Qx / 平台为每个已安装社区插件选择最高兼容版本；
   该链路逐个校验并安装，单个插件失败不会阻塞 Qx 本体更新，详情见
-  [`plugin-marketplace.md`](../public/doc/plugin-marketplace.md#52-已安装插件自动升级)。
+  [`plugin-marketplace.md`](../public/doc/plugin-marketplace.md#52-已安装插件更新检查与升级)。
+- 与自动安装分开：插件空闲加载后会后台调用 `fetch_plugin_index` 只检查目录。Settings →
+  Extensions → Installed 用同一份目录在列表里标出可升级项并允许就地更新；关闭自动更新
+  不会关掉这次检查或手动升级。
 - Release 使用 `latest.json`，后端按当前 target 选择 macOS app zip 或 Windows x64 NSIS。
 - 只有对应资产 SHA256 存在，且 Qx 从正式安装位置运行时才允许自动安装。
 - **两阶段更新**（下载 ≠ 安装）：

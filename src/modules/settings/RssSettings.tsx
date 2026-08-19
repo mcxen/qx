@@ -160,14 +160,15 @@ export default function RssSettings() {
         </Row>
         <Row
           title={t("rss.imageDisplayMode", "Image Display Mode")}
-          description={t("rss.imageDisplayMode.desc", "Control how images appear in article detail view. Fixed size constrains width; Full-width fills the content column.")}
+          description={t("rss.imageDisplayMode.desc", "Control how images appear in article detail. Full-width fills the column; fixed size constrains width; thumbnails keep compact previews that open the large viewer on click.")}
         >
           <SegmentedControl
             value={r.image_display_mode}
-            onChange={(v) => patchR({ image_display_mode: v as "fixed" | "full" })}
+            onChange={(v) => patchR({ image_display_mode: v as "fixed" | "full" | "thumb" })}
             options={[
               { value: "full", label: t("rss.imageDisplayMode.full", "Full Width") },
               { value: "fixed", label: t("rss.imageDisplayMode.fixed", "Fixed Size") },
+              { value: "thumb", label: t("rss.imageDisplayMode.thumb", "Thumbnails") },
             ]}
           />
         </Row>

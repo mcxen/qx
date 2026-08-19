@@ -414,6 +414,18 @@ img.qx-ext-card-icon {
   color: var(--qx-text-tertiary);
 }
 
+.qx-ext-card-update.qx-shadcn-button {
+  height: var(--qx-control-height-compact);
+  padding-inline: 8px;
+  font-size: 11px;
+}
+
+.qx-plugin-update-hint {
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .qx-ext-card-open-button.qx-shadcn-button {
   width: var(--qx-control-height-compact);
   height: var(--qx-control-height-compact);

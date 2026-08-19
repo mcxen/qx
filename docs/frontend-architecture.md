@@ -1,6 +1,6 @@
 # 前端子系统总览
 
-> 状态：Current · 适用版本：v0.5.17 · Owner：Frontend · 最后复核：2026-07-15
+> 状态：Current · 适用版本：v0.6.95 · Owner：Frontend · 最后复核：2026-08-19
 
 Qx 前端是 React 19 + Zustand + Tauri v2 API + shadcn 组件。入口 `src/main.tsx` → `App.tsx`（或 `surface=island` / `view=recording-controls`）。本文件描述各子系统的边界与关键文件；组件视觉规范另见 [UI_SPEC.md](../UI_SPEC.md)、[docs/settings-panel.md](./settings-panel.md)。灵动岛统一层见 [qx-island-architecture.md](./qx-island-architecture.md)。
 
@@ -16,8 +16,9 @@ src/
 ├─ store.ts               # 全局 Zustand store：query、results、selectedIndex、loadingPhase、appsReady
 ├─ i18n.ts                # useT / useLocale / system 语言解析
 ├─ island/                # QxIsland 统一层（Surface / session / host / float）
-│  ├─ surface/            # QxIslandSurface、ShellContent、DockSlot/Host
+│  ├─ surface/            # QxIslandSurface、ShellContent、DockSlot/Host、IslandActionButton
 │  ├─ session/            # store、priority、actionRegistry、hostApi
+│  ├─ recents/            # 最近浏览记录 + recentMotion 弹簧（recents / 动作胶囊）
 │  ├─ home/               # home component 注册 + Launcher contribution
 │  ├─ bridge/             # plugin island bridge
 │  └─ float/              # IslandFloatApp（slots-only）
@@ -201,17 +202,21 @@ Workbench 集合同时使用宿主统一的 stale-while-revalidate 缓存和 key
 
 ### 任务态 shell island
 
-`Launcher.tsx` 按优先级合成 `BottomIslandContent`（QxShell `island` prop）：
+Docked 岛由 `QxIslandDockSlot` → `QxIslandDockHost` 订阅 `islandHost` session，
+不再由 Launcher 拼 `customIsland`，也不再走 `QxBottomIsland` 作为主渲染器
+（该文件只保留遗留 `BottomIslandContent` 适配）。
 
-1. `loading-apps` → Loading apps + bounce
-2. 搜索中 / settling → Searching + query + bounce
-3. `pluginIsland` → 插件 status
-4. 有结果 → Search ready + count
-5. **空闲** → `resolveHomeIsland(...).shellContent`（仅 `kind: "shell"` 模式，如 default）
+优先级由 `resolveDockedWinner` 决定：`task > error > toast > location > home`。
+前台非粘性 location 高于后台粘性轮播。不确定进度只用 `wave | dots | spinner | pulse`
+（没有 `bounce`）。确定进度走 `progressStyle`（默认 `surface-fill`）。
 
-空闲且模式为 `custom` 时，用 `customIsland={resolveHomeIsland(...).customNode}`。
+Launcher 空闲经 `useHomeIslandContribution` 单写 `priority: "home"` session
+（slots 或 `componentId`）。搜索进度由 launcher 自己的 session 发布，`compact-line`。
 
-`QxBottomIsland`：`activity` 控制 pulse / curve；`progress` 是独立 2px 条。
+宿主 chrome：双击 docked 岛展开最近 5 个浏览图标；trailing `IslandActionButton`
+进出与之共用 `src/island/recents/recentMotion.ts`。`framer-motion` 不得进入模块或插件。
+
+`QxShell.island` 仍可传遗留 `BottomIslandContent`；`useShellIslandShim` 写入 store。
 
 ### Home Island 模块（`src/home-island/`）
 

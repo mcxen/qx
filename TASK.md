@@ -1,5 +1,32 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 已安装插件后台检查更新并就地升级
+
+**状态**：代码完成，等待桌面交互复核。
+
+- 插件空闲加载后后台拉取已启用市场索引（15 分钟缓存），不下载、不安包。
+- Settings → Extensions → Installed 对照本机版本：兼容的更高版本显示更新芯片和「升级到 vX」；
+  仅因 Qx 过旧不可装的版本显示「需要 Qx x」。详情 Dialog 提供同一入口。
+- Rescan 同时重扫本地插件并强制刷新市场目录。`general.auto_update` 仍只负责后台自动安装。
+- 已安装列表多项更新串行排队：当前项不中断，再点其它插件只入队，失败不取消后续项。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run check`
+- [ ] 桌面态：已安装列表在未打开商店前显示可更新项，行内升级保留偏好；需要更高 Qx 时无安装按钮；连续点多个更新会排队且不中断当前项。
+
+## Feature — RSS 小图模式与灵动岛最近浏览
+
+**状态**：代码完成，等待桌面交互复核。
+
+- Settings → RSS Reader → Reader View 新增「小图」图片模式：正文与封面收成 72px 缩略图，点击走共享 `QxMediaViewer` 查看大图，并可在当前文章已显示图片间切换。
+- 双击底部灵动岛从左侧模块图标向右展开最多 5 个最近浏览界面；点击图标进入对应模块或插件。Esc / 岛外点击 / 再次双击关闭。弹出/收回走岛内 `recentMotion` 弹簧（已有 framer-motion），可中途打断并原路收回。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run check`
+- [ ] 桌面态：RSS 小图阅读、点击大图、灵动岛双击切换最近 5 个界面。
+
 ## Feature — 资讯 Workbench 通用 HTML 保存
 
 **状态**：代码、文档与自动验证完成，等待桌面交互复核。

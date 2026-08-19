@@ -1,12 +1,19 @@
 import { useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { ExternalLink, LoaderCircle, Pause, Play, Square } from "lucide-react";
 import { Button, Kbd } from "../../components/ui";
 import { formatQxShortcut } from "../../utils/keyboard";
+import {
+  islandActionHidden,
+  islandActionTransition,
+} from "../recents/recentMotion";
 import type { IslandContentAction } from "../types";
 
 export interface IslandActionButtonProps {
   action: IslandContentAction;
   onInvoke: (action: IslandContentAction) => void | Promise<void>;
+  index?: number;
+  count?: number;
 }
 
 /**
@@ -17,8 +24,12 @@ export interface IslandActionButtonProps {
 export default function IslandActionButton({
   action,
   onInvoke,
+  index = 0,
+  count = 1,
 }: IslandActionButtonProps) {
   const [pending, setPending] = useState(false);
+  const reducedMotion = Boolean(useReducedMotion());
+  const hidden = islandActionHidden();
 
   const invoke = async () => {
     if (pending) return;
@@ -32,21 +43,36 @@ export default function IslandActionButton({
   const shortcut = formatQxShortcut(action.shortcut);
 
   return (
-    <Button
-      className="qx-island-shell-action"
-      type="button"
-      variant={action.variant === "danger" ? "destructive" : "ghost"}
-      size="sm"
-      disabled={pending}
-      aria-busy={pending || undefined}
-      onClick={() => void invoke()}
-      data-variant={action.variant ?? "default"}
-      aria-label={action.label}
+    <motion.div
+      className="qx-island-shell-action-wrap"
+      initial={reducedMotion ? false : hidden}
+      animate={{ x: 0, scale: 1, opacity: 1 }}
+      exit={{
+        ...hidden,
+        transition: islandActionTransition(index, {
+          exiting: true,
+          count,
+          reducedMotion,
+        }),
+      }}
+      transition={islandActionTransition(index, { count, reducedMotion })}
     >
-      <IslandActionGlyph icon={action.icon} pending={pending} />
-      {action.label}
-      {shortcut ? <Kbd>{shortcut}</Kbd> : null}
-    </Button>
+      <Button
+        className="qx-island-shell-action"
+        type="button"
+        variant={action.variant === "danger" ? "destructive" : "ghost"}
+        size="sm"
+        disabled={pending}
+        aria-busy={pending || undefined}
+        onClick={() => void invoke()}
+        data-variant={action.variant ?? "default"}
+        aria-label={action.label}
+      >
+        <IslandActionGlyph icon={action.icon} pending={pending} />
+        {action.label}
+        {shortcut ? <Kbd>{shortcut}</Kbd> : null}
+      </Button>
+    </motion.div>
   );
 }
 

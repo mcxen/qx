@@ -9,11 +9,13 @@ import Launcher from "./Launcher";
 import { requestLauncherSearchFocus } from "./SearchBar";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
+import { startMarketplaceCatalogCheck } from "./plugin/marketplaceCatalog";
 import { usePluginRegistry } from "./plugin/registry";
 import { installPluginDeepLinkHandler } from "./plugin/deepLinkInstall";
 import type { PluginRuntimeStatus } from "./plugin/types";
 import QxShell from "./components/QxShell";
 import { islandHost, showPluginIslandStatus, clearPluginIslandStatus } from "./island";
+import { recordRecentView, tryCloseRecentSwitcher } from "./island/recents/recentViews";
 import IslandFloatBridge from "./island/float/IslandFloatBridge";
 import { resolveIslandSurfaceOpacity } from "./island/appearance";
 import {
@@ -695,6 +697,10 @@ function App() {
       setTab("launcher");
     }
   }, [settings, setTab, tab]);
+
+  useEffect(() => {
+    recordRecentView(String(tab));
+  }, [tab]);
   const { load: loadPlugins, findCommands } = usePluginRegistry();
   const pluginCommandCount = usePluginRegistry((state) => state.commands.length);
   const pluginPanelCount = usePluginRegistry((state) => Object.keys(state.panels).length);
@@ -778,6 +784,7 @@ function App() {
 
   /**
    * Host-level Esc staircase while Qx is the foreground UI:
+   *   Island recents switcher (double-click overlay)
    *   active module stepBack (nested views, e.g. RSS articles → feeds)
    *   then leave module → launcher (when no module handler, or module leave)
    *   launcher with query → clear query
@@ -789,6 +796,7 @@ function App() {
    * via `tryModuleEscapeStep` (registered by useQxModuleShell).
    */
   const performHostEscape = useCallback(() => {
+    if (tryCloseRecentSwitcher()) return;
     const state = useStore.getState();
     if (state.tab !== "launcher") {
       // Nested module views first (RSS article list → feed list, etc.).
@@ -1389,6 +1397,7 @@ function App() {
     };
     const start = () => {
       if (cancelled) return;
+      startMarketplaceCatalogCheck();
       void loadPlugins({
         onToast: (msg) => window.dispatchEvent(new CustomEvent("qx:toast", { detail: msg })),
         onPrompt: async (label, def) => window.prompt(label, def ?? ""),

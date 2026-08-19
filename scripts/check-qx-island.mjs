@@ -16,6 +16,17 @@ import {
   defaultIslandOpenTarget,
   islandRouteForTarget,
 } from "../src/island/session/openTarget.ts";
+import {
+  pushRecentView,
+  recentsForSwitcher,
+  normalizeRecentRoute,
+} from "../src/island/recents/recentViews.ts";
+import {
+  ISLAND_RECENT_SPRING,
+  islandActionHidden,
+  recentTileHiddenX,
+  recentTileStagger,
+} from "../src/island/recents/recentMotion.ts";
 import { visibleIslandActivity } from "../src/island/surface/contentPolicy.ts";
 
 // store/logger run in a WebView in production; provide only the timer surface
@@ -99,6 +110,38 @@ assert.deepEqual(defaultIslandOpenTarget("rss.article-detail", "module"), {
 });
 assert.equal(defaultIslandOpenTarget("rss.article-detail", "shell"), undefined);
 assert.equal(islandRouteForTarget({ kind: "launcher" }), "launcher");
+assert.equal(normalizeRecentRoute(" plugin:v2ex "), "plugin:v2ex");
+assert.equal(normalizeRecentRoute("plugin:"), null);
+assert.deepEqual(
+  pushRecentView(
+    [{ route: "rss", viewedAtMs: 1 }, { route: "clipboard", viewedAtMs: 2 }],
+    "clipboard",
+    3,
+  ).map((entry) => entry.route),
+  ["clipboard", "rss"],
+);
+assert.deepEqual(
+  recentsForSwitcher(
+    [
+      { route: "rss", viewedAtMs: 5 },
+      { route: "clipboard", viewedAtMs: 4 },
+      { route: "launcher", viewedAtMs: 3 },
+      { route: "plugin:v2ex", viewedAtMs: 2 },
+      { route: "qx-ai", viewedAtMs: 1 },
+      { route: "settings", viewedAtMs: 0 },
+    ],
+    "rss",
+  ).map((entry) => entry.route),
+  ["clipboard", "launcher", "plugin:v2ex", "qx-ai", "settings"],
+);
+assert.equal(recentTileHiddenX(0), -28);
+assert.equal(recentTileHiddenX(3), -112);
+assert.equal(recentTileStagger(0, false, 5), 0);
+assert.ok(recentTileStagger(4, false, 5) > recentTileStagger(0, false, 5));
+assert.ok(recentTileStagger(0, true, 5) > recentTileStagger(4, true, 5));
+assert.equal(ISLAND_RECENT_SPRING.type, "spring");
+assert.equal(ISLAND_RECENT_SPRING.stiffness, 400);
+assert.equal(islandActionHidden().x > 0, true);
 assert.equal(islandRouteForTarget({ kind: "plugin", id: "pomodoro-island" }), "plugin:pomodoro-island");
 assert.equal(
   visibleIslandActivity({
@@ -221,6 +264,18 @@ const islandSurfaceSource = fs.readFileSync("src/island/surface/QxIslandSurface.
 assert.match(islandSurfaceSource, /progressStyle = "surface-fill"/);
 assert.match(islandSurfaceSource, /qx-island-progress-surface-fill/);
 assert.match(islandSurfaceSource, /qx-island-progress-island-ring/);
+assert.match(islandSurfaceSource, /onDoubleClick/);
+
+const dockHostSource = fs.readFileSync("src/island/surface/QxIslandDockHost.tsx", "utf8");
+assert.match(dockHostSource, /IslandRecentSwitcher/);
+assert.match(dockHostSource, /tryCloseRecentSwitcher|setRecentSwitcherOpen/);
+
+const appSource = fs.readFileSync("src/App.tsx", "utf8");
+assert.match(appSource, /recordRecentView\(String\(tab\)\)/);
+assert.match(appSource, /if \(tryCloseRecentSwitcher\(\)\) return;/);
+
+const qxShellSource = fs.readFileSync("src/components/QxShell.tsx", "utf8");
+assert.match(qxShellSource, /if \(event\.key === "Escape" && tryCloseRecentSwitcher\(\)\)/);
 
 assert.match(
   launcherSource,
@@ -228,6 +283,23 @@ assert.match(
 );
 
 const shellCssSource = fs.readFileSync("src/styles/shell.css", "utf8");
+assert.match(
+  shellCssSource,
+  /:not\(\.qx-island-recents\)/,
+);
+assert.match(
+  shellCssSource,
+  /\.qx-island-surface\s*>\s*\.qx-island-recents\s*\{[^}]*position:\s*absolute/s,
+);
+assert.doesNotMatch(shellCssSource, /@keyframes qx-island-recent-spring/);
+const recentsSource = fs.readFileSync("src/island/recents/IslandRecentSwitcher.tsx", "utf8");
+assert.match(recentsSource, /from "framer-motion"/);
+assert.match(recentsSource, /AnimatePresence/);
+assert.match(recentsSource, /recentTileTransition/);
+assert.doesNotMatch(shellCssSource, /@keyframes qx-island-action-enter/);
+const actionButtonSource = fs.readFileSync("src/island/surface/IslandActionButton.tsx", "utf8");
+assert.match(actionButtonSource, /islandActionTransition/);
+assert.match(actionButtonSource, /from "framer-motion"/);
 assert.match(
   shellCssSource,
   /\.qx-island-shell-copy\.has-progress\s*\{[^}]*grid-template-rows:[^}]*row-gap:\s*3px/s,

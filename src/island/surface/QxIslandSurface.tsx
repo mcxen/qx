@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEventHandler, type ReactNode } from "react";
 import type {
   IslandChromeVariant,
   IslandPlacement,
@@ -15,6 +15,7 @@ export interface QxIslandSurfaceProps {
   empty?: boolean;
   children: ReactNode;
   className?: string;
+  onDoubleClick?: MouseEventHandler<HTMLDivElement>;
   "aria-label"?: string;
 }
 
@@ -60,6 +61,7 @@ export default function QxIslandSurface({
   empty = false,
   children,
   className = "",
+  onDoubleClick,
   "aria-label": ariaLabel,
 }: QxIslandSurfaceProps) {
   const classes = [
@@ -118,6 +120,7 @@ export default function QxIslandSurface({
       data-progress-style={normalizedProgress == null ? undefined : progressStyle}
       aria-hidden={empty || undefined}
       aria-label={ariaLabel}
+      onDoubleClick={onDoubleClick}
     >
       {normalizedProgress != null && (
         <span

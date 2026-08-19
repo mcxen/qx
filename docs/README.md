@@ -1,6 +1,6 @@
 # Qx 开发者文档索引
 
-> 状态：Current · 适用版本：v0.6.39 · Owner：Core · 最后复核：2026-07-27
+> 状态：Current · 适用版本：v0.6.95 · Owner：Core · 最后复核：2026-08-19
 
 面向核心贡献者。所有面向用户的说明在 [README.md](../README.md) 和 [`public/doc/`](../public/doc/) 下。
 
@@ -67,6 +67,7 @@
 
 - 想定抽象 / 审接口 → **`architecture-principles.md`（SOLID）** + 对应领域文档
 - 想改 UI → `UI_SPEC.md` + `frontend-architecture.md` + `settings-panel.md`
+- 想改灵动岛 / 最近浏览 / 岛动作进出 → **`qx-island-architecture.md` 文首 Current facts** + `src/island/recents/recentMotion.ts`
 - **想改全局快捷键 / 显示隐藏 / 缺 .manage()** → **`shell-and-shortcuts.md`**
 - 想加 Rust 命令 → `rust-backend.md` + `ipc-catalogue.md`
 - 想写/审插件或复用模块端口 → **`module-port-inventory.md`** + **`public/doc/plugin-development-guide.md`** + `plugin-cli-protocol.md`

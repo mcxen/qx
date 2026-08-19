@@ -1,4 +1,8 @@
-import type { InstalledPlugin } from "../../../plugin/types";
+import {
+  appVersionMeetsMinimum,
+  marketplaceEntrySupportsPlatform,
+} from "../../../plugin/platform";
+import type { InstalledPlugin, PluginIndexEntry } from "../../../plugin/types";
 export { BUILTIN_MODULE_ICONS as BUILTIN_PLUGIN_ICONS } from "../../builtinIcons";
 
 export const isBuiltin = (p: InstalledPlugin) => p.id.startsWith("builtin:");
@@ -39,4 +43,37 @@ export function comparePluginVersions(left: string, right: string): number {
 export function isPluginUpdateAvailable(installedVersion: string | undefined, marketVersion: string): boolean {
   if (!installedVersion) return false;
   return comparePluginVersions(marketVersion, installedVersion) > 0;
+}
+
+export type InstalledPluginUpdate =
+  | { kind: "ready"; entry: PluginIndexEntry }
+  | { kind: "needs-qx"; entry: PluginIndexEntry };
+
+/**
+ * Pick the highest marketplace package that is newer than the installed
+ * plugin. Ready offers already pass the current OS and Qx version; needs-qx
+ * means a newer package exists but this Qx build cannot install it yet.
+ */
+export function selectInstalledPluginUpdate(
+  plugin: Pick<InstalledPlugin, "id" | "version">,
+  entries: readonly PluginIndexEntry[],
+  hostVersion: string | null,
+): InstalledPluginUpdate | null {
+  if (!plugin.id || plugin.id.startsWith("builtin:") || hostVersion === null) return null;
+
+  const newer = entries.filter((entry) => (
+    entry.id === plugin.id
+    && Boolean(entry.download_url?.trim())
+    && marketplaceEntrySupportsPlatform(entry)
+    && isPluginUpdateAvailable(plugin.version, entry.version)
+  ));
+  if (newer.length === 0) return null;
+
+  const highest = (list: PluginIndexEntry[]) => list.reduce((best, entry) => (
+    comparePluginVersions(entry.version, best.version) > 0 ? entry : best
+  ));
+
+  const ready = newer.filter((entry) => appVersionMeetsMinimum(hostVersion, entry.min_app_version));
+  if (ready.length > 0) return { kind: "ready", entry: highest(ready) };
+  return { kind: "needs-qx", entry: highest(newer) };
 }

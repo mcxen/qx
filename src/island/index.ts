@@ -45,6 +45,12 @@ export { default as ShellContent } from "./surface/ShellContent";
 export { default as QxIslandDockHost } from "./surface/QxIslandDockHost";
 export { default as QxIslandDockSlot } from "./surface/QxIslandDockSlot";
 export { useIslandProgress } from "./surface/useIslandProgress";
+export {
+  recordRecentView,
+  tryCloseRecentSwitcher,
+  recentsForSwitcher,
+  pushRecentView,
+} from "./recents/recentViews";
 
 export {
   mapBottomIslandContent,

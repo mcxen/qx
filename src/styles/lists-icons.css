@@ -199,6 +199,13 @@
   object-fit: cover;
 }
 
+.qx-rss-reader-hero.is-thumb {
+  width: 72px;
+  height: 72px;
+  max-width: 72px;
+  object-fit: cover;
+}
+
 .qx-content-detail-heading {
   margin: 0 0 8px;
   color: var(--qx-text-primary);
@@ -2753,6 +2760,16 @@
 .rss-article-content[data-image-mode="fixed"] img {
   width: min(100%, var(--rss-image-width, 320px)) !important;
   max-width: min(100%, var(--rss-image-width, 320px)) !important;
+}
+
+.rss-article-content[data-image-mode="thumb"] img {
+  display: inline-block !important;
+  width: 72px !important;
+  height: 72px !important;
+  max-width: 72px !important;
+  margin: 6px 8px 6px 0 !important;
+  object-fit: cover !important;
+  vertical-align: middle;
 }
 
 .rss-article-content figure {

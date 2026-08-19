@@ -42,6 +42,7 @@ import type {
   IslandSource,
 } from "../island/types";
 import { defaultIslandOpenTarget } from "../island/session/openTarget";
+import { tryCloseRecentSwitcher } from "../island/recents/recentViews";
 import { goHomeToLauncher } from "../modules/settings/openSettings";
 import { useT } from "../i18n";
 import { Select } from "./ui";
@@ -902,6 +903,12 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       event.preventDefault();
       event.stopPropagation();
       openActionMenu();
+      return;
+    }
+
+    if (event.key === "Escape" && tryCloseRecentSwitcher()) {
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
 

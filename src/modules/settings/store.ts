@@ -236,7 +236,7 @@ export interface RssSettings {
   offline_cache_enabled: boolean;
   max_articles_per_feed: number;
   bottom_island_mode: "scroll" | "index";
-  image_display_mode: "fixed" | "full";
+  image_display_mode: "fixed" | "full" | "thumb";
   image_fixed_width: number;
   article_font_size: number;
   article_font_family: string;

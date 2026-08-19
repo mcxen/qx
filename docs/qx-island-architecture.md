@@ -5,15 +5,24 @@
 | **Title** | QxIsland 统一抽象层：信息通道 / 尺寸界面 / 能力与样式，重构全部灵动岛 |
 | **Author** | — |
 | **Date** | 2026-07-15 |
-| **Status** | Implemented (docked + draggable desktop float; Qx-owned policy) · rev 3.4 |
+| **Status** | Implemented (docked + draggable desktop float; Qx-owned policy) · rev 3.6 |
 | **Repo path** | `docs/qx-island-architecture.md` |
-| **Related** | `UI_SPEC.md` Bottom Island / Home Island；`src/home-island/`；`src/components/QxBottomIsland.tsx`；`src-tauri/src/floating_panel.rs`；`src-tauri/src/screencap/mod.rs`；`src/modules/screencap/ScreenRecorder.tsx` |
+| **Related** | `UI_SPEC.md` Bottom Island / Home Island；`src/island/`；`src/home-island/`；`src/components/QxBottomIsland.tsx`（遗留适配）；`src-tauri/src/floating_panel.rs`；`src-tauri/src/screencap/mod.rs` |
 
 ---
 
+## Current facts（以代码为准）
+
+- Docked 渲染：`QxIslandDockSlot` → `QxIslandDockHost` → `QxIslandSurface` + `ShellContent` 或注册组件。
+- 统一高度 **34px**（min 32 / max 36），docked 宽 `min(400px, calc(100% - 260px))`。
+- 模块 `island` 经 shim 写 session；`QxBottomIsland` 不再是主路径。
+- 双击 docked 岛展开最近浏览；动作胶囊进出与之共用 `src/island/recents/recentMotion.ts`。
+- 录屏控制仍是独立受保护工具栏，不是 Bottom Island 例外内容。
+- 下文 **Overview / Background** 描述的是统一层落地前的分裂问题，不要当成当前实现。
+
 ## Overview
 
-Qx 当前存在多套并行的「灵动岛」实现：Shell 文本岛（`QxBottomIsland`）、Home 可插拔空闲 HUD（`src/home-island/` 下各 mode 自带 chrome）、App 级插件状态岛（`pluginIsland` React state）、以及 ScreenRecorder 的 `customIsland` + 独立 `recording-controls` 浮窗。它们在**尺寸、居中、玻璃 chrome、优先级、数据采样、动作回调**上各自为政。
+统一层落地前，Qx 存在多套并行的「灵动岛」实现：Shell 文本岛（`QxBottomIsland`）、Home 可插拔空闲 HUD（`src/home-island/` 下各 mode 自带 chrome）、App 级插件状态岛（`pluginIsland` React state）、以及 ScreenRecorder 的 `customIsland` + 独立 `recording-controls` 浮窗。它们在**尺寸、居中、玻璃 chrome、优先级、数据采样、动作回调**上各自为政。
 
 尺寸方面：实现层 shell 为 32px / `min(340px, …)`，home 模式为 34px / 360–400px；**UI_SPEC 对 shell 仍写 32px 默认高**，对 custom Home 写约 34–36 / ~400。统一到固定 **34×≤400** 是**有意的 UI_SPEC 修订**，不是“已经与规范对齐”。同时，岛生命周期与主窗口、模块 props 树强绑定，无法模块化请求、无法（通用地）脱离主窗口悬浮交互。
 
@@ -435,7 +444,8 @@ interface ActionRegistry {
 
 `IslandActionButton` 是 Surface 内 business action 的唯一 renderer：固定 22px capsule、
 受限图标、default/danger、focus-visible，并在 `run()` 未完成时进入 busy/disabled，防止
-重复提交。Float compact/expand/open 控件属于 window chrome，不计入 producer action。
+重复提交。进出与最近任务共用 `recentMotion.ts` 弹簧；Float compact/expand/open 控件属于
+window chrome，不计入 producer action。
 
 `islandHost` API：
 
@@ -627,6 +637,7 @@ function resolveDockedWinner(sessions: IslandSession[]): string | null;
 | 双 task | 例如 `clipboard.compress` sticky vs `launcher.search`：sticky 优先；否则更高 `rankEpoch`；搜索活动应 `sticky: false` 且离开搜索时 dismiss |
 | Shim unmount | 仅 `dismiss` id 匹配 `module.${routeKey}.*` 的 **location/shell shim**；**永不**因 tab unmount dismiss 其它模块的 sticky task |
 | Home 单写者 | **仅 Launcher**（或 App 内单一 `useHomeIslandContribution`）负责 `home` session 的 show/update/dismiss；Settings preview 用本地 Surface，不写全局 `home` id（可用 `home.preview` 且 priority 不参与 docked，或 pause 全局 home） |
+| Recents switcher | Docked Island **double-click**（动作/浮出控件除外）展开最多 5 个最近浏览图标。弹出/收回经 `src/island/recents/recentMotion.ts` 使用已有 `framer-motion` 弹簧（可打断、反向错开收回），点击走 `qx:navigate`。Esc、岛外点击或再次双击关闭。记录由 App 在 tab 变化时写入 `qx.island.recentViews.v1`。浮窗 v1 不承载该切换器；插件不得注入 Motion。 |
 | Plugin sessions | **`source: "plugin"` 一律遵守 §5.2**：priority **不得**为 `task`/`home`；见下表映射。**禁止**对 plugin 使用 120s task 安全网 |
 | Module task 安全网 | 仅 `source: "module" \| "shell"` 且 `priority: "task"`：producer 未设 TTL 时宿主 **max 120s** dismiss + log |
 | `reject-if-lower` | 若已存在同 id 且新 priority 更差，拒绝 |

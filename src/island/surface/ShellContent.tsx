@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { AnimatePresence } from "framer-motion";
 import { Blocks, LayoutGrid, Search } from "lucide-react";
 import type {
   IslandContentAction,
@@ -273,17 +274,20 @@ export default function ShellContent({
               {formatCountdown(countdownMs)}
             </time>
           )}
-          {!compact && trailingActions.length > 0 && (
-            <span className="qx-island-shell-actions">
-              {trailingActions.map((action) => (
-                <IslandActionButton
-                  key={action.id}
-                  action={action}
-                  onInvoke={handleAction}
-                />
-              ))}
-            </span>
-          )}
+          <span className="qx-island-shell-actions">
+            <AnimatePresence>
+              {!compact
+                && trailingActions.map((action, index) => (
+                  <IslandActionButton
+                    key={action.id}
+                    action={action}
+                    index={index}
+                    count={trailingActions.length}
+                    onInvoke={handleAction}
+                  />
+                ))}
+            </AnimatePresence>
+          </span>
         </div>
       </div>
     </div>

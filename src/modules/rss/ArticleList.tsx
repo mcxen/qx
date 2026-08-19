@@ -43,6 +43,32 @@ import { isBuiltinModuleEnabled } from "../moduleAvailability";
 
 const PzaiAssistantPanel = lazy(() => import("../p-zai/PzaiAssistantPanel"));
 
+function isDisplayableReaderImage(image: HTMLImageElement): boolean {
+  const src = image.getAttribute("src")?.trim() ?? "";
+  if (!src || src.startsWith("data:image/gif")) return false;
+  const state = image.dataset.qxImageState;
+  return state !== "failed" && state !== "loading";
+}
+
+function collectVisibleReaderImages(heroSrc: string | null, alt: string): { url: string; alt: string }[] {
+  const seen = new Set<string>();
+  const images: { url: string; alt: string }[] = [];
+  const push = (url: string | null | undefined) => {
+    const next = url?.trim() ?? "";
+    if (!next || next.startsWith("data:image/gif") || seen.has(next)) return;
+    seen.add(next);
+    images.push({ url: next, alt });
+  };
+  push(heroSrc);
+  const root = document.getElementById("rss-article-content");
+  if (root) {
+    for (const image of root.querySelectorAll("img")) {
+      if (isDisplayableReaderImage(image)) push(image.getAttribute("src"));
+    }
+  }
+  return images;
+}
+
 interface V2exReply {
   id: number;
   content: string;
@@ -117,7 +143,7 @@ export default function ArticleList() {
   } = useRssStore();
 
   const [localQuery, setLocalQuery] = useState("");
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ images: { url: string; alt: string }[]; index: number } | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -199,7 +225,18 @@ export default function ArticleList() {
     "--rss-article-font-family": article_font_family,
     "--rss-image-width": `${image_fixed_width}px`,
   } as CSSProperties;
-  const heroImgStyle: CSSProperties = image_display_mode === "fixed"
+  const heroImgStyle: CSSProperties = image_display_mode === "thumb"
+    ? {
+        width: 72,
+        height: 72,
+        maxWidth: 72,
+        objectFit: "cover" as const,
+        marginBottom: 10,
+        cursor: "zoom-in",
+        display: "block",
+        borderRadius: 4,
+      }
+    : image_display_mode === "fixed"
     ? {
         maxWidth: image_fixed_width,
         width: image_fixed_width,
@@ -315,10 +352,15 @@ export default function ArticleList() {
     if (!root) return;
     const onClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (target.tagName === "IMG") {
-        const src = target.getAttribute("src");
-        if (src) setLightbox(src);
-      }
+      if (target.tagName !== "IMG") return;
+      const src = target.getAttribute("src");
+      if (!src) return;
+      const images = collectVisibleReaderImages(heroImageSrc, currentArticle?.title || "");
+      const index = Math.max(0, images.findIndex((image) => image.url === src));
+      setLightbox({
+        images: images.length > 0 ? images : [{ url: src, alt: currentArticle?.title || "" }],
+        index,
+      });
     };
     root.addEventListener("click", onClick);
     if (!useRustImageCache) {
@@ -361,7 +403,7 @@ export default function ArticleList() {
       cancelled = true;
       root.removeEventListener("click", onClick);
     };
-  }, [cleanContent, currentArticle?.link, useRustImageCache]);
+  }, [cleanContent, currentArticle?.link, currentArticle?.title, heroImageSrc, useRustImageCache]);
 
   useEffect(() => {
     let cancelled = false;
@@ -831,8 +873,14 @@ export default function ArticleList() {
                     <img
                       src={heroImageSrc}
                       alt=""
-                      onClick={() => setLightbox(heroImageSrc)}
-                      className="qx-rss-reader-hero"
+                      onClick={() => {
+                        const images = collectVisibleReaderImages(heroImageSrc, currentArticle.title || "");
+                        setLightbox({
+                          images: images.length > 0 ? images : [{ url: heroImageSrc, alt: currentArticle.title || "" }],
+                          index: 0,
+                        });
+                      }}
+                      className={`qx-rss-reader-hero${image_display_mode === "thumb" ? " is-thumb" : ""}`}
                       style={heroImgStyle}
                     />
                   )}
@@ -915,7 +963,8 @@ export default function ArticleList() {
 
       <QxMediaViewer
         open={Boolean(lightbox)}
-        images={lightbox ? [{ url: lightbox, alt: currentArticle?.title || "" }] : []}
+        images={lightbox?.images ?? []}
+        initialIndex={lightbox?.index ?? 0}
         onOpenChange={(open) => {
           if (!open) setLightbox(null);
         }}
