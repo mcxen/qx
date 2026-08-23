@@ -40,6 +40,8 @@ export interface PluginCommand {
   keywords?: string[];
   mode?: string;
   interval?: string;
+  /** Host-owned policy group for interval jobs with cross-plugin side effects. */
+  backgroundCategory?: "wallpaper";
 }
 
 export type PluginPlatform = "macos" | "windows" | "linux";

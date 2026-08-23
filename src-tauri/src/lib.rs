@@ -39,6 +39,7 @@ mod qx_ai_memory;
 mod qx_ai_schedule;
 mod qx_ai_sessions;
 mod qx_ai_skills;
+mod remote_image_cache;
 mod rss;
 mod runtime;
 mod screencap;
@@ -851,6 +852,7 @@ pub fn run() {
             plugin_api::plugin_file_write_base64,
             plugin_api::plugin_file_empty_dir,
             plugin_api::plugin_file_list,
+            remote_image_cache::plugin_workbench_cache_image,
             plugin_api::plugin_ai_list_providers,
             plugin_api::plugin_ai_default_model,
             plugin_api::plugin_ai_agent_settings,

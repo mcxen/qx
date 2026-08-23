@@ -11,8 +11,9 @@
 import { create } from "zustand";
 import type { RegisteredCommand } from "./types";
 
-export type PluginBackgroundJobState = "scheduled" | "running" | "idle";
+export type PluginBackgroundJobState = "scheduled" | "running" | "idle" | "paused";
 export type PluginBackgroundOutcome = "success" | "error";
+export type PluginBackgroundCategory = "wallpaper";
 
 /** One finished execution (GitHub Actions / CI style activity row). */
 export interface PluginBackgroundRunRecord {
@@ -28,6 +29,7 @@ export interface PluginBackgroundJob {
   commandTitle: string;
   interval: string;
   intervalMs: number;
+  backgroundCategory: PluginBackgroundCategory | null;
   /** Unix ms of last completed run (success or failure). */
   lastRunAt: number | null;
   /** Unix ms when the host intends to fire next. */
@@ -39,6 +41,39 @@ export interface PluginBackgroundJob {
   lastDurationMs: number | null;
   /** Recent finished runs, newest first (durable, capped). */
   history: PluginBackgroundRunRecord[];
+}
+
+const BACKGROUND_POLICY_PREFIX = "qx:plugin-background-policy:";
+
+export function normalizeBackgroundCategory(
+  value: unknown,
+): PluginBackgroundCategory | null {
+  return value === "wallpaper" ? "wallpaper" : null;
+}
+
+export function isBackgroundCategoryEnabled(
+  category: PluginBackgroundCategory | null | undefined,
+): boolean {
+  if (!category) return true;
+  try {
+    return window.localStorage.getItem(`${BACKGROUND_POLICY_PREFIX}${category}`) !== "paused";
+  } catch {
+    return true;
+  }
+}
+
+export function persistBackgroundCategoryEnabled(
+  category: PluginBackgroundCategory,
+  enabled: boolean,
+): void {
+  try {
+    window.localStorage.setItem(
+      `${BACKGROUND_POLICY_PREFIX}${category}`,
+      enabled ? "enabled" : "paused",
+    );
+  } catch {
+    // Storage failure degrades to the default enabled policy on next launch.
+  }
 }
 
 export interface PluginBackgroundSummary {
@@ -234,6 +269,7 @@ function buildJobFromCommand(
 ): PluginBackgroundJob | null {
   if (!isBackgroundIntervalCommand(command)) return null;
   const intervalMs = parseIntervalMs(command.interval)!;
+  const backgroundCategory = normalizeBackgroundCategory(command.backgroundCategory);
   const key = jobKey(command.pluginId, command.name);
   const lastRunAt = readNumber(storageKey("last", command.pluginId, command.name));
   const nextRunAt = readNumber(storageKey("next", command.pluginId, command.name));
@@ -245,7 +281,9 @@ function buildJobFromCommand(
       ? "error"
       : "success";
   const lastDurationMs = history[0]?.durationMs ?? null;
-  const state: PluginBackgroundJobState = running.has(key)
+  const state: PluginBackgroundJobState = !isBackgroundCategoryEnabled(backgroundCategory)
+    ? "paused"
+    : running.has(key)
     ? "running"
     : nextRunAt != null
       ? "scheduled"
@@ -256,6 +294,7 @@ function buildJobFromCommand(
     commandTitle: command.title || command.name,
     interval: String(command.interval),
     intervalMs,
+    backgroundCategory,
     lastRunAt,
     nextRunAt,
     state,
@@ -282,6 +321,7 @@ interface PluginBackgroundStore {
   markScheduled: (command: RegisteredCommand, nextRunAt: number) => void;
   markRunning: (command: RegisteredCommand) => void;
   markFinished: (command: RegisteredCommand, error?: string | null) => void;
+  markPaused: (command: RegisteredCommand) => void;
   getJob: (pluginId: string, commandName: string) => PluginBackgroundJob | undefined;
   listJobs: (pluginId?: string) => PluginBackgroundJob[];
   summarizePlugin: (pluginId: string) => PluginBackgroundSummary | null;
@@ -350,6 +390,7 @@ export const usePluginBackgroundStore = create<PluginBackgroundStore>((set, get)
         commandTitle: command.title || command.name,
         interval: String(command.interval),
         intervalMs: parseIntervalMs(command.interval)!,
+        backgroundCategory: normalizeBackgroundCategory(command.backgroundCategory),
         lastRunAt: null,
         nextRunAt,
         state: "scheduled" as const,
@@ -387,6 +428,7 @@ export const usePluginBackgroundStore = create<PluginBackgroundStore>((set, get)
           commandTitle: command.title || command.name,
           interval: String(command.interval || ""),
           intervalMs: parseIntervalMs(command.interval) || 0,
+          backgroundCategory: normalizeBackgroundCategory(command.backgroundCategory),
           lastRunAt: readNumber(storageKey("last", command.pluginId, command.name)),
           nextRunAt: readNumber(storageKey("next", command.pluginId, command.name)),
           state: "running",
@@ -429,9 +471,17 @@ export const usePluginBackgroundStore = create<PluginBackgroundStore>((set, get)
       commandTitle: command.title || command.name,
       interval: String(command.interval || prior?.interval || ""),
       intervalMs: prior?.intervalMs || parseIntervalMs(command.interval) || 0,
+      backgroundCategory:
+        prior?.backgroundCategory ?? normalizeBackgroundCategory(command.backgroundCategory),
       lastRunAt: now,
       nextRunAt,
-      state: nextRunAt != null ? "scheduled" : "idle",
+      state: !isBackgroundCategoryEnabled(
+        prior?.backgroundCategory ?? normalizeBackgroundCategory(command.backgroundCategory),
+      )
+        ? "paused"
+        : nextRunAt != null
+          ? "scheduled"
+          : "idle",
       lastError: error,
       lastOutcome: ok ? "success" : "error",
       lastDurationMs: durationMs ?? null,
@@ -440,6 +490,29 @@ export const usePluginBackgroundStore = create<PluginBackgroundStore>((set, get)
     set({
       runningKeys,
       jobs: { ...get().jobs, [key]: job },
+      revision: get().revision + 1,
+    });
+  },
+
+  markPaused: (command) => {
+    if (!isBackgroundIntervalCommand(command)) return;
+    const key = jobKey(command.pluginId, command.name);
+    writeNumber(storageKey("next", command.pluginId, command.name), null);
+    writeNumber(storageKey("started", command.pluginId, command.name), null);
+    const runningKeys = get().runningKeys.filter((item) => item !== key);
+    const prior = get().jobs[key];
+    const base = buildJobFromCommand(command, new Set(runningKeys));
+    if (!base && !prior) return;
+    set({
+      runningKeys,
+      jobs: {
+        ...get().jobs,
+        [key]: {
+          ...(base || prior!),
+          nextRunAt: null,
+          state: "paused",
+        },
+      },
       revision: get().revision + 1,
     });
   },

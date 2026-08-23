@@ -41,6 +41,13 @@ pub struct PluginCommand {
     pub mode: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub interval: String,
+    /// Optional host policy group for background interval commands.
+    #[serde(
+        default,
+        rename = "backgroundCategory",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub background_category: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2042,6 +2049,7 @@ fn build_raycast_plugin_manifest(
                 keywords: keywords.clone(),
                 mode: json_string(item, "mode"),
                 interval: json_string(item, "interval"),
+                background_category: json_string(item, "backgroundCategory"),
             });
         }
     }
@@ -2067,6 +2075,7 @@ fn build_raycast_plugin_manifest(
                 },
                 mode: "no-view".to_string(),
                 interval: String::new(),
+                background_category: String::new(),
             });
         }
     }
@@ -2081,6 +2090,7 @@ fn build_raycast_plugin_manifest(
             keywords: keywords.clone(),
             mode: "view".to_string(),
             interval: String::new(),
+            background_category: String::new(),
         });
     }
 
@@ -4001,6 +4011,26 @@ mod tests {
             author: String::new(),
             manifest: Some(manifest),
         }
+    }
+
+    #[test]
+    fn manifest_preserves_wallpaper_background_category() {
+        let manifest: PluginManifest = serde_json::from_value(serde_json::json!({
+            "id": "wallpaper-sample",
+            "name": "Wallpaper Sample",
+            "version": "1.0.0",
+            "commands": [{
+                "name": "daily-wallpaper",
+                "title": "Daily Wallpaper",
+                "mode": "no-view",
+                "interval": "1d",
+                "backgroundCategory": "wallpaper"
+            }]
+        }))
+        .unwrap();
+        assert_eq!(manifest.commands[0].background_category, "wallpaper");
+        let serialized = serde_json::to_value(manifest).unwrap();
+        assert_eq!(serialized["commands"][0]["backgroundCategory"], "wallpaper");
     }
 
     #[test]

@@ -15,7 +15,7 @@ import {
   LoaderCircle,
   Maximize2,
 } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
 import QxResizableSplit from "../components/QxResizableSplit";
 import { useQxListSelection } from "../hooks/useQxListSelection";
@@ -49,6 +49,76 @@ import {
 export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
 const WORKBENCH_LIST_WIDTH_KEY = "qx:workbench:list-width";
+const workbenchImageCache = new Map<string, Promise<string>>();
+const WORKBENCH_IMAGE_CACHE_LIMIT = 512;
+
+function resolveWorkbenchImageUrl(pluginId: string, url: string): Promise<string> {
+  if (!/^https:\/\//i.test(url)) return Promise.resolve(url);
+  const key = `${pluginId}\0${url}`;
+  const existing = workbenchImageCache.get(key);
+  if (existing) return existing;
+  const request = invoke<string>("plugin_workbench_cache_image", { id: pluginId, url })
+    .then((path) => convertFileSrc(path))
+    .catch(() => {
+      workbenchImageCache.delete(key);
+      return url;
+    });
+  workbenchImageCache.set(key, request);
+  if (workbenchImageCache.size > WORKBENCH_IMAGE_CACHE_LIMIT) {
+    const oldest = workbenchImageCache.keys().next().value;
+    if (oldest) workbenchImageCache.delete(oldest);
+  }
+  return request;
+}
+
+function WorkbenchCachedImage({
+  pluginId,
+  url,
+  alt,
+  className,
+  loading,
+  style,
+  onError,
+}: {
+  pluginId: string;
+  url: string;
+  alt: string;
+  className?: string;
+  loading?: "eager" | "lazy";
+  style?: CSSProperties;
+  onError?: () => void;
+}) {
+  const [resolvedUrl, setResolvedUrl] = useState<string>();
+  const [usedFallback, setUsedFallback] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setResolvedUrl(undefined);
+    setUsedFallback(false);
+    void resolveWorkbenchImageUrl(pluginId, url).then((resolved) => {
+      if (active) setResolvedUrl(resolved);
+    });
+    return () => { active = false; };
+  }, [pluginId, url]);
+  if (!resolvedUrl) return null;
+  return (
+    <img
+      src={resolvedUrl}
+      alt={alt}
+      className={className}
+      loading={loading}
+      style={style}
+      onError={() => {
+        if (!usedFallback && resolvedUrl !== url) {
+          workbenchImageCache.delete(`${pluginId}\0${url}`);
+          setUsedFallback(true);
+          setResolvedUrl(url);
+          return;
+        }
+        onError?.();
+      }}
+    />
+  );
+}
 
 interface PluginWorkbenchViewProps {
   pluginId: string;
@@ -93,14 +163,17 @@ function WorkbenchInlineAsset({
 }
 
 function WorkbenchInlineRemoteImage({
+  pluginId,
   image,
 }: {
+  pluginId: string;
   image: PluginWorkbenchImage;
 }) {
   return (
-    <img
+    <WorkbenchCachedImage
+      pluginId={pluginId}
       className="qx-reply-inline-asset"
-      src={image.url}
+      url={image.url}
       alt={image.alt || ""}
       loading="lazy"
     />
@@ -122,7 +195,7 @@ function WorkbenchReplyBody({
     if (part.type === "asset-image") {
       return <WorkbenchInlineAsset key={`${part.assetPath}-${index}`} pluginId={pluginId} part={part} />;
     }
-    return <WorkbenchInlineRemoteImage key={`${part.image.url}-${index}`} image={part.image} />;
+    return <WorkbenchInlineRemoteImage key={`${part.image.url}-${index}`} pluginId={pluginId} image={part.image} />;
   });
 }
 
@@ -273,12 +346,14 @@ function WorkbenchChart({ chart }: { chart?: PluginWorkbenchChart }) {
 }
 
 function WorkbenchDetailImage({
+  pluginId,
   image,
   collection,
   onPreview,
   unavailableText,
   previewText,
 }: {
+  pluginId: string;
   image: PluginWorkbenchImage;
   collection?: PluginWorkbenchImage[];
   onPreview: (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => void;
@@ -289,9 +364,10 @@ function WorkbenchDetailImage({
   const content = failed ? (
     <span className="qx-host-workbench-media-error">{unavailableText}</span>
   ) : (
-    <img
+    <WorkbenchCachedImage
+      pluginId={pluginId}
       key={image.url}
-      src={image.url}
+      url={image.url}
       alt={image.alt || ""}
       style={{ objectFit: image.fit || "contain" }}
       onError={() => setFailed(true)}
@@ -319,6 +395,7 @@ function WorkbenchDetailImage({
 }
 
 function WorkbenchMediaCollection({
+  pluginId,
   images,
   layout,
   onPreview,
@@ -327,6 +404,7 @@ function WorkbenchMediaCollection({
   previousText,
   nextText,
 }: {
+  pluginId: string;
   images: PluginWorkbenchImage[];
   layout: "grid" | "horizontal";
   onPreview: (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => void;
@@ -379,6 +457,7 @@ function WorkbenchMediaCollection({
         {images.map((image, index) => (
           <WorkbenchDetailImage
             key={`${image.url}-${index}`}
+            pluginId={pluginId}
             image={image}
             onPreview={(selected) => onPreview(selected, images)}
             unavailableText={unavailableText}
@@ -408,13 +487,14 @@ function WorkbenchMediaCollection({
   );
 }
 
-function WorkbenchListMedia({ images }: { images: PluginWorkbenchImage[] }) {
+function WorkbenchListMedia({ pluginId, images }: { pluginId: string; images: PluginWorkbenchImage[] }) {
   return (
     <span className="qx-host-workbench-list-media" aria-hidden="true">
       {images.map((image, index) => (
         <span className="qx-host-workbench-list-media-image" key={`${image.url}-${index}`}>
-          <img
-            src={image.url}
+          <WorkbenchCachedImage
+            pluginId={pluginId}
+            url={image.url}
             alt=""
             loading="lazy"
             style={{ objectFit: image.fit || "cover" }}
@@ -508,6 +588,7 @@ function WorkbenchDetail({
       {detail.image?.url ? (
         <WorkbenchDetailImage
           key={detail.image.url}
+          pluginId={pluginId}
           image={detail.image}
           onPreview={onPreview}
           unavailableText={unavailableText}
@@ -516,6 +597,7 @@ function WorkbenchDetail({
       ) : null}
       {detail.images?.length ? (
         <WorkbenchMediaCollection
+          pluginId={pluginId}
           images={detail.images}
           layout={detail.imageLayout || "grid"}
           onPreview={onPreview}
@@ -546,6 +628,7 @@ function WorkbenchDetail({
       ) : (
         <WorkbenchDetailImage
           key={`image-${block.image.url}-${index}`}
+          pluginId={pluginId}
           image={block.image}
           collection={contentImages}
           onPreview={onPreview}
@@ -719,7 +802,10 @@ export default function PluginWorkbenchView({
   const openPreview = (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => {
     const images = collection.length ? collection : [image];
     const index = Math.max(0, images.findIndex((candidate) => candidate === image || candidate.url === image.url));
-    setPreview({ images, index });
+    void Promise.all(images.map(async (candidate) => ({
+      ...candidate,
+      url: await resolveWorkbenchImageUrl(pluginId, candidate.url),
+    }))).then((resolved) => setPreview({ images: resolved, index }));
   };
   const downloadPreviewImage = useCallback(async (image: QxMediaViewerImage) => {
     const workbenchImage = image as PluginWorkbenchImage;
@@ -761,8 +847,9 @@ export default function PluginWorkbenchView({
           >
             <span className="qx-host-workbench-gallery-image">
               {item.image?.url ? (
-                <img
-                  src={item.image.url}
+                <WorkbenchCachedImage
+                  pluginId={pluginId}
+                  url={item.image.url}
                   alt={item.image.alt || ""}
                   loading="lazy"
                   style={{ objectFit: item.image.fit || "cover" }}
@@ -819,8 +906,9 @@ export default function PluginWorkbenchView({
           >
             <span className={`qx-host-workbench-icon${item.image?.url ? " has-image" : ""}`} aria-hidden="true">
               {item.image?.url ? (
-                <img
-                  src={item.image.url}
+                <WorkbenchCachedImage
+                  pluginId={pluginId}
+                  url={item.image.url}
                   alt=""
                   loading="lazy"
                   style={{ objectFit: item.image.fit || "cover" }}
@@ -830,7 +918,7 @@ export default function PluginWorkbenchView({
             <span className="qx-list-copy">
               <strong className="qx-list-title">{item.title}</strong>
               {item.subtitle ? <small>{item.subtitle}</small> : null}
-              {item.images?.length ? <WorkbenchListMedia images={item.images} /> : null}
+              {item.images?.length ? <WorkbenchListMedia pluginId={pluginId} images={item.images} /> : null}
               {item.progress != null ? (
                 <span className="qx-host-workbench-progress" aria-label={`${Math.round(item.progress)}%`}>
                   <i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />

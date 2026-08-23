@@ -105,12 +105,20 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - 插件 Workbench 的 Context 由宿主固定分区：当前对象标题、非主业务 Actions、可选后台状态，
   最后是可选「关于」。关于区只从 Manifest 投影本地化名称、作者和本地化描述；插件不得自行
   复制、排序或绘制另一套 About。当前语言无对应文案时回退英文 `name` / `description`。
+- 每个可打开的插件 Panel 由宿主在 Actions 末尾统一追加“插件设置…”，直接打开
+  Settings → Extensions → 当前插件的配置 Dialog，并在 Esc 后回到原 Panel；这不是进入
+  Qx 通用设置首页，也不占用通用设置快捷键。插件不得重复发布同义动作。
+  旧插件缺失 `menuKey` 时，宿主按稳定 action id 补齐同层唯一字母，显式且不冲突的字母优先。
+- 壁纸插件的后台 interval 命令声明 `backgroundCategory: "wallpaper"` 后，Context 的后台状态区
+  由宿主显示一个跨插件“停止/恢复自动更新”动作。停止只禁止今后的后台触发，不影响用户手动
+  设置、下载或浏览壁纸；恢复后从完整 interval 重新计时，不能立刻补跑造成壁纸突变。
 - 使用完整 Context Action 区的内置模块与插件面板只在 Bottom Bar 保留 Enter 主动作，
   Context 只列其余业务动作，并关闭重复的 Actions 菜单。插件宿主不得把 manifest 启动命令、
   后台 interval 或宿主 reload 自动追加为当前面板动作。
 - 有列表与详情的 Workbench 面板，Enter 是宿主导航动作：列表中打开所选详情，详情中关闭详情并
   返回列表。插件的“在浏览器打开”等业务动作不得占用 Enter，必须作为 Context Action 并使用带修饰键的
-  明确快捷键。
+  明确快捷键。宿主必须忽略此类旧插件声明的裸 `Enter`，只在没有可导航详情的根视图把 Enter
+  交给显式主业务动作。
 - **Context 侧栏由 QxShell 全局控制**：默认宽度使用 `--qx-context-w`，用户可拖动宿主分隔条调整；拖到右缘阈值后收起，主内容占满，收起后仍保留窄恢复轨。宽度由 Shell 使用同一持久键保存，禁止模块用 inline style / 私有 localStorage 改写；列表内部分栏（如 RSS 文章列表宽）继续使用自己的 token。
 - Bottom Bar 使用 `grid-template-columns: auto 1fr auto`。
 - Bottom Island 必须相对窗口居中：`position: absolute; left: 50%; transform: translateX(-50%)`。
@@ -457,6 +465,7 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - Workbench List / Gallery 默认以完整 Main Area 作为浏览画布；点击条目或对带详情的条目按 Enter 后，宿主统一切换为「左侧保留当前 List / Gallery 集合 + 右侧 Detail」的主从布局。Esc 先关闭 Detail 并恢复全宽集合，再清本地 query，最后离开模块；Context Panel 仍只承载 Actions。插件不得为 Bing、Unsplash、Brew 等消费者各自复制这套布局状态。
 - Workbench List / Gallery 的内容轨是稳定宿主表面：空数据或少量数据时仍占满当前浏览区或已打开详情时的左侧集合栏；空态必须跨满所属区域并垂直居中，不能缩成首个 grid cell 或随 item 数量塌缩。若发布的是无条目的面板级 `detail`，Detail 直接占满 Main Area，不保留无意义的空集合栏。
 - Workbench Detail 的正文浏览位置由宿主按 `pluginId + tab/filter scope + item.id` 统一保存为归一化百分比。首次打开未读过的条目必须从顶部开始，不能继承前一个条目的 `scrollTop`；返回旧条目恢复其自身位置，正文和图片异步增长期间继续校正。插件不得自行操作宿主滚动 DOM。
+- Workbench 的远程图片由宿主先落入按插件隔离的有界磁盘缓存，再用本地 asset URL 呈现；列表、详情与预览共用缓存，应用重启后继续复用。图片解析期间必须保留缩略图框和已声明的 `landscape/square/portrait` 舞台尺寸，不能让空白图片改变主从栏高度或造成详情重排。壁纸类插件应发布已知横向比例，不能用 `auto` 等待原图下载后再决定布局。
 - Workbench List 必须像 V2EX 一样始终保留左栏 section header 与数量；首次空载显示统一骨架行 + LoadingLabel，已有条目刷新时保留旧列表并把数量短暂显示为 `…`，不得退回整栏纯文本 loading。
 - Workbench List 的单图缩略图继续使用 `item.image`；社区动态可用
   `item.images[]` 在文字轨下显示完整的横向滚动图片卡；宿主只保留与详情相同的 24 张

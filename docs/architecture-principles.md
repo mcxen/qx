@@ -45,6 +45,10 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
 离线化只复用受限 HTTP 二进制端口和已校验的包内 asset 解析，不允许把任意本地路径扩成导出输入。
 抓取时带文档 Referer 与浏览器 UA，按文件魔数（优先于 Content-Type）校验后改写成 `data:image`；
 HTML 片段（内置 RSS）与 Workbench 结构化 `image` 走同一 `inlineRemoteImagesInHtml` / `inlineWorkbenchDetailImages` 端口，失败则整次导出取消。
+插件设置同样是宿主保留结构动作：Panel Actions 固定追加 `__qx:plugin-preferences`，通过
+`openSettings({ focusPluginId })` 进入插件配置并保留回程。列表/详情 Workbench 的 Enter
+只引用宿主打开/关闭详情动作；旧包遗漏的 `menuKey` 在宿主边界按稳定 action id 补齐，
+不得让本地化 label 成为首要快捷键身份。
 
 新增文件时先问：它的「唯一变化原因」是什么？说不清就拆。
 

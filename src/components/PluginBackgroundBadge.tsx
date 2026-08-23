@@ -43,7 +43,9 @@ function buildTooltip(
   t: (key: string, fallback: string) => string,
 ): string {
   const lines: string[] = [
-    summary.isRunning
+    summary.jobs.every((job) => job.state === "paused")
+      ? t("plugins.background.paused", "Paused")
+      : summary.isRunning
       ? t("plugins.background.running", "Background running")
       : summary.jobs.some((job) => job.lastOutcome === "error" || job.lastError)
         ? t("plugins.background.hasErrors", "Background · last run failed")
@@ -116,12 +118,17 @@ export default function PluginBackgroundBadge({
   if (commandName && !job) return null;
 
   const running = job ? job.state === "running" : summary.isRunning;
+  const paused = job
+    ? job.state === "paused"
+    : summary.jobs.every((item) => item.state === "paused");
   const failed = job
     ? Boolean(job.lastOutcome === "error" || job.lastError)
     : summary.jobs.some((item) => item.lastOutcome === "error" || item.lastError);
   const ok = !running && !failed && (job ? job.lastOutcome === "success" : summary.jobs.some((item) => item.lastOutcome === "success"));
 
-  const label = running
+  const label = paused
+    ? t("plugins.background.paused", "Paused")
+    : running
     ? t("plugins.background.badgeRunning", "Running")
     : failed
       ? t("plugins.background.badgeFailed", "Failed")
@@ -142,7 +149,9 @@ export default function PluginBackgroundBadge({
       )
     : buildTooltip(summary, t);
 
-  const toneClass = running
+  const toneClass = paused
+    ? " is-paused"
+    : running
     ? " is-running"
     : failed
       ? " is-failed"

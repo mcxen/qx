@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEventHandler, type ReactNode } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import type {
   IslandChromeVariant,
   IslandPlacement,
@@ -19,7 +20,7 @@ export interface QxIslandSurfaceProps {
   "aria-label"?: string;
 }
 
-const PROGRESS_PARTICLES = Array.from({ length: 18 }, (_, index) => ({
+const PROGRESS_PARTICLES = Array.from({ length: 10 }, (_, index) => ({
   left: 7 + ((index * 47 + 13) % 88),
   top: 18 + ((index * 29 + 11) % 64),
   size: 1 + (index % 3),
@@ -75,6 +76,10 @@ export default function QxIslandSurface({
     typeof progress === "number" && Number.isFinite(progress)
       ? Math.max(0, Math.min(100, progress))
       : null;
+  const reducedMotion = useReducedMotion();
+  const progressTransition = reducedMotion
+    ? { duration: 0 }
+    : { type: "spring" as const, stiffness: 420, damping: 36, mass: 0.42 };
   const previousProgressRef = useRef<number | null>(normalizedProgress);
   const trailProgressRef = useRef(0);
   const trailKeyRef = useRef(0);
@@ -143,13 +148,15 @@ export default function QxIslandSurface({
         </span>
       )}
       {normalizedProgress != null && progressStyle === "surface-fill" && (
-        <span
+        <motion.span
           className="qx-island-progress-surface-fill"
-          style={{ width: `${normalizedProgress}%` }}
+          initial={false}
+          animate={{ width: `${normalizedProgress}%` }}
+          transition={progressTransition}
           aria-hidden="true"
         >
           <ProgressParticles />
-        </span>
+        </motion.span>
       )}
       {normalizedProgress != null && progressStyle === "island-ring" && (
         <svg

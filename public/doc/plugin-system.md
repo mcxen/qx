@@ -91,7 +91,7 @@ Workbench 是插件 UI 的声明模型，QxShell 是宿主呈现层：
 install → validate → load → render cached Workbench
                               │
                               ├─ user action / command
-                              └─ optional background interval
+                              └─ optional background interval + host policy category
                                       ↓
                          queued → running → terminal state
 ```

@@ -183,6 +183,11 @@ Plugins 工作流负责更新索引和包，Plugin Store 工作流负责重新�
 使用的字段提供 `en` 与 `zh-CN`；宿主不会维护按插件 ID 分散的兼容翻译，旧包缺字段时
 只显示包内原始文本。
 
+周期命令使用 `mode: "no-view"` + `interval`（如 `30m` / `1d`）。如果该周期命令会自动
+修改系统壁纸，还必须声明 `backgroundCategory: "wallpaper"`。这是宿主识别跨插件暂停策略的
+稳定字段；不要依赖命令名称、关键词或 `system` 权限推断。用户手动运行同一命令仍使用
+`userInitiated`，不受自动壁纸暂停影响。
+
 ### 导出一致性
 
 - Manifest 中每个 command 必须在 `index.js` 默认导出的 `commands` 中存在，反之亦然。

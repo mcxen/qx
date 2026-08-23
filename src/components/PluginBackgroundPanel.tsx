@@ -5,7 +5,9 @@
  * GitHub Actions run lists): semantic status color, relative time primary,
  * absolute time secondary, compact activity rows with duration.
  */
+import { Pause, Play } from "lucide-react";
 import { useT } from "../i18n";
+import { Button } from "./ui";
 import {
   formatDurationMs,
   formatRelativeTime,
@@ -13,6 +15,8 @@ import {
   type PluginBackgroundJob,
   type PluginBackgroundSummary,
 } from "../plugin/backgroundActivity";
+import { isBackgroundCategoryEnabled } from "../plugin/backgroundActivity";
+import { usePluginRegistry } from "../plugin/registry";
 import { usePluginBackgroundSummary } from "./PluginBackgroundBadge";
 
 function fillN(template: string, n: number): string {
@@ -47,7 +51,10 @@ function relativeLabel(
 function statusMeta(
   job: PluginBackgroundJob,
   t: (key: string, fallback: string) => string,
-): { tone: "running" | "success" | "error" | "scheduled" | "idle"; label: string } {
+): { tone: "running" | "success" | "error" | "scheduled" | "idle" | "paused"; label: string } {
+  if (job.state === "paused") {
+    return { tone: "paused", label: t("plugins.background.paused", "Paused") };
+  }
   if (job.state === "running") {
     return { tone: "running", label: t("plugins.background.running", "Background running") };
   }
@@ -112,6 +119,8 @@ function JobCard({
           <span className="qx-bg-meta-value" title={formatTimestamp(job.nextRunAt) || undefined}>
             {job.state === "running"
               ? t("plugins.background.runningNow", "In progress")
+              : job.state === "paused"
+                ? t("plugins.background.notScheduled", "Not scheduled")
               : relativeLabel(job.nextRunAt, t)}
           </span>
         </div>
@@ -170,12 +179,45 @@ export default function PluginBackgroundPanel({
 }) {
   const t = useT();
   const live = usePluginBackgroundSummary(pluginId);
+  const setBackgroundCategoryEnabled = usePluginRegistry(
+    (state) => state.setBackgroundCategoryEnabled,
+  );
   const summary = summaryProp ?? live;
   if (!summary?.hasBackground) return null;
+  const hasWallpaperAutomation = summary.jobs.some(
+    (job) => job.backgroundCategory === "wallpaper",
+  );
+  const wallpaperAutomationEnabled = isBackgroundCategoryEnabled("wallpaper");
 
   return (
     <div className="qx-bg-panel">
-      <div className="qx-action-title">{t("plugins.background.section", "Background")}</div>
+      <div className="qx-bg-panel-head">
+        <div>
+          <div className="qx-action-title">{t("plugins.background.section", "Background")}</div>
+          {hasWallpaperAutomation ? (
+            <div className="qx-bg-policy-description">
+              {t(
+                "plugins.background.wallpaperPolicyDescription",
+                "Controls automatic wallpaper changes across all installed wallpaper plugins.",
+              )}
+            </div>
+          ) : null}
+        </div>
+        {hasWallpaperAutomation ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="qx-bg-policy-button"
+            onClick={() => setBackgroundCategoryEnabled("wallpaper", !wallpaperAutomationEnabled)}
+          >
+            {wallpaperAutomationEnabled ? <Pause size={13} /> : <Play size={13} />}
+            {wallpaperAutomationEnabled
+              ? t("plugins.background.stopWallpaper", "Stop auto updates")
+              : t("plugins.background.resumeWallpaper", "Resume auto updates")}
+          </Button>
+        ) : null}
+      </div>
       <div className="qx-bg-jobs">
         {summary.jobs.map((job) => (
           <JobCard key={job.commandName} job={job} t={t} />

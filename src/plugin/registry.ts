@@ -24,11 +24,15 @@ import type {
 } from "./types";
 import {
   isBackgroundIntervalCommand,
+  isBackgroundCategoryEnabled,
+  normalizeBackgroundCategory,
   parseIntervalMs,
   peekLastRunAt,
   peekNextRunAt,
+  persistBackgroundCategoryEnabled,
   resolveBackgroundNextRunAt,
   usePluginBackgroundStore,
+  type PluginBackgroundCategory,
 } from "./backgroundActivity";
 import { clearPluginIcons } from "./pluginIconRegistry";
 import {
@@ -201,6 +205,10 @@ interface PluginRegistryStore {
     command: RegisteredCommand,
     options?: import("./types").PluginCommandRunOptions,
   ) => Promise<void>;
+  setBackgroundCategoryEnabled: (
+    category: PluginBackgroundCategory,
+    enabled: boolean,
+  ) => void;
   /** @internal */ _loadToken: number;
 }
 
@@ -258,6 +266,9 @@ function shouldRescheduleBackgroundCommand(
   if (!state.workers[command.pluginId]) return false;
   const plugin = state.plugins.find((item) => item.id === command.pluginId);
   if (!plugin?.enabled) return false;
+  if (!isBackgroundCategoryEnabled(normalizeBackgroundCategory(command.backgroundCategory))) {
+    return false;
+  }
   const live = state.commands.find(
     (item) => item.pluginId === command.pluginId && item.name === command.name,
   );
@@ -359,6 +370,15 @@ function scheduleBackgroundCommand(command: RegisteredCommand): void {
     nextRunAt: now + delay,
   });
   backgroundTimers.set(jobKey, timer);
+}
+
+function clearBackgroundCommandTimer(command: RegisteredCommand): void {
+  const key = backgroundJobKey(command.pluginId, command.name);
+  const timer = backgroundTimers.get(key);
+  if (timer != null) {
+    window.clearTimeout(timer);
+    backgroundTimers.delete(key);
+  }
 }
 
 /** Topological sort of plugins based on declared dependencies. */
@@ -920,8 +940,17 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
 
   runCommand: async (command, options) => {
     const startedAt = performance.now();
-    const isBackgroundJob =
-      options?.launchType === "background" || isBackgroundIntervalCommand(command);
+    const isBackgroundJob = options?.launchType === "background";
+    const backgroundCategory = normalizeBackgroundCategory(command.backgroundCategory);
+    if (isBackgroundJob && !isBackgroundCategoryEnabled(backgroundCategory)) {
+      usePluginBackgroundStore.getState().markPaused(command);
+      registryLogger.info("Background plugin command skipped by host policy", {
+        pluginId: command.pluginId,
+        command: command.name,
+        backgroundCategory,
+      });
+      return;
+    }
     // Interval commands (manual or timer) update the background-activity port so
     // launcher / settings badges show last execution without coupling to timers.
     if (isBackgroundIntervalCommand(command)) {
@@ -935,9 +964,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     });
     try {
       await command.run(createUnavailableContext(command.pluginId), {
-        launchType:
-          options?.launchType ||
-          (isBackgroundIntervalCommand(command) ? "background" : "userInitiated"),
+        launchType: options?.launchType || "userInitiated",
         timeoutMs: options?.timeoutMs,
       });
       if (isBackgroundIntervalCommand(command)) {
@@ -969,6 +996,27 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           detail: `${command.pluginName}: ${summarizeError(error)}`,
         });
       }
+    }
+  },
+
+  setBackgroundCategoryEnabled: (category, enabled) => {
+    persistBackgroundCategoryEnabled(category, enabled);
+    const commands = get().commands.filter(
+      (command) =>
+        isBackgroundIntervalCommand(command)
+        && normalizeBackgroundCategory(command.backgroundCategory) === category,
+    );
+    const background = usePluginBackgroundStore.getState();
+    for (const command of commands) {
+      clearBackgroundCommandTimer(command);
+      if (!enabled) {
+        background.markPaused(command);
+        continue;
+      }
+      const intervalMs = parseIntervalMs(command.interval);
+      if (!intervalMs) continue;
+      background.markScheduled(command, Date.now() + intervalMs);
+      scheduleBackgroundCommand(command);
     }
   },
 

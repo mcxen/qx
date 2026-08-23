@@ -1,5 +1,73 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — 20 个市场插件的 Actions / Enter 一致性
+
+**状态**：宿主端口与自动验证完成；等待桌面键盘交互复核。
+
+- 审计市场插件库 20 个插件：19 个 Panel 插件统一获得“插件设置…”动作，直接打开当前插件
+  的配置 Dialog；无 Panel 的 Clipboard Actions 继续保持两个独立 no-view 命令，不伪造面板动作。
+- Workbench Enter 收口为列表打开详情、详情返回列表；只有不存在可导航详情的根视图才执行
+  显式主业务动作。宿主忽略旧包把裸 Enter 绑到打开网页、设壁纸、安装等业务动作的声明。
+- Actions 菜单继续由 `Cmd/Ctrl+K` 打开；显式唯一 `menuKey` 保留，旧插件缺失或冲突时按
+  稳定 action id 补齐唯一字母，避免依赖中英文 label。
+- 设置入口使用宿主保留 `__qx:plugin-preferences`，不回传插件 handler、不占用 Qx 通用设置
+  快捷键；Esc 从配置 Dialog / Settings 返回原插件。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run build` / `node scripts/check-module-ports.mjs`
+- [x] `npm run check`（含 `plugin_workbench_cache_image` IPC 文档基线）
+- [ ] 桌面态：列表/详情 Enter、`Cmd/Ctrl+K` 字母动作、插件配置 Dialog 与 Esc 回程。
+
+## Fix — V2EX 每次打开优先读取缓存
+
+**状态**：代码完成，专项缓存回归、插件打包与 Qx 自动检查通过；待桌面断网复验。
+
+- 根因：插件首帧在读缓存前发布 `loading=false + 空列表`，宿主会把它当成权威成功结果；插件 SWR 超过 3 分钟后虽返回旧数据，但重验只写磁盘、不更新当前 Workbench，超过 1 小时又完全跳过旧缓存。
+- 非强制列表与回复加载现在始终先读 7 天保留缓存：fresh 命中不访问 transport，stale 命中立即回画并在当前 Workbench 更新重验结果；手动刷新仍强制联网，失败保留已有内容。
+- Workbench 首帧改为 loading shell，并按 latest/hot/node/notifications 发布稳定 cache scope，避免标签间快照互相覆盖；动态 persist key 注册到 Storage Management。
+
+### 验证
+
+- [x] V2EX cache smoke：首帧、2 小时旧缓存、当前面板重验、fresh 零请求、回复缓存
+- [x] V2EX 打包与归档 manifest/release 检查
+- [x] `npm run check` / `npm run build`
+- [ ] 桌面态：联网打开一次后退出并断网重开，列表和已读回复立即可见。
+
+## Fix — 壁纸 Workbench 排版与持久图片缓存
+
+**状态**：代码与自动验证完成，等待桌面交互复核。
+
+- 根因：Workbench 快照只缓存图片 URL，宿主只有进程内解码缓存；重启后列表、详情和大图预览都会重新请求远程图片，首次加载的空白阶段又会让 `aspectRatio: auto` 详情发生重排。
+- 新增宿主 `remote_image_cache`：HTTPS 位图按插件隔离落盘，列表、详情、行内图片和预览共用本地 asset URL；单图 20 MiB、每插件最多 256 文件或 512 MiB，超限淘汰最旧文件。
+- 必应壁纸设为桌面改为 20 个固定槽循环复用；同一图片存在时不再下载，避免此前一张一次文件的持续增长。艺术壁纸原有 20 槽业务缓存保持不变；两个插件详情均使用稳定横向舞台。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run check` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / `remote_image_cache` 定向测试
+- [x] qx-plugins：Bing / Another Boring Piece smoke、双包打包、归档 manifest 检查
+- [ ] 桌面态：首次下载后重启 Qx，列表与详情从本地缓存显示；重复设置同一张必应壁纸不再新增文件；主从栏不重排。
+
+## Feature — 跨插件停止自动更新壁纸
+
+**状态**：宿主端口、必应壁纸与每日艺术壁纸接入、自动验证完成；等待桌面交互复核。
+
+- `no-view + interval` 命令可声明 `backgroundCategory: "wallpaper"`，由 Qx 宿主持久化一份
+  跨插件暂停策略，不再由每个壁纸插件重复实现总开关。
+- 必应壁纸 Context 的后台区可“停止自动更新”；关闭后清除全部同类 pending timer，并在
+  dispatch 前再次门控。已在执行的任务允许结束，但不会重新调度。
+- 每日艺术壁纸接入同一能力；未来壁纸插件只需声明相同分类。手动设置、下载、浏览以及
+  用户主动运行 interval command 仍保持 `userInitiated`，不受暂停影响。
+- 恢复自动更新后从当前时间等待完整 interval，不立即补跑，避免桌面壁纸突然变化。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run check` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / manifest `backgroundCategory` 定向测试
+- [x] qx-plugins：Bing / Another Boring Piece smoke、双包打包、归档 manifest 检查
+- [ ] 桌面态：在必应壁纸停止自动更新，确认艺术壁纸同步显示暂停；重启后仍暂停；恢复后不立即换壁纸；手动设置仍可用。
+
 ## Fix — 离线保存文章时嵌入图片（Workbench 通用端口）
 
 **状态**：代码与自动验证完成，等待桌面交互复核。

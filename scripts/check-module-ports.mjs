@@ -349,6 +349,16 @@ const pluginHostSource = read("src/plugin/PluginHost.tsx");
 if (!pluginHostSource.includes("topbarFilters={topbarFilters}")) {
   fail("PluginHost must project Workbench tabs/filters through QxShell.topbarFilters");
 }
+for (const token of [
+  'id: "__qx:plugin-preferences"',
+  't("plugins.openPluginSettings", "Plugin Settings…")',
+  "openSettings({ focusPluginId: pluginId })",
+  "workbenchCloseDetailAction?.id\n    ?? explicitPrimaryWorkbenchAction?.id",
+]) {
+  if (!pluginHostSource.includes(token)) {
+    fail(`PluginHost action/Enter contract missing: ${token}`);
+  }
+}
 const pluginRegistrySource = read("src/plugin/registry.ts");
 if (!pluginRegistrySource.includes("resolveBackgroundNextRunAt")) {
   fail("plugin registry must use the shared background schedule resolver");
@@ -375,6 +385,14 @@ if (!marketplaceSource.includes("pub async fn list_installed_plugins()")
 const pluginManagerSource = read("src/modules/settings/plugins/PluginManager.tsx");
 if (pluginManagerSource.includes("if (!loaded && !loading)")) {
   fail("PluginManager must consume the cached registry; mount must not start a refresh loop");
+}
+for (const token of [
+  'sessionStorage.getItem("qx.settings.focusPluginId")',
+  "setConfigId(pendingPluginId)",
+]) {
+  if (!pluginManagerSource.includes(token)) {
+    fail(`plugin preference deep link must open the exact plugin configuration dialog: ${token}`);
+  }
 }
 const activationSource = read("src/shell/windowActivation.ts");
 for (const token of [
@@ -824,6 +842,33 @@ if (bundleProductionModule("src/components/qx-shell/actionProtocol.ts", actionPr
   }
 }
 
+const pluginActionsOut = path.join(scratch, "pluginActions.mjs");
+if (bundleProductionModule("src/plugin/pluginActions.ts", pluginActionsOut)) {
+  try {
+    const pluginActions = await import(pathToFileURL(pluginActionsOut).href + `?t=${Date.now()}`);
+    const normalized = pluginActions.assignPluginActionMenuKeys([
+      { id: "__qx:workbench-open-detail", label: "Open Details", menuKey: "d" },
+      { id: "download", label: "Download" },
+      { id: "refresh", label: "Refresh", menuKey: "r" },
+      { id: "reset", label: "Reset", menuKey: "r" },
+    ]);
+    const keys = normalized.map((action) => action.menuKey);
+    if (new Set(keys).size !== keys.length || keys.some((key) => !/^[a-z]$/.test(key || ""))) {
+      fail("plugin action fallback menu keys must be unique ASCII letters");
+    }
+    if (keys[0] !== "d" || keys[2] !== "r") {
+      fail("plugin action fallback must preserve explicit unique menu keys");
+    }
+    if (!pluginActions.isBareEnterShortcut("Enter")
+        || !pluginActions.isBareEnterShortcut("↵")
+        || pluginActions.isBareEnterShortcut("CmdOrCtrl+Enter")) {
+      fail("plugin action Enter normalization must only reserve bare Enter");
+    }
+  } catch (e) {
+    fail(`plugin action runtime test: ${e}`);
+  }
+}
+
 const surfaceProvidersOut = path.join(scratch, "surfaceProviders.mjs");
 if (bundleProductionModule("src/plugin/surfaceProviders.ts", surfaceProvidersOut)) {
   try {
@@ -951,6 +996,28 @@ if (bundleProductionModule("src/plugin/backgroundActivity.ts", backgroundSchedul
     if (throttled !== 1.75 * day) {
       fail("background schedule must retain a full interval after the last run");
     }
+    const policyValues = new Map();
+    globalThis.window = {
+      localStorage: {
+        getItem: (key) => policyValues.get(key) ?? null,
+        setItem: (key, value) => policyValues.set(key, String(value)),
+      },
+    };
+    if (background.normalizeBackgroundCategory("wallpaper") !== "wallpaper") {
+      fail("wallpaper must remain the stable background policy category");
+    }
+    if (background.normalizeBackgroundCategory("unknown") !== null) {
+      fail("unknown background policy categories must be rejected");
+    }
+    background.persistBackgroundCategoryEnabled("wallpaper", false);
+    if (background.isBackgroundCategoryEnabled("wallpaper")) {
+      fail("paused wallpaper policy must block background scheduling");
+    }
+    background.persistBackgroundCategoryEnabled("wallpaper", true);
+    if (!background.isBackgroundCategoryEnabled("wallpaper")) {
+      fail("resumed wallpaper policy must allow background scheduling");
+    }
+    delete globalThis.window;
   } catch (e) {
     fail(`background schedule runtime test: ${e}`);
   }

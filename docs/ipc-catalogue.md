@@ -150,7 +150,7 @@ bucket 报告，`qx_storage_clear_qxai_sessions` 仅在用户显式确认后清�
 
 ## plugin 通用宿主 API
 
-`plugin_clipboard_read/write`、`plugin_perform_paste`、`plugin_perform_paste_at_cursor`、`plugin_http_fetch(req)`（只允许 http/https + 超时；`image/*` 即使是合法 UTF-8 也必须填 `body_base64`，供离线 HTML 嵌入）、`plugin_notification_show(req)`、`plugin_resolve_asset(id, asset_path)`。
+`plugin_clipboard_read/write`、`plugin_perform_paste`、`plugin_perform_paste_at_cursor`、`plugin_http_fetch(req)`（只允许 http/https + 超时；`image/*` 即使是合法 UTF-8 也必须填 `body_base64`，供离线 HTML 嵌入）、`plugin_notification_show(req)`、`plugin_resolve_asset(id, asset_path)`。`plugin_workbench_cache_image(id, url)` 是宿主内部呈现端口：校验远程位图后写入按插件隔离的有界磁盘缓存，将具体文件加入 asset protocol scope 并返回本地路径；它不暴露给插件 RPC，也不替代插件的领域缓存。
 
 文件管理器输入端口：`context.files.selection()` 需要 `file-selection`，只读取宿主在唤起前捕获的不可变快照；`context.files.performSelectionOperation(request)` 需要 `file-operations`，请求必须携带当前快照 `revision`。插件不能用这两个权限把任意路径伪装成用户选择。
 
@@ -310,7 +310,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `plugin_tray_set_items`, `plugin_tray_clear`, `plugin_tray_list`, `plugin_clipboard_read`,
 `plugin_clipboard_write`, `plugin_perform_paste`, `plugin_perform_paste_at_cursor`, `plugin_run_applescript`,
 `plugin_file_read_base64`, `plugin_file_exists`, `plugin_file_ensure_dir`, `plugin_file_write_base64`,
-`plugin_file_empty_dir`, `plugin_file_list`, `plugin_ai_list_providers`, `plugin_ai_default_model`,
+`plugin_file_empty_dir`, `plugin_file_list`, `plugin_workbench_cache_image`, `plugin_ai_list_providers`, `plugin_ai_default_model`,
 `plugin_ai_agent_settings`, `plugin_ai_chat`, `plugin_ai_stream_chat`, `plugin_ai_stream_chat_events`,
 `plugin_ai_run_bash`, `plugin_cli_run`, `plugin_cli_bash`, `plugin_cli_which`, `plugin_cli_start`,
 `plugin_cli_poll`, `plugin_cli_cancel`, `plugin_cli_list_jobs`, `plugin_system_env`,

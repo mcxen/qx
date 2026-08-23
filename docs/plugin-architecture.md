@@ -43,8 +43,14 @@
 | `markScheduled` | timer arm | 持久化 `nextRunAt`，标签显示已调度 |
 | `markRunning` / `markFinished` | `runCommand` | 持久化 `lastRunAt` / error；标签显示运行中 → 最近执行 |
 | `summarizePlugin` / `PluginBackgroundBadge` | ResultsList、Installed 卡片、PluginHost | 只读呈现 |
+| `setBackgroundCategoryEnabled("wallpaper", …)` | PluginHost 后台状态区 | 跨插件暂停/恢复自动换壁纸；手动 command 不受影响 |
 
 禁止在 UI 层另写一套 localStorage key 或直接读 timer Map。
+
+会产生跨插件系统副作用的 interval command 可声明受限 `backgroundCategory`。当前稳定值只有
+`wallpaper`：宿主持久化一份全局策略，暂停时清除所有同类 pending timer 并在最终 dispatch 前
+再次门控；已在执行的调用允许完成但不得重新调度。恢复时从当前时刻等待一个完整 interval。
+未声明分类的旧插件保持原调度行为，不能根据 command 名称或 `system.setWallpaper` 权限猜测分类。
 
 **模块壳 chrome**（内置与扩展共用）：
 
@@ -80,6 +86,11 @@ plugin business state
 异步场景，不能发送 DOM patch。插件若并发产生整份快照，可提供单调递增 `revision`；
 宿主忽略更旧 revision。selection、focus、scroll 的连续性依赖稳定 item id，插件不得
 用数组索引或标题作为 id。
+
+Workbench 的 HTTPS 图片先经根级 `remote_image_cache` 写入按插件隔离的持久缓存，再以
+asset URL 呈现；单图上限 20 MiB，每个插件最多 256 个文件或 512 MiB，超限淘汰最旧文件。
+列表、详情、行内图片和预览共享该缓存，进程内 promise/decode 缓存只负责合并并发与减少
+解码抖动，不能替代磁盘缓存。插件仍发布规范远程 URL，不把缓存路径或 Base64 副本写回快照。
 
 SDK 不维护 host/iframe 两份实现：`createPluginSdkRuntime` 是无外部闭包的自包含 factory，可信 context 直接调用，sandbox bootstrap 通过 `Function#toString` 注入同一实现。它同时提供 `context.state` 纯进程内原语（latest writer、read ledger、bounded LRU、generation gate）；这些原语不发 RPC、不申请权限，直接与 iframe 生命周期绑定。Workbench `island` 不再由 kit 额外调用 `context.island`；PluginHost 接受同一 state 后统一投影，避免 state 与 island 两条消息竞态。
 
@@ -120,6 +131,8 @@ pointer click / host keydown / hidden iframe forwarded key
 - 过期 `nextRunAt` 不立刻连发：至少再等一个完整 `interval`。
 - 宿主侧用 `lastRunAt + interval` 做二次节流。
 - 后台 run 使用 `launchType: background` + 更长 timeout（120s），避免下载超时后并发 set wallpaper。
+- interval 命令由用户手动运行时必须使用 `launchType: userInitiated`；全局壁纸暂停只拦截宿主调度的
+  `background` dispatch，不得禁用手动“立即更换”。
 - Raycast `Cache` 落盘到 `localStorage`（如 Bing `lastRefresh`），不再每次 invoke 新建空 Map。
 - **停用/卸载/registry unload 必须同步停后台与灵动岛**：清 timer、bump `_loadToken`、
   移除 worker/panel iframe，并 `clearPluginIslandProjection`。in-flight 后台
@@ -195,6 +208,8 @@ Workbench 图片仍是受限纯数据端口：`item.image` 在 Gallery 中作为
 `detail.images[]` 用于社区帖子等多图内容并由宿主排成响应式网格。图片只接受 HTTPS
 或 `data:image/` URL；多图最多 24 张，并统一经过
 `normalizePluginWorkbenchState` 长度与协议校验。
+宿主负责 HTTPS 图片的持久下载、格式校验、asset scope 与失败时回退远程地址；插件不得把
+Workbench 呈现缓存当作可供系统壁纸等业务操作使用的文件仓库。
 `detail.replies` 是详情阅读流底部的结构化回复端口；宿主复用 `QxReplyList`，统一
 渲染 `#floor`、作者、作者右侧的可选 `likeCount`、时间、楼主标记和正文。正文默认使用
 纯文本 `body`；需要小图原位混排时，正文与回复共用 `content[]` 行内协议，接受 text、远程

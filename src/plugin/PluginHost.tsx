@@ -64,6 +64,8 @@ import {
 } from "./pluginIsland";
 import { islandHost } from "../island";
 import { useWorkbenchHtmlExportAction } from "./useWorkbenchHtmlExportAction";
+import { openSettings } from "../modules/settings/openSettings";
+import { assignPluginActionMenuKeys, isBareEnterShortcut } from "./pluginActions";
 
 export function PluginHost() {
   const loaded = usePluginRegistry((state) => state.loaded);
@@ -605,11 +607,10 @@ export function PluginPanelViewport() {
 
   // Workbench Enter contract:
   // - List + item has detail → Open Details (read first)
-  // - Detail open + explicit primary business action → that action (Install / Open / Pause…)
-  // - Detail open without primary business action → Back to List
-  // - List without detail → explicit primary (or first enabled) business action
-  // Esc still closes detail via shell esc.inner; do not force Enter=Back when a
-  // real primary is available (that made brew Install / wallpaper Set unreachable).
+  // - Detail open → Back to List
+  // - List/root without a navigable detail → explicit primary (or first enabled)
+  // Business actions keep explicit modified shortcuts but never take bare Enter
+  // away from list/detail navigation.
   const explicitPrimaryWorkbenchAction = useMemo(
     () => workbenchActionDescriptors.find((action) => action.primary && !action.disabled),
     [workbenchActionDescriptors],
@@ -640,12 +641,11 @@ export function PluginPanelViewport() {
     return {
       id: "__qx:workbench-close-detail",
       label: t("plugins.workbench.backToList", "Back to List"),
-      // Enter is reserved for the business primary when one exists; Esc backs out.
-      kbd: explicitPrimaryWorkbenchAction ? undefined : "↵",
+      kbd: "↵",
       menuKey: "b",
       onClick: closeWorkbenchDetail,
     };
-  }, [closeWorkbenchDetail, explicitPrimaryWorkbenchAction, t, workbench, workbenchDetailOpen]);
+  }, [closeWorkbenchDetail, t, workbench, workbenchDetailOpen]);
 
   // Raycast ActionPanel[0] and declarative Workbench primary both map to the
   // same QxShell primary/action surfaces.
@@ -658,11 +658,11 @@ export function PluginPanelViewport() {
       : itemActions.find((action) => !action.disabled);
 
   const workbenchPrimaryActionId = workbenchOpenDetailAction?.id
-    ?? explicitPrimaryWorkbenchAction?.id
     ?? workbenchCloseDetailAction?.id
+    ?? explicitPrimaryWorkbenchAction?.id
     ?? (primaryItem && workbench ? primaryItem.id : undefined);
 
-  const contextualActions = useMemo<QxShellAction[]>(() => workbench
+  const contextualActions = useMemo<QxShellAction[]>(() => assignPluginActionMenuKeys(workbench
     ? [
       ...(workbenchOpenDetailAction ? [workbenchOpenDetailAction] : []),
       ...(workbenchCloseDetailAction ? [workbenchCloseDetailAction] : []),
@@ -670,15 +670,23 @@ export function PluginPanelViewport() {
         id: action.id,
         label: action.label,
         menuKey: action.menuKey,
-        kbd: action.kbd
+        kbd: selectedWorkbenchItem && selectedWorkbenchDetail && isBareEnterShortcut(action.kbd)
+          ? undefined
+          : action.kbd
           || (action.id === workbenchPrimaryActionId ? "Enter" : undefined),
         disabled: action.disabled,
         tone: (action.tone === "danger" ? "danger" : action.primary ? "primary" : "normal") as QxShellAction["tone"],
         onClick: () => runWorkbenchAction(action.id),
       })),
       ...(workbenchHtmlExportAction ? [workbenchHtmlExportAction] : []),
+      {
+        id: "__qx:plugin-preferences",
+        label: t("plugins.openPluginSettings", "Plugin Settings…"),
+        onClick: () => openSettings({ focusPluginId: pluginId }),
+      },
     ]
-    : itemActions.map((action, index) => ({
+    : [
+      ...itemActions.map((action, index) => ({
         id: `item-${action.id}`,
         label: action.title,
         menuKey: action.menuKey,
@@ -686,11 +694,21 @@ export function PluginPanelViewport() {
         disabled: action.disabled,
         tone: action.tone,
         onClick: () => runItem(action.id),
-      })), [
+      })),
+      {
+        id: "__qx:plugin-preferences",
+        label: t("plugins.openPluginSettings", "Plugin Settings…"),
+        onClick: () => openSettings({ focusPluginId: pluginId }),
+      },
+    ]), [
         hasExplicitPanelPrimary,
         itemActions,
+        pluginId,
         runItem,
         runWorkbenchAction,
+        selectedWorkbenchDetail,
+        selectedWorkbenchItem,
+        t,
         workbench,
         workbenchActionDescriptors,
         workbenchCloseDetailAction,
@@ -713,6 +731,9 @@ export function PluginPanelViewport() {
 
   const backgroundDetail = (() => {
     if (!background?.hasBackground) return undefined;
+    if (background.jobs.every((job) => job.state === "paused")) {
+      return t("plugins.background.paused", "Paused");
+    }
     if (background.isRunning) return t("plugins.background.running", "Background running");
     const failed = background.jobs.some((job) => job.lastOutcome === "error" || job.lastError);
     if (failed) return t("plugins.background.hasErrors", "Background · last run failed");
@@ -792,9 +813,7 @@ export function PluginPanelViewport() {
             if (item) selectWorkbenchItem(item.id);
           },
           onOpen: workbenchDetailOpen
-            ? (explicitPrimaryWorkbenchAction
-              ? () => runWorkbenchAction(explicitPrimaryWorkbenchAction.id)
-              : undefined)
+            ? closeWorkbenchDetail
             : selectedWorkbenchItem && selectedWorkbenchDetail
               ? () => activateWorkbenchItem(selectedWorkbenchItem.id)
               : primaryItem

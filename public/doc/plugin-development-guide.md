@@ -124,8 +124,18 @@ Enter handler。
 ### 2.1 图标与社区商店资源
 
 社区插件的图标默认使用仓库内的 `skills/imagegen` Skill 生成。它是图标的默认生产流程，
-不是把一张参考图直接当成最终 Logo：先读 Skill 和本手册，针对当前插件生成独立的方形图标，
-再人工检查主体、边缘、缩放和浅色/深色背景下的可读性。
+不是把一张参考图直接当成最终 Logo：先读 Skill 和其中的
+`references/qx-logo-reference-method.md`，针对当前插件生成独立的方形图标，再人工检查
+主体、边缘、缩放和浅色/深色背景下的可读性。
+
+参考 Logo 时采用三层方法：官方 Logo 或业界通用标志只提供识别语义；已批准的 Qx 图标只
+提供浅灰油印纸、粗线条、圆角矩形、留白和套印偏移等家族风格；插件 UI 或功能语义决定
+最终主体。不得把官方 Logo 像素级照搬，也不得把整张 Logo 墙直接作为一个未分类的参考图。
+先把来源压缩成一个主体和 1–3 个主要形状，再套用统一的 Qx 外框和小尺寸安全区。
+
+如果用户要求 Logo 墙或 4 个版本，应锁定画布、外框大小、圆角、纸张色、线宽和纹理，只
+改变一个变量（填充/线稿、几何化程度、方向或强调色位置）。候选图使用
+`icon-generated-vN.png`，获得确认前不要覆盖正式的 `icon-generated.png`。
 
 推荐约定：
 
@@ -134,8 +144,9 @@ Enter handler。
 - 最终文件保存为插件目录根部的 `icon-generated.png`，建议为 512×512 方形 PNG；图标中
   不要放难以缩放的长标题、版本号或运行时状态。若插件有必须保留的官方商标，应在 Skill
   生成提示中明确用途，并检查其授权与误导风险。
-- 在 `manifest.json` 中声明 `"icon": "icon-generated.png"`。旧的 `icon.svg`、`icon.png`
-  可以保留作回退或品牌原稿，但不能让文件名排序决定市场使用哪一张图。
+- 在 `manifest.json` 中声明 `"icon": "icon-generated.png"`。正式替换后应删除会被误选为
+  主图标的旧 `icon.svg`、`icon.png` 或旧生成版本；只有仍被命令或 Manifest 明确引用的
+  功能专用图像可以保留。不能让文件名排序决定市场使用哪一张图。
 - 预览图使用 `manifest.screenshots` 声明包内相对路径；只放真实的插件界面截图，不把图标
   生成过程或候选 Logo 墙当作产品截图。
 
@@ -154,7 +165,8 @@ npm run store:build
 发布前应确认 `index.json` 已包含插件、`.qx-plugin` 包包含 `icon-generated.png`，并在本地
 打开 `store/dist/` 检查列表页和插件详情页。若修改了图标或 `manifest.screenshots`，重复
 执行 `npm run store:build`；合并到 `main` 后，Package Plugins 与 Plugin Store 工作流会
-分别更新索引、重新烘焙静态页面并按配置部署 Pages。
+分别更新索引、重新烘焙静态页面并按配置部署 Pages。必须确认工作流中的 Pages 部署步骤
+实际运行；仅构建成功或上传了 Actions artifact，不代表 Cloudflare 公网 URL 已更新。
 
 显示器亮度插件应使用 `context.system.displayBrightness()` 读取 Qx 提供的内置屏和
 外接 DDC/CI 目标，并使用 `context.system.setDisplayBrightness(id, value)` 写入 0–100
@@ -327,6 +339,10 @@ indeterminate，不能 mock 百分比。
 分页、流式批次或局部详情完成时使用 controller `updateItems({ upsert, removeIds, order,
 selectedId, revision })`；这会通过宿主增量协议合并并更新快照，不要为单个条目重发完整集合。
 
+Workbench 的 HTTPS 图片由宿主统一下载到按插件隔离的有界磁盘缓存，并在列表、详情与预览间
+复用；插件只发布稳定远程 URL。业务原始响应、目录和“设为壁纸”所需的可操作文件仍由插件按
+自己的领域策略持久化，不能把 Workbench 图片缓存误当成业务文件仓库。
+
 媒体必须受字节预算约束，但不得用产品级图片数量上限截断上游正常集合：单个列表项
 最多 4 张紧凑预览，详情按源顺序发布完整集合；宿主仅在信任边界保留 96 张异常输入
 安全阈值。Workbench 单次快照的媒体 URL 总长度不超过 32 MB。插件自己的
@@ -421,7 +437,11 @@ Actions 不是说明列表。每个可见业务 action 都必须执行一个真�
 `menuKey` 与 `kbd` 不同：前者仅在 Actions 菜单打开时生效，不会抢走搜索输入；后者是可选的
 窗口内完整快捷键，业务动作使用 `CmdOrCtrl+…` 等可移植写法，不能用单字母 `kbd` 抢占输入。
 插件 action id 不得使用宿主保留的 `__qx:` 前缀；打开/关闭详情和资讯 HTML 保存等宿主动作
-不会进入插件 `onAction`。
+不会进入插件 `onAction`。宿主还会在每个 Panel 的 Actions 末尾统一追加“插件设置…”，
+直接打开 Settings → Extensions → 当前插件的配置 Dialog 并保留 Esc 回程；它不是 Qx
+通用设置入口，也不占用通用设置快捷键。插件不要重复声明设置动作。旧包没有 `menuKey` 时
+宿主会按稳定 action id 做兼容补齐，但新代码仍应
+显式选择有业务含义、同层唯一且避开 D/B 的字母。
 
 无法用 Workbench 表达而保留自定义 HTML 的面板，必须通过 `context.ui.mountActions()` 发布
 宿主 Actions，不能在内容区自绘命令工具栏。设置 `primary: false` 的动作只进入 Context / Actions
@@ -459,12 +479,16 @@ Top Bar 右侧只发布内容筛选模型，由宿主绘制固定下拉框。Bot
 后台命令适合轮询、同步和长任务：
 
 - 声明 `mode: "no-view"`；需要周期执行时设置 Manifest 的 interval。
+- 自动修改系统壁纸的 interval command 还必须声明 `backgroundCategory: "wallpaper"`。Qx 会在
+  插件后台状态区提供跨插件停止/恢复开关；不要用命令名猜测、也不要再复制一个宿主总开关。
 - 先返回任务或缓存状态，不占用 Panel render。
 - 后台任务进度通过 `context.island` 发布；前台 Workbench 内容加载通过快照
   `island` 发布，只有内容内的可量化进度或错误才使用 Workbench status。
 - 成功、失败、取消都要形成终态；错误保持在当前操作，不让整个面板失效。
 - 任务在 Qx 休眠或关闭期间错过计划时间时，宿主恢复后补执行一次；插件命令必须把失败
   继续抛给宿主，不能 catch 后伪装成成功。
+- 宿主以 `launchType: "background"` 调度 interval，以 `userInitiated` 执行用户手动调用。
+  `backgroundCategory: "wallpaper"` 被暂停时只停止后续后台调用，手动设置壁纸继续可用。
 
 Island 内容必须有稳定会话标识。插件可选择宿主支持的进度样式，默认是浅蓝色从左到右
 填充；位置、尺寸、浮出与动画稳定性由宿主管理。双击 docked 岛展开最近浏览、动作胶囊
