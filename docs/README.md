@@ -1,6 +1,6 @@
 # Qx 开发者文档索引
 
-> 状态：Current · 适用版本：v0.6.99 · Owner：Core · 最后复核：2026-08-23
+> 状态：Current · 适用版本：v0.6.100 · Owner：Core · 最后复核：2026-08-24
 
 面向核心贡献者。所有面向用户的说明在 [README.md](../README.md) 和 [`public/doc/`](../public/doc/) 下。
 
@@ -41,6 +41,7 @@
 | [`public/doc/plugin-cli-protocol.md`](../public/doc/plugin-cli-protocol.md) | **`context.cli` 契约**：argv、超时、安全、版本 |
 | [`public/doc/plugin-tray.md`](../public/doc/plugin-tray.md) | **托盘能力端口**：`context.tray` + 内存/网速指标 |
 | [`public/doc/README.md`](../public/doc/README.md) | `public/doc` 目录索引 |
+| [`skills/qx-plugin-development/SKILL.md`](../skills/qx-plugin-development/SKILL.md) | **Agent 插件开发路由**：创建、迁移、宿主端口、审查、打包与验证模式 |
 | [plugin-architecture.md](./plugin-architecture.md) | 宿主 iframe runtime、RPC、后台 badge 端口（贡献宿主） |
 | [plugin-storage.md](./plugin-storage.md) | **插件存储设计**：包/数据分离、生命周期、管理 API、分期 |
 | [plugin-design-research.md](./plugin-design-research.md) | 设计调研（历史） |
@@ -54,6 +55,7 @@
 常用检索：
 
 - **写业务插件** → `public/doc/plugin-development-guide.md`
+- **让 Codex/Agent 写或审插件** → `skills/qx-plugin-development/SKILL.md`
 - **跑本机 CLI** → `public/doc/plugin-cli-protocol.md`
 - **改宿主 RPC** → `plugin-architecture.md` + `src/plugin/rpcMethods.ts`
 

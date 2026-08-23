@@ -10,7 +10,8 @@
 
 `Cargo.lock` 里的 `qx` 条目会自动跟随；改完 `Cargo.toml` 后跑一次 `cargo check` 就会同步。
 
-规则：`0.<major>.<patch>`；`major` 是 feature 大更新，`patch` 是 bugfix / 小 tweak。目前处于 `0.4.x`。
+规则：使用 SemVer 的 `0.<minor>.<patch>`；feature 批次递增 minor，bugfix / 小 tweak 递增
+patch。目前处于 `0.6.x`。
 
 ## 发布流程
 

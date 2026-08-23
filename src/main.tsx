@@ -1,4 +1,4 @@
-import React, { useEffect, type ReactNode } from "react";
+import React, { Suspense, useEffect, type ReactNode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { installGlobalQxLogging } from "./lib/logger";
@@ -20,6 +20,9 @@ installGlobalQxLogging();
 installOverlayScrollbars();
 
 const params = new URLSearchParams(window.location.search);
+const DevWorkbenchPerformanceLab = import.meta.env.DEV
+  ? React.lazy(() => import("./dev/WorkbenchPerformanceLab"))
+  : null;
 if (import.meta.env.DEV) {
   void import("./dev/performanceFixture").then(({ installDevPerformanceFixture }) => {
     installDevPerformanceFixture(params.get("perf-fixture"));
@@ -35,6 +38,7 @@ const isLoadingLab = surface === "loading-lab";
 const isTrayPanel = surface === "tray";
 const isUpdateProgress = surface === "update-progress";
 const isMacroCursorOverlay = surface === "macro-cursor-overlay";
+const isWorkbenchPerformanceLab = import.meta.env.DEV && surface === "workbench-performance";
 
 document.documentElement.classList.toggle("qx-loading-lab-page", isLoadingLab);
 
@@ -54,7 +58,13 @@ function BootSurfaceGuard({ children }: { children: ReactNode }) {
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <BootSurfaceGuard>
-      {isUpdateProgress ? (
+      {isWorkbenchPerformanceLab && DevWorkbenchPerformanceLab ? (
+        <ThemeProvider>
+          <Suspense fallback={null}>
+            <DevWorkbenchPerformanceLab />
+          </Suspense>
+        </ThemeProvider>
+      ) : isUpdateProgress ? (
         <ThemeProvider>
           <UpdateProgressApp />
         </ThemeProvider>

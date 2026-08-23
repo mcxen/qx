@@ -455,10 +455,12 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - Workbench 发布后即使隐藏的插件 iframe 暂时保留焦点，List / Gallery 的方向键、Page、Home/End 与 Enter 也必须转交可见宿主 Shell；首次发布应把焦点恢复到宿主搜索或集合区域，后续选择刷新不得抢回焦点。
 - Workbench List / Gallery 的鼠标点击必须由宿主立即更新选中态并异步通知插件；宿主视图可见时隐藏 iframe 必须退出指针命中层，不能让插件回传延迟或透明叠层造成点击无响应。
 - Workbench query、active tab、filter value 与 selectedId 采用受控双层状态：宿主先乐观呈现交互，插件 handler 同步更新业务 state 并重新发布；慢 I/O 不得阻塞回画。Action 事件必须携带触发瞬间的 selectedId 快照，快速选择后执行不能落到旧条目。
+- Workbench 搜索输入由宿主立即回画 query，并以 140ms 尾沿防抖通知插件；清空 query 必须立即通知，切换 tab/filter 或离开插件时必须取消尚未发送的旧查询，避免大集合本地筛选阻塞连续输入或旧查询污染新 scope。
 - Workbench item `id` 是强制、稳定且唯一的业务键；缺失或重复 item/tab id 在信任边界直接拒绝，tabs 最多一个 active，不提供 title/index 兼容回退。`data:image/` 不得被截断成损坏 URL，超出宿主上限时应整体拒绝。
 - Workbench 打开时先显示宿主保存的上次成功快照，再以 loading 状态后台刷新；空 loading/error
   快照不得替换仍可用的 items/detail。集合增量按稳定 item id 执行 upsert/remove/order，保持
-  未改变的详情、选择和滚动；只有成功的空结果可以清空旧集合。敏感面板可显式禁用宿主缓存。
+  未改变的详情、选择和滚动；只有成功的空结果可以清空旧集合。宿主持久快照读取必须 single-flight，
+  同进程再次进入插件先同步命中热快照，不得为同一 scope 重复 IPC 或先清空可用内容。敏感面板可显式禁用宿主缓存。
 - Workbench manifest command 完成后宿主必须发送 `commandComplete` 回执；插件据此单次重读共享持久化状态，不得用亚秒级磁盘轮询等待暂停、继续、停止等动作生效。
 - Workbench Gallery 使用当前响应式网格的真实列数做二维选择：←/→ 在同行移动，↑/↓ 跨行并尽量保持列位置。焦点留在搜索框时，上下键仍浏览网格；空查询的左右键也浏览网格，有查询文字时左右键才保留原生光标语义。
 - 二维索引计算必须复用 `qxGridNavigation`；Workbench 只是消费者，不得在插件宿主内维护一份专用网格算法。List / Detail 的 region id 与 navigation 复用 `useQxMasterDetail`，Actions 项复用 `QxShellAction + QxActionList`。
@@ -466,6 +468,7 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - Workbench List / Gallery 的内容轨是稳定宿主表面：空数据或少量数据时仍占满当前浏览区或已打开详情时的左侧集合栏；空态必须跨满所属区域并垂直居中，不能缩成首个 grid cell 或随 item 数量塌缩。若发布的是无条目的面板级 `detail`，Detail 直接占满 Main Area，不保留无意义的空集合栏。
 - Workbench Detail 的正文浏览位置由宿主按 `pluginId + tab/filter scope + item.id` 统一保存为归一化百分比。首次打开未读过的条目必须从顶部开始，不能继承前一个条目的 `scrollTop`；返回旧条目恢复其自身位置，正文和图片异步增长期间继续校正。插件不得自行操作宿主滚动 DOM。
 - Workbench 的远程图片由宿主先落入按插件隔离的有界磁盘缓存，再用本地 asset URL 呈现；列表、详情与预览共用缓存，应用重启后继续复用。图片解析期间必须保留缩略图框和已声明的 `landscape/square/portrait` 舞台尺寸，不能让空白图片改变主从栏高度或造成详情重排。壁纸类插件应发布已知横向比例，不能用 `auto` 等待原图下载后再决定布局。
+- Workbench List / Gallery 由宿主按视口虚拟化，只挂载可见条目与小幅 overscan；键盘 Home/End/Page 与选中滚入视口必须通过虚拟索引保持完整集合语义。远程缩略图解析限制为 4 路并发，离开视口的条目不得提前占用图片 IPC、解码和 DOM 预算。
 - Workbench List 必须像 V2EX 一样始终保留左栏 section header 与数量；首次空载显示统一骨架行 + LoadingLabel，已有条目刷新时保留旧列表并把数量短暂显示为 `…`，不得退回整栏纯文本 loading。
 - Workbench List 的单图缩略图继续使用 `item.image`；社区动态可用
   `item.images[]` 在文字轨下显示完整的横向滚动图片卡；宿主只保留与详情相同的 24 张

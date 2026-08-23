@@ -1,10 +1,6 @@
 # Qx — Technical Architecture Document
 
-## 文件管理器选择端口
-
-文件管理器上下文由根级 `file_manager` 服务承担：`floating_panel` 在显示 Qx 前只采集轻量来源提示（Windows Explorer HWND / macOS Finder 前台状态），worker 随后解析有序选择并发布 revision 快照。内置 File Actions、只读 `file-preview` route 与插件 `context.files.*` 都依赖该快照；两个内置 surface 通过 `useFileManagerSelection` 消费同一 revision，模块启停统一归属 `file-actions`。重命名、归拢、ZIP 压缩/解压在 blocking worker 执行并再次校验 revision。根级 `file_preview` 只按当前 revision/index 提供有界元数据、目录和字节流，WebView 不获得通用本地路径读取能力；PDF/Office/压缩包渲染器按格式懒加载，PPTX 渲染器监听可用区域并动态适宽。
-
-> 状态：Current · 适用版本：v0.6.97 · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.100 · Owner：Core · 最后复核：2026-08-24
 >
 > 桌面启动器（Raycast 风格）| Tauri v2 + React + TypeScript + Rust
 >
@@ -15,6 +11,22 @@
 ## 1. 项目概述
 
 Qx 是跨平台桌面启动器，定位为 Raycast / Alfred 的开源替代。当前交付平台是 **macOS 与 Windows**；Linux 仅有可移植回退，不是对等交付目标。核心功能包括：应用/文件搜索、剪贴板历史、RSS、QxAI、截图录屏、文件操作、宏录制、插件市场与外接显示器控制。
+
+### 阅读与事实来源
+
+本文负责顶层代码地图和依赖方向，不复制领域协议：
+
+- UI 与键盘行为以 [`UI_SPEC.md`](../UI_SPEC.md) 为准；
+- 跨层接口以 [`interface-protocols.md`](./interface-protocols.md) 与
+  [`architecture-principles.md`](./architecture-principles.md) 为准；
+- 插件宿主内部以 [`plugin-architecture.md`](./plugin-architecture.md) 为准，插件作者从
+  [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) 开始；
+- Tauri 命令清单以 [`ipc-catalogue.md`](./ipc-catalogue.md) 为准；
+- 当前任务、未完成验证和路线图只记录在 [`TASK.md`](../TASK.md)，不在架构文档维护第二份清单。
+
+### 文件管理器选择端口
+
+文件管理器上下文由根级 `file_manager` 服务承担：`floating_panel` 在显示 Qx 前只采集轻量来源提示（Windows Explorer HWND / macOS Finder 前台状态），worker 随后解析有序选择并发布 revision 快照。内置 File Actions、只读 `file-preview` route 与插件 `context.files.*` 都依赖该快照；两个内置 surface 通过 `useFileManagerSelection` 消费同一 revision，模块启停统一归属 `file-actions`。重命名、归拢、ZIP 压缩/解压在 blocking worker 执行并再次校验 revision。根级 `file_preview` 只按当前 revision/index 提供有界元数据、目录和字节流，WebView 不获得通用本地路径读取能力；PDF/Office/压缩包渲染器按格式懒加载，PPTX 渲染器监听可用区域并动态适宽。
 
 ### 技术栈
 
@@ -35,6 +47,20 @@ Qx 是跨平台桌面启动器，定位为 Raycast / Alfred 的开源替代。�
 ---
 
 ## 2. 整体架构
+
+### 2.1 仓库与运行时边界
+
+| 位置 | 唯一职责 | 不应放入 |
+|---|---|---|
+| Qx 主仓库 | Tauri 客户端、React 宿主、稳定 `context.*` / Workbench / Shell 端口、公开协议文档 | 市场插件的业务源码和生成归档 |
+| `qx-plugins` 独立仓库 | `src/<plugin-id>/` 业务源码、Manifest、smoke、`.qx-plugin` 与市场 `index.json` | Qx 宿主私有实现或 `dist/` 手改副本 |
+| `~/.qx/plugins/<id>/` | 安装后运行副本 | 可维护源码；调试结论必须回写源仓库 |
+| `public/doc/` | Qx UI/README 会链接的插件作者与运维文档源 | `dist/doc/` 的生成副本 |
+| `docs/` | 核心贡献者的架构、线程、端口与实现边界 | 面向插件作者的第二套字段表 |
+
+Qx 工作区有时包含一个 `qx-plugins/` checkout，也可能使用相邻的 `qx-plugins-clone`。它们是
+同一个独立 Git 仓库的不同 checkout；修改或发布前必须用 `git rev-parse --show-toplevel`、
+remote 与 commit 确认当前权威副本，不能同时编辑两个 checkout。
 
 ```
 Qx/
@@ -89,7 +115,7 @@ Qx/
 
 ### 3.1 状态管理层
 
-前端使用三个 Zustand Store：
+前端使用一个全局 store 加多个领域 store；领域 store 的数量随模块演进，不作为公共契约：
 
 **全局 Store (`src/store.ts`)**
 ```
@@ -162,6 +188,33 @@ tab = "plugin:*"   → PluginPanelViewport
 - 可执行插件运行在独立 sandboxed iframe，通过 `postMessage` RPC 请求宿主能力。权限不是
   发现机制：`manifest.permissions` 与精确 `invoke:<command>` 在 RPC 边界再次做能力白名单
   校验，插件不直接继承主 WebView 的 Tauri capability。
+
+外部插件从包到 UI 的稳定链路如下：
+
+```text
+qx-plugins/src/<id>/
+  manifest.json + ESM + assets
+             │ package / install
+             ▼
+Rust marketplace + plugin_system
+  校验、解包、发现、资源/存储/系统能力
+             │ InstalledPlugin + read_plugin_modules
+             ▼
+registry.ts → runtime.ts → sandbox iframe
+             │ context.* RPC / qx:plugin:workbench
+             ▼
+rpcMethods.ts / pluginShellBridge.ts（权限与数据归一化边界）
+             │ normalized Workbench state
+             ▼
+PluginHost → PluginWorkbenchCollection / View / Primitives → QxShell
+```
+
+职责必须保持分离：`pluginSdkFactory.ts` 是 iframe SDK 的单一实现；
+`workbenchTypes.ts` 只定义并归一化纯数据契约；`PluginHost.tsx` 负责会话与 Shell 装配；
+集合虚拟化、详情呈现、图片/状态原语和呈现快照缓存分别位于
+`PluginWorkbenchCollection.tsx`、`PluginWorkbenchView.tsx`、
+`PluginWorkbenchPrimitives.tsx` 与 `workbenchCache.ts`。插件业务不得进入这些宿主文件，
+宿主也不得读取插件私有原始响应来补业务语义。
 
 ### 3.4 主题系统
 
@@ -326,34 +379,27 @@ Esc 先关岛最近浏览，再 inner → query → leave。Actions 菜单是 `�
 
 ---
 
-## 7. 性能与优化
+## 7. 性能、并发与安全边界
 
-### 7.1 已知问题
+### 7.1 已实现的性能结构
 
-1. **Alt+Space 首次唤起慢**: `ActivationPolicy::Accessory` 已解决（移除 Dock 图标后 macOS 不再暂停应用）
-2. **fd 耗尽**: 上次重建时出现 system fd 表耗尽，疑似某个库或进程泄漏文件句柄
-3. **SQLite 并发**: 后端多个模块独立打开 SQLite 文件，无连接池
+- `App.tsx` 对截图、RSS、QxAI、Settings、宏、文件操作等非核心 surface 使用
+  `React.lazy`；Clipboard 保持 eager，确保全局快捷入口首次打开不等待模块 chunk。
+- Clipboard 热页和 Workbench List/Gallery 使用 `@tanstack/react-virtual`；键盘仍按完整
+  集合索引工作，视口只挂载可见条目与 overscan。
+- Workbench 呈现快照使用有界磁盘缓存、同进程热副本和按插件 single-flight 读取；远程图片
+  只由宿主缓存端口解析，并限制并发，插件不得复制下载/解码队列。
+- Launcher、RSS、Home provider 和插件刷新采用 cached-first、generation gate、
+  single-flight 或有界 worker；慢旧结果不得覆盖新 query/selection。
+- RSS 已有可配置后台全量刷新；诊断日志、OCR 队列、媒体编码和目录扫描均在 Rust
+  blocking/专用 worker 边界运行，不占用 React 或 Tokio 核心线程。
 
-### 7.2 优化方向
+### 7.2 结构性债务如何记录
 
-**前端**:
-- [x] 搜索 debounce（非空约 45ms；空 query 走首页缓存）
-- [x] 图标缓存（应用：sips + `~/.qx/icons/`，最长边 128px；RSS：`cache/rss-icons`，最长边 64px + 30 天复用）
-- [ ] 虚拟列表 (react-window / tanstack-virtual) — 剪贴板、文章列表大数量时
-- [ ] 模块懒加载 (`React.lazy` + Suspense)
-- [ ] 大型模块 (PluginManager 935 行) 拆分为子组件
-
-**后端**:
-- [ ] 单 SQLite 连接池而非多独立文件
-- [ ] 剪贴板使用 FSEvents / kqueue 监听而非轮询
-- [ ] RSS 后台定时刷新 (可选)
-- [ ] 日志系统
-
-**打包**:
-- [x] GitHub Actions release workflow
-- [ ] 代码签名 (macOS notarization)
-- [x] 自动更新（macOS bundle replacement / Windows NSIS helper + per-target GitHub Release manifest）
-- [ ] 增量更新
+架构文档不维护会迅速失真的“待办路线图”和源文件行数。超过 1000 行的 legacy composition
+root/feature 文件按 [`AGENTS.md`](../AGENTS.md) 的 Module Decomposition 规则处理：修改某个
+新 concern 时提取该 concern，不为行数制造一层一次性 wrapper。具体未完成项、桌面验证与
+发布状态只写入 [`TASK.md`](../TASK.md)；完成后从待办语气改为可验证的不变量。
 
 ### 7.3 安全
 
@@ -365,30 +411,19 @@ Esc 先关岛最近浏览，再 inner → query → leave。Actions 菜单是 `�
 
 ---
 
-## 8. 改进路线图
+## 8. 变更落点决策
 
-### P0 - 必须
-1. **RSS 功能: 添加默认订阅** — 首次使用无引导，用户不知道如何添加
-2. **ScreenRecorder 键盘** — 当前完全不能用键盘操作
+| 需求 | 首选落点 |
+|---|---|
+| 新业务界面，使用 Qx 自带数据 | `src/modules/<domain>/` + 现有 Shell/系统端口 |
+| 可独立分发的业务能力 | `qx-plugins/src/<id>/`，优先 Workbench 纯数据 |
+| 多个模块/插件都缺少的系统能力 | Qx 根级 Rust/前端窄端口，再迁移第一方消费者 |
+| 新插件 `context.*` 方法或权限 | 契约层 + iframe/直接/unavailable context + RPC handler + 文档 + 门禁 |
+| 仅无法由 List/Gallery/Detail/Form/Chart 表达的 UI | Custom Panel；仍使用宿主主题与 Actions |
+| Raycast 扩展维护 | 读取上游业务意图后原生重实现；转换器只保留历史实验 |
 
-### P1 - 重要
-1. **Settings 标签页键盘切换** — 当前只能鼠标点或搜索过滤
-2. **剪切板类型筛选键盘快捷** — Ctrl+1~5 切换
-3. **大文件拆分** — App.tsx (775行), PluginManager.tsx (935行), ClipboardPanel.tsx (379行)
-4. **模块懒加载** — 首屏加载约 308KB JS bundle，可拆为异步 chunk
-
-### P2 - 增强
-1. **虚拟列表** — 剪贴板历史 >500 条时性能下降
-2. **RSS 定时后台刷新** — 当前需手动 R/R
-3. **自动更新体验** — 展示 helper 安装失败详情、支持更多平台
-4. **国际化的 Geist 字体** — 中日韩字体回退
-5. **Windows/Linux 适配测试**
-
-### P3 - 远期
-1. **插件库高级能力** — 插件详情截图/README、分页或虚拟列表、评分/来源信任展示
-2. **OCR 模块**
-3. **AI 能力扩展** — 将 QxAI 接入更多内置模块和插件工作流
-4. **Store 统一** — 整合多个 Zustand store 为单一状态树 vs 保持模块化
+新增接口或模块时，按 [`docs/README.md`](./README.md) 的路由读取领域文档，不在
+`App.tsx`、`lib.rs` 或插件 runtime 中继续增长新的业务 `switch` 长尾。
 
 ---
 
@@ -406,7 +441,7 @@ npm run tauri dev
 npx tsc --noEmit
 
 # Rust 检查
-cargo check
+cd src-tauri && cargo fmt --check && cargo check
 
 # 构建 release
 npm run tauri build -- --bundles app
@@ -429,11 +464,14 @@ npm run tauri build -- --bundles app
 |------|------|
 | `src/App.tsx` | 主应用壳：tab、搜索编排、host Esc、最近浏览记录 |
 | `src/island/` | Docked/floating 岛、recents、recentMotion |
-| `src/modules/settings/plugins/PluginManager.tsx` | 插件库 Installed / Browse |
+| `src/modules/settings/plugins/` | 插件库 Installed / Browse / 配置 Dialog |
 | `src/modules/clipboard/ClipboardPanel.tsx` | 剪贴板 |
 | `src/modules/file-actions/` | File Actions / QxPreview |
 | `src/modules/screencap/ScreenRecorder.tsx` | 截图录屏工作流 |
 | `src/modules/rss/` | RSS 订阅/文章/阅读 |
+| `src/plugin/` | 外部插件 registry/runtime/RPC/Workbench 宿主 |
 | `src-tauri/src/lib.rs` | Tauri 装配 + `generate_handler!`（命令表见 ipc-catalogue） |
 | `src-tauri/src/file_manager.rs` | 文件选择快照与写操作 |
+| `src-tauri/src/plugin_system.rs` / `plugin_api.rs` / `plugin_cli.rs` | 插件资源、宿主能力与 CLI |
+| `src-tauri/src/marketplace/` | 插件发现、校验、安装、更新与来源 |
 | `src-tauri/src/rss/` | RSS SQLite、抓取、图片缓存 |

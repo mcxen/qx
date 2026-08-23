@@ -1,5 +1,7 @@
 # Qx 插件开发手册
 
+> 状态：Current · 适用版本：Qx v0.6.100 / qx-plugins v1.8.6 · 最后复核：2026-08-24
+
 这份文档负责把作者从“一个业务能力”带到“可安装、可验证的 Qx 插件”。
 字段全集与底层实现不在这里重复：UI、CLI、Manifest、Tray 和运行时分别由对应协议文档负责。
 
@@ -34,7 +36,7 @@ QxShell（Top Bar / Main Area / Bottom Bar）
 - 文案语言用无权限的 `context.locale.current`（`en` / `zh-CN`），不要读
   `navigator.language`，也不存在 `context.i18n`。
 
-### 1.2 发现、兼容与权限不是同一件事
+### 1.1 发现、兼容与权限不是同一件事
 
 Qx 对外部插件采用 Manifest 驱动的发现机制，不维护允许安装的插件 ID 白名单：
 
@@ -61,7 +63,7 @@ Qx 对外部插件采用 Manifest 驱动的发现机制，不维护允许安装�
 `descriptions` / `placeholders`，命令使用 `titles` / `descriptions`，面板使用 `titles`，
 并至少提供 `en` 与 `zh-CN`。
 
-### 1.1 一张图看懂布局责任
+### 1.2 一张图看懂布局责任
 
 ```text
 QxShell（宿主固定）
@@ -120,6 +122,10 @@ Enter handler。
 - Tray：[`plugin-tray.md`](./plugin-tray.md)
 - 运行时与权限边界：[`plugin-system.md`](./plugin-system.md)
 - 内置 React 端口和插件端口映射：[`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)
+
+使用 Codex/Agent 开发时，先加载 Qx 主仓库内的 `skills/qx-plugin-development/`。该 skill
+只负责识别创建、迁移、宿主端口、审查或发布模式，并把 Agent 路由到上面的唯一权威文档；
+它不维护第二份 API 字段表。图标生成另用 `skills/imagegen/`。
 
 ### 2.1 图标与社区商店资源
 
@@ -180,15 +186,19 @@ Monitor Configuration。两端保持同一序列化模型，插件不得按平�
 
 ## 3. 最小插件
 
-推荐源码结构：
+插件源码属于独立 `qx-plugins` 仓库，不放进 Qx 客户端的 `src/plugin/`。推荐结构：
 
 ```text
-my-plugin/
-├── manifest.json
-├── index.js
-├── lib/
-│   └── service.js
-└── assets/
+qx-plugins/
+└── src/my-plugin/
+    ├── AGENTS.md
+    ├── README.md
+    ├── manifest.json
+    ├── index.js
+    ├── icon-generated.png
+    ├── lib/
+    │   └── service.js
+    └── assets/
 ```
 
 运行时入口必须是 `index.js`。可以拆分源码，但安装包必须包含入口引用的文件。
@@ -332,6 +342,12 @@ Manifest 中声明的每个 command 必须在 `QxPlugin.commands` 中提供同�
 
 `panel.destroy(container)` 必须取消 interval、订阅、未完成请求、媒体缓存和 Island/Tray
 会话。不要依赖 `render()` 返回的清理函数：宿主只调用显式的 `destroy` 生命周期。
+
+宿主会把最近成功的 Workbench 呈现快照保存在磁盘，并在同一进程内保留热副本；再次进入
+同一 cache scope 时先同步绘制热快照，持久化读取按插件 single-flight 合并。List / Gallery
+按视口虚拟化，远程缩略图只为可见条目与小幅 overscan 解析，最多 4 路并发。Workbench 搜索
+query 会立即回画，并在 140ms 防抖后通知 `onQuery`；清空会立即通知，tab/filter 切换会取消
+尚未发送的旧查询。插件仍应使用稳定 item id、cache key 与单调 revision，不能依赖 DOM 常驻。
 
 网络型面板采用 stale-while-revalidate：保留可用旧内容，显示真实刷新状态，
 慢请求不得把新选择或新查询覆盖回旧结果。进度必须来自真实阶段或明确标记为
@@ -516,14 +532,28 @@ Island 内容必须有稳定会话标识。插件可选择宿主支持的进度�
 
 ## 9. 本地开发流程
 
-1. 用脚手架或现有插件复制最小目录。
-2. 按本手册 §2.1 使用 `skills/imagegen` 生成 `icon-generated.png`，再编写
-   `manifest.json` 和 `index.js`。
-3. 在设置中启用开发者模式并从本地目录安装。
-4. 修改后使用 Reload Panel。
-5. 检查插件日志、权限错误和 Workbench 返回结构。
-6. 运行 `npm run package:plugins` 与 `npm run store:build`，检查最终安装包和 Pages
-   静态站的列表/详情页；接口测试不要求冷安装。
+1. 在 Qx 主仓库确认需要使用的 `context.*`、Workbench 与 Manifest 协议；若现有端口不足，
+   先在宿主建立窄接口并同步文档，不要在插件里绕过权限或复制平台实现。
+2. 在权威 `qx-plugins` checkout 的 `src/<id>/` 新建或修改插件；先读仓库级和插件级
+   `AGENTS.md`，并确认不是另一个同 commit 的备用 checkout。
+3. 按本手册 §2.1 使用 `skills/imagegen` 生成 `icon-generated.png`，维护 Manifest、
+   `README.md`、插件级 `AGENTS.md` 与可维护源码。只有使用 build-only 源码的插件才需要
+   生成/提交自包含 `index.js`；普通包内相对 ESM 模块可直接随包安装。
+4. 对依赖 HTTP、CLI、宿主 invoke 或下载的每条用户主路径调用真实上游接口；fixture 只保留
+   为解析器回归。网络失败、空体、非 2xx、鉴权/限流和二进制错误体要有可解释结果。
+5. 在 `qx-plugins/` 运行最小打包并检查归档：
+
+   ```bash
+   npm run package:one -- --only=<id>
+   unzip -t <id>.qx-plugin
+   npm run smoke:<id> # 仅在仓库已提供对应脚本时
+   ```
+
+6. 通过 Settings → Extensions → Import 导入生成的 `.qx-plugin`，或把归档解到
+   `~/.qx/plugins/<id>/` 后在 Installed 中 Rescan/Reload；验证首次加载、缓存重开、错误重试、
+   destroy 后无残留 interval/请求/Island。
+7. 市场页面或资源在 scope 内时再运行 `npm run store:build`，检查列表、详情、图标、截图、
+   版本说明与下载包。打标签、推送或部署需要独立授权和对应发布检查；本地打包成功不代表已发布。
 
 除上一节的真实接口门禁外，建议至少验证：
 

@@ -378,6 +378,28 @@
   padding-inline: 10px;
 }
 
+.qx-host-workbench-virtual-canvas,
+.qx-host-workbench-gallery-virtual-canvas {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.qx-host-workbench-list.is-virtualized,
+.qx-host-workbench-gallery.is-virtualized {
+  overflow-anchor: none;
+}
+
+.qx-host-workbench-virtual-row,
+.qx-host-workbench-gallery-virtual-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  contain: layout paint;
+}
+
 .qx-host-workbench-split .qx-list-loading-stack {
   flex: 0 0 auto;
   gap: 4px;
@@ -413,6 +435,31 @@
   overscroll-behavior: contain;
   background: color-mix(in srgb, var(--qx-bg-component-1) 30%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qx-border-1) 70%, transparent);
+}
+
+.qx-host-workbench-gallery.is-virtualized {
+  display: block;
+  padding: 0;
+}
+
+.qx-workbench-performance-lab {
+  display: grid;
+  height: 100vh;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.qx-workbench-performance-toolbar {
+  display: grid;
+  grid-template-columns: auto auto minmax(180px, 1fr) auto auto;
+  gap: 8px;
+  padding: 8px;
+}
+
+.qx-workbench-performance-surface,
+.qx-workbench-performance-surface > .qx-host-workbench {
+  height: 100%;
+  min-height: 0;
 }
 
 .qx-host-workbench-gallery.is-empty {
@@ -581,6 +628,13 @@
 .qx-host-workbench-row.has-card-media .qx-host-workbench-icon,
 .qx-host-workbench-row.has-card-media .qx-host-workbench-accessory {
   margin-top: 1px;
+}
+
+.qx-host-workbench-virtual-row.qx-host-workbench-row.qx-list-row,
+.qx-host-workbench-gallery-card.qx-host-workbench-gallery-virtual-card {
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .qx-host-workbench-list-media {

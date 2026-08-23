@@ -1,0 +1,4 @@
+interface:
+  display_name: "Qx Plugin Development"
+  short_description: "Build and validate native Qx marketplace plugins"
+  default_prompt: "Use $qx-plugin-development to build or update a native Qx marketplace plugin."

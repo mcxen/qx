@@ -8,6 +8,7 @@
 | 目标 | 入口 | 唯一职责 |
 |---|---|---|
 | 开发插件 | [插件开发手册](./plugin-development-guide.md) | 从零运行、选择端口、调试与交付检查 |
+| 使用 Codex/Agent 开发插件 | Qx 仓库 `skills/qx-plugin-development/` | 按创建、迁移、宿主端口、审查或发布模式路由到权威协议 |
 | 设计面板与动作 | [插件 UI 与 Actions 规范](./plugin-ui-guidelines.md) | Workbench、Top Bar、Bottom Bar、Actions、Esc 和主题 |
 | 把 CLI 做成界面 | [CLI Workbench 模式](./plugin-cli-gui.md) | CLI 数据到 Workbench 的产品化模式 |
 | 查询 CLI API | [CLI 协议](./plugin-cli-protocol.md) | `context.cli`、任务、PATH、安全与返回值 |

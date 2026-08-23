@@ -4,28 +4,21 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
-  AlertTriangle,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  LoaderCircle,
   Maximize2,
 } from "lucide-react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
+import { invoke } from "@tauri-apps/api/core";
 import QxResizableSplit from "../components/QxResizableSplit";
-import { useQxListSelection } from "../hooks/useQxListSelection";
 import {
   Button,
   Input,
   Select,
 } from "../components/ui";
 import type {
-  PluginWorkbenchAsyncStatus,
   PluginWorkbenchControl,
   PluginWorkbenchDetail,
   PluginWorkbenchField,
@@ -39,86 +32,22 @@ import { useT } from "../i18n";
 import { qxMasterDetailIds, qxRegionProps } from "../hooks/useQxMasterDetail";
 import QxReplyList from "../components/QxReplyList";
 import QxMediaViewer, { type QxMediaViewerImage } from "../components/QxMediaViewer";
-import { resolveActivityPercent } from "../types/contentActivity";
 import { resolvePluginAssetUrl } from "./pluginRuntimeTransport";
 import {
   useWorkbenchReadingPosition,
   workbenchReadingPositionKey,
 } from "./useWorkbenchReadingPosition";
+import PluginWorkbenchCollection from "./PluginWorkbenchCollection";
+import {
+  WorkbenchCachedImage,
+  WorkbenchStatus,
+  resolveWorkbenchImageUrl,
+  workbenchToneClass,
+} from "./PluginWorkbenchPrimitives";
 
 export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
 const WORKBENCH_LIST_WIDTH_KEY = "qx:workbench:list-width";
-const workbenchImageCache = new Map<string, Promise<string>>();
-const WORKBENCH_IMAGE_CACHE_LIMIT = 512;
-
-function resolveWorkbenchImageUrl(pluginId: string, url: string): Promise<string> {
-  if (!/^https:\/\//i.test(url)) return Promise.resolve(url);
-  const key = `${pluginId}\0${url}`;
-  const existing = workbenchImageCache.get(key);
-  if (existing) return existing;
-  const request = invoke<string>("plugin_workbench_cache_image", { id: pluginId, url })
-    .then((path) => convertFileSrc(path))
-    .catch(() => {
-      workbenchImageCache.delete(key);
-      return url;
-    });
-  workbenchImageCache.set(key, request);
-  if (workbenchImageCache.size > WORKBENCH_IMAGE_CACHE_LIMIT) {
-    const oldest = workbenchImageCache.keys().next().value;
-    if (oldest) workbenchImageCache.delete(oldest);
-  }
-  return request;
-}
-
-function WorkbenchCachedImage({
-  pluginId,
-  url,
-  alt,
-  className,
-  loading,
-  style,
-  onError,
-}: {
-  pluginId: string;
-  url: string;
-  alt: string;
-  className?: string;
-  loading?: "eager" | "lazy";
-  style?: CSSProperties;
-  onError?: () => void;
-}) {
-  const [resolvedUrl, setResolvedUrl] = useState<string>();
-  const [usedFallback, setUsedFallback] = useState(false);
-  useEffect(() => {
-    let active = true;
-    setResolvedUrl(undefined);
-    setUsedFallback(false);
-    void resolveWorkbenchImageUrl(pluginId, url).then((resolved) => {
-      if (active) setResolvedUrl(resolved);
-    });
-    return () => { active = false; };
-  }, [pluginId, url]);
-  if (!resolvedUrl) return null;
-  return (
-    <img
-      src={resolvedUrl}
-      alt={alt}
-      className={className}
-      loading={loading}
-      style={style}
-      onError={() => {
-        if (!usedFallback && resolvedUrl !== url) {
-          workbenchImageCache.delete(`${pluginId}\0${url}`);
-          setUsedFallback(true);
-          setResolvedUrl(url);
-          return;
-        }
-        onError?.();
-      }}
-    />
-  );
-}
 
 interface PluginWorkbenchViewProps {
   pluginId: string;
@@ -217,48 +146,17 @@ function WorkbenchInlineTextContent({
   );
 }
 
-function toneClass(tone: string | undefined): string {
-  return tone && tone !== "neutral" ? ` tone-${tone}` : "";
-}
-
 function WorkbenchFields({ fields }: { fields?: PluginWorkbenchField[] }) {
   if (!fields?.length) return null;
   return (
     <dl className="qx-host-workbench-fields">
       {fields.map((field, index) => (
-        <div key={`${field.label}-${index}`} className={toneClass(field.tone)}>
+        <div key={`${field.label}-${index}`} className={workbenchToneClass(field.tone)}>
           <dt>{field.label}</dt>
           <dd>{field.value == null || field.value === "" ? "—" : String(field.value)}</dd>
         </div>
       ))}
     </dl>
-  );
-}
-
-function WorkbenchStatus({ status }: { status?: PluginWorkbenchAsyncStatus }) {
-  if (!status) return null;
-  const progress = resolveActivityPercent(status);
-  const Icon = status.state === "loading"
-    ? LoaderCircle
-    : status.state === "error"
-      ? AlertTriangle
-      : CheckCircle2;
-  const copy = status.state === "error"
-    ? status.error || status.label
-    : status.label;
-  return (
-    <div
-      className={`qx-host-workbench-async is-${status.state}`}
-      role={status.state === "error" ? "alert" : "status"}
-    >
-      <Icon
-        size={14}
-        aria-hidden="true"
-        className={status.state === "loading" ? "qx-loading-spinner" : undefined}
-      />
-      {copy ? <span>{copy}</span> : null}
-      {progress != null ? <span>{Math.round(progress)}%</span> : null}
-    </div>
   );
 }
 
@@ -484,24 +382,6 @@ function WorkbenchMediaCollection({
         </>
       ) : null}
     </div>
-  );
-}
-
-function WorkbenchListMedia({ pluginId, images }: { pluginId: string; images: PluginWorkbenchImage[] }) {
-  return (
-    <span className="qx-host-workbench-list-media" aria-hidden="true">
-      {images.map((image, index) => (
-        <span className="qx-host-workbench-list-media-image" key={`${image.url}-${index}`}>
-          <WorkbenchCachedImage
-            pluginId={pluginId}
-            url={image.url}
-            alt=""
-            loading="lazy"
-            style={{ objectFit: image.fit || "cover" }}
-          />
-        </span>
-      ))}
-    </span>
   );
 }
 
@@ -767,13 +647,6 @@ export default function PluginWorkbenchView({
     return index >= 0 ? index : 0;
   }, [items, state.selectedId]);
   const selected = selectedIndex >= 0 ? items[selectedIndex] : undefined;
-  const listRef = useRef<HTMLDivElement>(null);
-  const { getItemProps } = useQxListSelection({
-    listRef,
-    index: selectedIndex,
-    listSignature: `${state.query || ""}:${items.map((item) => item.id).join("\0")}`,
-    enabled: selectedIndex >= 0,
-  });
   const detail = selected?.detail || state.detail;
   const detailScope = JSON.stringify([
     state.tabs?.find((tab) => tab.active)?.id || "",
@@ -795,9 +668,6 @@ export default function PluginWorkbenchView({
     : items.length <= (state.layout?.columns || 4)
       ? " is-sparse"
       : "";
-  const galleryStyle = gallery
-    ? { "--qx-workbench-gallery-columns": state.layout?.columns || 4 } as CSSProperties
-    : undefined;
   const detailOnly = items.length === 0 && Boolean(state.detail);
   const openPreview = (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => {
     const images = collection.length ? collection : [image];
@@ -828,128 +698,19 @@ export default function PluginWorkbenchView({
     anchor.click();
   }, [onDownload]);
 
-  const collection = gallery ? (
-    <div
-      ref={listRef}
-      className={`qx-content-list qx-host-workbench-gallery aspect-${state.layout?.aspectRatio || "landscape"}${densityClass}`}
-      style={galleryStyle}
-      role="listbox"
-      {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.list, { initial: true, label: listTitle })}
-    >
-      {items.length ? items.map((item, index) => {
-        const id = item.id;
-        return (
-          <button
-            key={id}
-            type="button"
-            {...getItemProps(index, { className: "qx-host-workbench-gallery-card", baseClass: false })}
-            onClick={() => onActivate(id)}
-          >
-            <span className="qx-host-workbench-gallery-image">
-              {item.image?.url ? (
-                <WorkbenchCachedImage
-                  pluginId={pluginId}
-                  url={item.image.url}
-                  alt={item.image.alt || ""}
-                  loading="lazy"
-                  style={{ objectFit: item.image.fit || "cover" }}
-                />
-              ) : (
-                <span aria-hidden="true">{item.icon || "•"}</span>
-              )}
-            </span>
-            <span className="qx-host-workbench-gallery-copy">
-              <strong>{item.title}</strong>
-              {item.subtitle ? <small>{item.subtitle}</small> : null}
-            </span>
-            {(item.badge || item.meta) ? (
-              <span className={`qx-host-workbench-gallery-badge${toneClass(item.tone)}`}>
-                {item.badge || item.meta}
-              </span>
-            ) : null}
-            <WorkbenchStatus status={item.status} />
-          </button>
-        );
-      }) : (
-        <div className="qx-content-detail-empty qx-host-workbench-empty">
-          {state.emptyText || (state.loading
-            ? t("plugins.workbench.loading", "Loading…")
-            : t("plugins.workbench.empty", "No results"))}
-        </div>
-      )}
-    </div>
-  ) : (
-    <div
-      ref={listRef}
-      className="qx-content-list qx-plugin-list qx-host-workbench-list"
-      role="listbox"
-      {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.list, { initial: true, label: listTitle })}
-    >
-      <div className="qx-section-header qx-host-workbench-list-header">
-        <span>{listTitle}</span>
-        <span>{state.loading ? "…" : items.length}</span>
-      </div>
-      {items.length ? items.map((item, index) => {
-        const id = item.id;
-        return (
-          <button
-            key={id}
-            type="button"
-            {...getItemProps(index, {
-              className: [
-                "tall qx-host-workbench-row",
-                item.images?.length ? "has-card-media" : "",
-                item.progress != null ? "has-progress" : "",
-              ].filter(Boolean).join(" "),
-            })}
-            onClick={() => onActivate(id)}
-          >
-            <span className={`qx-host-workbench-icon${item.image?.url ? " has-image" : ""}`} aria-hidden="true">
-              {item.image?.url ? (
-                <WorkbenchCachedImage
-                  pluginId={pluginId}
-                  url={item.image.url}
-                  alt=""
-                  loading="lazy"
-                  style={{ objectFit: item.image.fit || "cover" }}
-                />
-              ) : item.icon || "•"}
-            </span>
-            <span className="qx-list-copy">
-              <strong className="qx-list-title">{item.title}</strong>
-              {item.subtitle ? <small>{item.subtitle}</small> : null}
-              {item.images?.length ? <WorkbenchListMedia pluginId={pluginId} images={item.images} /> : null}
-              {item.progress != null ? (
-                <span className="qx-host-workbench-progress" aria-label={`${Math.round(item.progress)}%`}>
-                  <i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
-                </span>
-              ) : null}
-            </span>
-            {(item.badge || item.meta || item.status) ? (
-              <span className="qx-host-workbench-accessory">
-                {(item.badge || item.meta) ? (
-                  <span className={`qx-host-workbench-badge${toneClass(item.tone)}`}>
-                    {item.badge || item.meta}
-                  </span>
-                ) : null}
-                <WorkbenchStatus status={item.status} />
-              </span>
-            ) : null}
-          </button>
-        );
-      }) : shouldShowQxListLoading(Boolean(state.loading), items.length) ? (
-        <QxListLoading
-          ariaLabel={loadingText}
-          label={loadingText}
-          rows={6}
-          variant="tall"
-        />
-      ) : (
-        <div className="qx-content-detail-empty qx-host-workbench-empty">
-          {state.emptyText || t("plugins.workbench.empty", "No results")}
-        </div>
-      )}
-    </div>
+  const collection = (
+    <PluginWorkbenchCollection
+      pluginId={pluginId}
+      state={state}
+      selectedIndex={selectedIndex}
+      listTitle={listTitle}
+      loadingText={loadingText}
+      emptyText={state.emptyText || (state.loading
+        ? t("plugins.workbench.loading", "Loading…")
+        : t("plugins.workbench.empty", "No results"))}
+      regionId={PLUGIN_WORKBENCH_REGIONS.list}
+      onActivate={onActivate}
+    />
   );
 
   return (

@@ -23,6 +23,15 @@ interface WorkbenchCacheEnvelope {
   entries: Record<string, WorkbenchCacheEntry>;
 }
 
+interface MemoryWorkbenchCache {
+  envelope: WorkbenchCacheEnvelope;
+  /** False means the active hot scope is known but disk may contain more scopes. */
+  complete: boolean;
+}
+
+const memoryCaches = new Map<string, MemoryWorkbenchCache>();
+const cacheLoads = new Map<string, Promise<WorkbenchCacheEnvelope | null>>();
+
 export function pluginWorkbenchCacheKey(state: PluginWorkbenchState): string {
   return state.cache?.key || "default";
 }
@@ -155,21 +164,55 @@ function parseEnvelope(value: unknown): WorkbenchCacheEnvelope | null {
   };
 }
 
-export async function loadPluginWorkbenchCache(
-  pluginId: string,
+function restoreCacheEntry(
+  envelope: WorkbenchCacheEnvelope,
   requestedKey?: string,
-): Promise<PluginWorkbenchState | null> {
-  const envelope = parseEnvelope(await invoke<unknown>("plugin_storage_get", {
-    id: pluginId,
-    key: STORAGE_KEY,
-  }));
-  if (!envelope) return null;
+): PluginWorkbenchState | null {
   const entry = envelope.entries[requestedKey || envelope.activeKey];
   if (!entry || !entry.state) return null;
   const state = normalizePluginWorkbenchState(entry.state);
   const maxAgeMs = state.cache?.maxAgeMs || DEFAULT_MAX_AGE_MS;
   if (!Number.isFinite(entry.savedAt) || Date.now() - entry.savedAt > maxAgeMs) return null;
   return { ...state, revision: undefined, loading: true, error: null };
+}
+
+/** Synchronous hot-path used before paint when the plugin was opened earlier this process. */
+export function peekPluginWorkbenchCache(
+  pluginId: string,
+  requestedKey?: string,
+): PluginWorkbenchState | null {
+  const cached = memoryCaches.get(pluginId);
+  return cached ? restoreCacheEntry(cached.envelope, requestedKey) : null;
+}
+
+export async function loadPluginWorkbenchCache(
+  pluginId: string,
+  requestedKey?: string,
+): Promise<PluginWorkbenchState | null> {
+  const hot = peekPluginWorkbenchCache(pluginId, requestedKey);
+  if (hot) return hot;
+  const known = memoryCaches.get(pluginId);
+  if (known?.complete) return null;
+
+  let load = cacheLoads.get(pluginId);
+  if (!load) {
+    load = invoke<unknown>("plugin_storage_get", {
+      id: pluginId,
+      key: STORAGE_KEY,
+    }).then((value) => {
+      const envelope = parseEnvelope(value);
+      if (envelope) memoryCaches.set(pluginId, { envelope, complete: true });
+      else memoryCaches.delete(pluginId);
+      return envelope;
+    });
+    cacheLoads.set(pluginId, load);
+    const clearLoad = () => {
+      if (cacheLoads.get(pluginId) === load) cacheLoads.delete(pluginId);
+    };
+    void load.then(clearLoad, clearLoad);
+  }
+  const envelope = await load;
+  return envelope ? restoreCacheEntry(envelope, requestedKey) : null;
 }
 
 const pendingWrites = new Map<string, { state: PluginWorkbenchState; timer: number }>();
@@ -180,6 +223,7 @@ async function persistPluginWorkbenchCache(
   state: PluginWorkbenchState,
 ): Promise<void> {
   if (state.cache?.mode === "disabled") {
+    memoryCaches.delete(pluginId);
     await invoke("plugin_storage_delete", { id: pluginId, key: STORAGE_KEY });
     return;
   }
@@ -205,6 +249,35 @@ async function persistPluginWorkbenchCache(
     entries: Object.fromEntries(retained),
   };
   await invoke("plugin_storage_set", { id: pluginId, key: STORAGE_KEY, value: envelope });
+  memoryCaches.set(pluginId, { envelope, complete: true });
+}
+
+function rememberPluginWorkbenchCache(pluginId: string, state: PluginWorkbenchState): void {
+  if (state.cache?.mode === "disabled") {
+    memoryCaches.delete(pluginId);
+    return;
+  }
+  if (state.loading || state.error) return;
+  const clean = sanitizeCacheState(state);
+  const encoded = JSON.stringify(clean);
+  if (new TextEncoder().encode(encoded).byteLength > MAX_CACHE_BYTES) return;
+  const savedAt = Date.now();
+  const key = pluginWorkbenchCacheKey(clean);
+  const current = memoryCaches.get(pluginId);
+  const entries = { ...(current?.envelope.entries || {}) };
+  entries[key] = { savedAt, state: clean };
+  const retained = Object.entries(entries)
+    .sort((left, right) => right[1].savedAt - left[1].savedAt)
+    .slice(0, MAX_SCOPES);
+  memoryCaches.set(pluginId, {
+    complete: current?.complete === true,
+    envelope: {
+      version: CACHE_VERSION,
+      savedAt,
+      activeKey: key,
+      entries: Object.fromEntries(retained),
+    },
+  });
 }
 
 /** Coalesce high-frequency incremental batches into one bounded durable write. */
@@ -212,6 +285,7 @@ export function schedulePluginWorkbenchCacheWrite(
   pluginId: string,
   state: PluginWorkbenchState,
 ): void {
+  rememberPluginWorkbenchCache(pluginId, state);
   const pending = pendingWrites.get(pluginId);
   if (pending) window.clearTimeout(pending.timer);
   const timer = window.setTimeout(() => {

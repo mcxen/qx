@@ -39,6 +39,7 @@ import {
   applyPluginWorkbenchItemsUpdate,
   loadPluginWorkbenchCache,
   mergePluginWorkbenchSnapshot,
+  peekPluginWorkbenchCache,
   schedulePluginWorkbenchCacheWrite,
 } from "./workbenchCache";
 import { useStore } from "../store";
@@ -123,6 +124,7 @@ export function PluginPanelViewport() {
   const [selectionTitle, setSelectionTitle] = useState<string>("");
   const [pluginChrome, setPluginChrome] = useState<PluginChromePayload | null>(null);
   const [workbench, setWorkbench] = useState<PluginWorkbenchState | null>(null);
+  const workbenchQueryTimerRef = useRef<number | null>(null);
   const [workbenchDetailOpen, setWorkbenchDetailOpen] = useState(false);
   const [workbenchIslandManaged, setWorkbenchIslandManaged] = useState(false);
   const pluginIslandSessionActive = useSyncExternalStore(
@@ -164,9 +166,22 @@ export function PluginPanelViewport() {
   const updateWorkbenchQuery = useCallback((value: string) => {
     setWorkbenchDetailOpen(false);
     setWorkbench((current) => current ? { ...current, query: value } : current);
-    postPluginWorkbenchEvent(pluginId, { kind: "query", value });
+    if (workbenchQueryTimerRef.current !== null) {
+      window.clearTimeout(workbenchQueryTimerRef.current);
+      workbenchQueryTimerRef.current = null;
+    }
+    const publish = () => {
+      workbenchQueryTimerRef.current = null;
+      postPluginWorkbenchEvent(pluginId, { kind: "query", value });
+    };
+    if (!value) publish();
+    else workbenchQueryTimerRef.current = window.setTimeout(publish, 140);
   }, [pluginId]);
   const selectWorkbenchTab = useCallback((id: string) => {
+    if (workbenchQueryTimerRef.current !== null) {
+      window.clearTimeout(workbenchQueryTimerRef.current);
+      workbenchQueryTimerRef.current = null;
+    }
     setWorkbenchDetailOpen(false);
     setWorkbench((current) => current
       ? {
@@ -180,6 +195,10 @@ export function PluginPanelViewport() {
     postPluginWorkbenchEvent(pluginId, { kind: "tab", id });
   }, [pluginId]);
   const updateWorkbenchFilter = useCallback((id: string, value: string) => {
+    if (workbenchQueryTimerRef.current !== null) {
+      window.clearTimeout(workbenchQueryTimerRef.current);
+      workbenchQueryTimerRef.current = null;
+    }
     setWorkbenchDetailOpen(false);
     setWorkbench((current) => current
       ? {
@@ -307,10 +326,10 @@ export function PluginPanelViewport() {
     };
   }, [isPluginTab, pluginId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isPluginTab || !pluginId) return;
     let disposed = false;
-    setWorkbench(null);
+    setWorkbench(peekPluginWorkbenchCache(pluginId));
     void loadPluginWorkbenchCache(pluginId).then((cached) => {
       if (disposed || !cached) return;
       setWorkbench((current) => current
@@ -321,6 +340,13 @@ export function PluginPanelViewport() {
       disposed = true;
     };
   }, [isPluginTab, pluginId]);
+
+  useEffect(() => () => {
+    if (workbenchQueryTimerRef.current !== null) {
+      window.clearTimeout(workbenchQueryTimerRef.current);
+      workbenchQueryTimerRef.current = null;
+    }
+  }, [pluginId]);
 
   useLayoutEffect(() => {
     const hasIslandField = Boolean(

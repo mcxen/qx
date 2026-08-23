@@ -7,9 +7,10 @@ short execution checklist and links back to this workflow.
 
 ## Scope
 
-Only run this flow when the user explicitly asks to release, tag, publish, or
-push a version. Do not move an already-pushed tag unless the user explicitly
-asks to rewrite release history.
+Run this flow when the user explicitly asks to release, tag, publish, or push a
+version, or when `AGENTS.md` 的 change-volume / iteration gate 明确要求本次任务结束前发布。
+后者必须先向用户说明触发原因。Do not move an already-pushed tag unless the user
+explicitly asks to rewrite release history.
 
 ## Preflight
 

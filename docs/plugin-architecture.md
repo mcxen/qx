@@ -1,6 +1,8 @@
 # Qx 插件系统架构
 
 > 面向核心贡献者的内部文档。描述前端插件运行时、RPC 分发、AI 任务、权限模型和面板生命周期。
+>
+> 状态：Current · 适用版本：v0.6.100 · Owner：Plugin Host · 最后复核：2026-08-24
 
 > 当前开发阶段兼容策略：Qx 尚无外部用户，插件均由 mcxen 维护。Workbench / plugin port 演进优先采用清晰的强契约，并在同一变更中迁移全部第一方插件；不要为尚不存在的第三方存量增加旧协议兼容层、别名或双实现。进入有外部用户阶段后必须显式重审本策略。
 
@@ -24,13 +26,16 @@
 | `src/plugin/pluginSdkFactory.ts` | CLI→GUI helpers + Workbench kit 的单一、自包含实现；host 调用并序列化进 iframe |
 | `src/plugin/cliWorkbench.ts` | SDK factory 的类型化 host wrapper + iframe bootstrap 字符串 |
 | `src/plugin/workbenchTypes.ts` | 声明式 Workbench 数据契约 + iframe 信任边界归一化 |
+| `src/plugin/workbenchCache.ts` | 呈现快照的 scope key、内存热副本、single-flight 读取与有界持久化 |
 | `src/plugin/workbenchKeyboard.ts` | 隐藏 iframe 键盘转交策略 |
 | `src/hooks/qxGridNavigation.ts` | Workbench 与内置网格共用的二维索引纯函数 |
-| `src/plugin/PluginWorkbenchView.tsx` | Qx 原生 list/detail/progress 呈现；不含插件业务逻辑 |
+| `src/plugin/PluginWorkbenchCollection.tsx` | List/Gallery 虚拟化、完整集合索引与视口滚入 |
+| `src/plugin/PluginWorkbenchView.tsx` | Qx 原生 Detail/Form/Chart/Replies 呈现；不含插件业务逻辑 |
+| `src/plugin/PluginWorkbenchPrimitives.tsx` | 宿主缓存图片、媒体轨与异步状态原语 |
 | `src/plugin/aiRuntime.ts` | AI task 创建、状态维护、取消、权限门控 |
-| `src/plugin/PluginHost.tsx` | 插件 panel 视图容器 |
+| `src/plugin/PluginHost.tsx` | panel 会话、乐观交互、Shell/Esc/Actions 装配；不绘制集合条目 |
 | `src/components/PluginBackgroundBadge.tsx` | 搜索/Extensions/panel 共用后台标签（悬停最近执行时间） |
-| `src/modules/settings/PluginManager.tsx` | Extensions 设置页 UI |
+| `src/modules/settings/plugins/` | Extensions Installed/Browse/配置 Dialog；`PluginManager.tsx` 仅保留导出适配 |
 | `src-tauri/src/` | Rust 后端：扫描、安装、存储、权限、AI 命令 |
 
 
@@ -77,6 +82,18 @@ plugin business state
        │    └─ completion → qx:workbench:event/backgroundPoll → panel reload
        └─ island → PluginHost permission/command validation → shared IslandSession store
 ```
+
+Workbench 的状态所有权和呈现性能分为三层，禁止重新合并成一个巨型组件：
+
+| 层 | 权威状态 | 允许的优化 |
+|---|---|---|
+| 插件领域层 | query/tab/filter/selection、原始响应、可操作文件、分页与业务缓存 | generation gate、SWR、`updateItems` |
+| 宿主会话层 | 当前规范化快照、乐观输入、cache scope、详情开启与阅读位置 | 热快照、single-flight、query 防抖 |
+| 宿主呈现层 | 可见虚拟行/卡、详情 DOM、图片解析状态 | overscan、4 路图片队列、懒解码 |
+
+虚拟化不是插件可观察的协议变化：选择、Home/End/Page、Actions 和 `selectedId` 仍针对完整
+集合；插件不得查询或依赖某个 item DOM 是否常驻。宿主缓存也只保存已规范化的成功呈现快照，
+不会代替插件保存原始响应、认证状态或后续动作所需的本地文件。
 
 不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作/表单控件数量和文本长度。item `id` 是强制、稳定、唯一的业务键；缺失或重复 item/tab/control id 在信任边界直接拒绝，tabs 至多一个 active，不保留 title/index 回退。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，URL 超限整体拒绝而非截断，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。详情图片可声明 `aspectRatio/zoomable/caption`，但加载失败、自适应窄栏和全尺寸 Dialog 均由宿主共享 `QxMediaViewer` 呈现；有序图片集合的方向适配、超长图滚动、缩放、拖拽平移及前后各两张的预取/预解码属于同一媒体协议。宿主解码缓存按最后访问时间保留 15 分钟并以 24 张为内存上限；缓存淘汰不改变集合。插件 iframe CSS 不能也不得覆盖宿主详情，也不得另建 lightbox 或预加载队列。`item.status/detail.status` 是保留旧内容时的局部 loading/success/error，并通过共用 activity 字段接受真实 `progress` 或 `completed / total / failed`，不能用清空集合或模拟百分比替代刷新反馈。详情表单只接受 `text` / `number` / `select`，变更以 `onInput` 纯数据事件回传；管理动作通过 `form.actions` 或连续 control 的稳定 `group.id + group.action` 声明，仍由宿主带 selectedId 投递 `onAction`。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
 
@@ -206,8 +223,8 @@ RPC 被残留 listener 重复执行并持续占用 WebView 内存。
 Workbench 图片仍是受限纯数据端口：`item.image` 在 Gallery 中作为卡片图片、在 List
 中作为行缩略图；`detail.image` 在结构化详情顶部作为单张大图预览，
 `detail.images[]` 用于社区帖子等多图内容并由宿主排成响应式网格。图片只接受 HTTPS
-或 `data:image/` URL；多图最多 24 张，并统一经过
-`normalizePluginWorkbenchState` 长度与协议校验。
+或 `data:image/` URL；插件按上游源顺序发布完整正常集合，宿主仅保留 96 张异常输入安全
+阈值，并统一经过 `normalizePluginWorkbenchState` 长度与协议校验。
 宿主负责 HTTPS 图片的持久下载、格式校验、asset scope 与失败时回退远程地址；插件不得把
 Workbench 呈现缓存当作可供系统壁纸等业务操作使用的文件仓库。
 `detail.replies` 是详情阅读流底部的结构化回复端口；宿主复用 `QxReplyList`，统一

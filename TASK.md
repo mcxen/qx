@@ -1,5 +1,46 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Docs — 代码结构、插件文档与开发 Skill
+
+**状态**：结构审计、技术/插件文档、repo-local Skill 与自动门禁完成；准备随 v0.6.100 发布。
+
+- `docs/technical-architecture.md` 补齐 Qx / qx-plugins 双仓库边界、外部插件从包到 QxShell 的
+  数据流、当前性能结构与变更落点，移除已失真的旧路线图。
+- `docs/plugin-architecture.md` 同步 Workbench Collection/View/Primitives/Cache 分层、虚拟化
+  不变量与当前媒体安全阈值。
+- `public/doc/plugin-development-guide.md` 修正章节顺序，补齐权威 checkout、最小打包、真实接口、
+  本地安装与“本地构建不等于发布”的开发闭环。
+- 新增 `skills/qx-plugin-development/`，按创建、迁移、更新、宿主端口、审查与发布模式路由到
+  唯一权威协议；Raycast converter 继续只作为冻结的历史实验路径。
+
+### 验证
+
+- [x] Skill quick validation
+- [x] `npm run docs:check`
+- [x] `npm run check` / `npm run build`
+- [x] 完整 diff、变更量、版本同步与发布预检
+
+## Perf — Workbench 性能能力下沉到插件宿主
+
+**状态**：宿主实现、全量门禁与 10,000 条 CDP 性能实验完成；准备随 v0.6.100 发布。
+
+- Workbench List / Gallery 统一改为宿主虚拟化，长集合只挂载可见条目与 overscan；键盘选择继续
+  使用完整集合索引。远程缩略图解析收口为 4 路有界队列，屏外条目不再提前占用 IPC 和解码。
+- 宿主持久化 Workbench 快照增加进程内热副本与按插件 single-flight 读取；切回已打开插件先同步
+  命中热快照，避免重复 IPC 和空白闪烁，磁盘仍负责跨进程首次恢复。
+- Workbench query 由宿主立即乐观回画，140ms 防抖后通知插件；清空立即发送，tab/filter/销毁
+  会取消旧查询，降低大列表逐键筛选对输入连续性的影响。
+- 这套能力自动覆盖 V2EX、Bing/艺术壁纸、Unsplash、酷安、微博、贴吧等所有声明式 Workbench
+  插件；业务原始响应、评论和“设为壁纸”所需本地文件仍由插件领域缓存负责。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check` / `npm run build`
+- [x] CDP：10,000 条 Workbench List 21 个虚拟节点、Gallery 30 张卡；End 跳至第 10,000
+  条分别约 39ms / 64ms，包含 140ms 防抖的精确搜索约 157ms；布局切换通过且无错误覆盖层
+- [x] 变更量发布门禁、完整 diff、版本同步与发布预检
+
 ## Fix — 剪切板 / RSS 切换、大数据与搜索延迟
 
 **状态**：代码、协议门禁、构建、存储测试与 localhost CDP 大列表复核完成。

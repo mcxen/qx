@@ -334,8 +334,13 @@ assert.match(
   /@keyframes qx-island-pulse-bar\s*\{[^}]*transform:\s*scaleY\(0\.3\)/s,
 );
 
-const workbenchViewSource = fs.readFileSync("src/plugin/PluginWorkbenchView.tsx", "utf8");
-assert.match(workbenchViewSource, /item\.progress != null \? "has-progress"/);
+const workbenchCollectionSource = fs.readFileSync(
+  "src/plugin/PluginWorkbenchCollection.tsx",
+  "utf8",
+);
+assert.match(workbenchCollectionSource, /item\.progress != null \? "has-progress"/);
+assert.match(workbenchCollectionSource, /useVirtualizer/);
+assert.match(workbenchCollectionSource, /overscan:/);
 
 const workbenchCssSource = fs.readFileSync("src/styles/lists-icons.css", "utf8");
 assert.match(
