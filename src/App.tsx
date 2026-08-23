@@ -1069,9 +1069,19 @@ function App() {
       minIntervalMs: 60_000,
       run: () => refreshSearchUsageCache(),
     });
+    const stopAppCatalogRefresh = registerWindowActivationTask({
+      id: "launcher.app-catalog-refresh",
+      delayMs: 180,
+      minIntervalMs: 1_500,
+      run: () =>
+        invoke<boolean>("refresh_apps_if_changed")
+          .then(() => undefined)
+          .catch(() => {}),
+    });
     return () => {
       stopHomeRepair();
       stopUsageRefresh();
+      stopAppCatalogRefresh();
     };
   }, [setLoadingPhase, setResults]);
 

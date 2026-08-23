@@ -106,6 +106,11 @@ leave 走 `closeSettings()`。该端口维护一层 `returnTo`，使「模块 �
 | 后台（延后） | 插件 ≥1.4s idle；模块 chunk idle 预取；自动更新 ≥18s 且面板隐藏 | 启动 2s 内下载 zip |
 | 事件 | `apps:updated` / `icons-ready` debounce | 扫描完成立刻多次 `search_apps` 打爆列表 |
 
+主窗口的 activation background lane 还会在首帧后调用
+`refresh_apps_if_changed`：该命令只比较应用入口与 `Info.plist` 的轻量签名，签名相同不做
+plist 解析或 SQLite 写入；新装、删除或原位替换时只重建变化条目，再沿既有
+`apps:updated` 事件刷新当前查询。不得把该检查移动到逐字符 `doSearch` 热路径。
+
 空 query 的 `doSearch` 走 **fast path**：有新鲜 app 列表则直接 return，不跑插件/元数据管线。
 
 ## 搜索管线

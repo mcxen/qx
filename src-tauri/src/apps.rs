@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter};
 
+mod catalog_refresh;
 mod icons;
 
 #[derive(Debug, Serialize, Clone)]
@@ -171,10 +172,17 @@ fn preserve_icons_from_previous(mut fresh: Vec<AppEntry>, previous: &[AppEntry])
 /// Sync the provided app entries into the DB (upsert + delete stale).
 /// Never overwrite a good on-disk icon path with an empty string.
 fn sync_db(entries: &[AppEntry]) {
-    let conn = match init_db() {
+    let mut conn = match init_db() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[apps] DB sync init failed: {e}");
+            return;
+        }
+    };
+    let transaction = match conn.transaction() {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            eprintln!("[apps] DB sync transaction failed: {error}");
             return;
         }
     };
@@ -184,7 +192,7 @@ fn sync_db(entries: &[AppEntry]) {
 
     // Upsert all current entries
     for entry in entries {
-        let result = conn.execute(
+        let result = transaction.execute(
             "INSERT INTO apps (path, name, display_name, icon, kind, aliases, last_seen)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))
              ON CONFLICT(path) DO UPDATE SET
@@ -226,10 +234,13 @@ fn sync_db(entries: &[AppEntry]) {
             .iter()
             .map(|s| s as &dyn rusqlite::types::ToSql)
             .collect();
-        let _ = conn.execute(&sql, params.as_slice());
+        let _ = transaction.execute(&sql, params.as_slice());
     } else {
         // No current apps, clear everything
-        let _ = conn.execute("DELETE FROM apps", []);
+        let _ = transaction.execute("DELETE FROM apps", []);
+    }
+    if let Err(error) = transaction.commit() {
+        eprintln!("[apps] DB sync commit failed: {error}");
     }
 }
 
@@ -505,139 +516,96 @@ fn resolve_icon_path(app_path: &PathBuf, app_name: &str) -> Option<PathBuf> {
         .find(|path| path.extension().map(|ext| ext == "icns").unwrap_or(false))
 }
 
-/// Fast scan: only checks for already-cached PNG icons (no `sips` subprocess).
-/// This makes the scan near-instant even on first run.
-fn scan_dir_fast(dir: &PathBuf, results: &mut Vec<AppEntry>) {
-    if !dir.exists() {
-        return;
-    }
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let original_path = entry.path();
-            if original_path
-                .extension()
-                .map(|e| e == "app")
-                .unwrap_or(false)
-            {
-                let path = resolve_app_bundle(original_path.clone()).unwrap_or(original_path);
-                let name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Unknown")
-                    .to_string();
-                let (display_name, aliases) = resolve_localized_names(&path, &name);
-                let png_path = icons::cache_path(&path, &name);
-                let legacy_png_path = icons::legacy_cache_path(&name);
-                let icon = if png_path.exists() {
-                    png_path.to_string_lossy().to_string()
-                } else if legacy_png_path.exists() {
-                    legacy_png_path.to_string_lossy().to_string()
-                } else {
-                    String::new()
-                };
-                results.push(AppEntry {
-                    name,
-                    display_name,
-                    path: path.to_string_lossy().to_string(),
-                    icon,
-                    kind: "app".to_string(),
-                    modified_at: None,
-                    aliases,
-                });
-            }
-        }
-    }
-}
-
 #[cfg(target_os = "macos")]
-fn scan_all_apps() -> Vec<AppEntry> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
-    let dirs = vec![
-        PathBuf::from("/Applications"),
-        PathBuf::from("/System/Applications"),
-        PathBuf::from("/System/Applications/Utilities"),
-        PathBuf::from(format!("{}/Applications", home)),
-    ];
-
-    let mut results = Vec::new();
-    for dir in dirs {
-        scan_dir_fast(&dir, &mut results);
+fn scan_app_candidate(original_path: &Path) -> Option<AppEntry> {
+    if original_path
+        .extension()
+        .is_none_or(|extension| extension != "app")
+    {
+        return None;
     }
-    results
+    let path = resolve_app_bundle(original_path.to_path_buf())
+        .unwrap_or_else(|| original_path.to_path_buf());
+    let name = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+    let (display_name, aliases) = resolve_localized_names(&path, &name);
+    let png_path = icons::cache_path(&path, &name);
+    let legacy_png_path = icons::legacy_cache_path(&name);
+    let icon = if png_path.exists() {
+        png_path.to_string_lossy().to_string()
+    } else if legacy_png_path.exists() {
+        legacy_png_path.to_string_lossy().to_string()
+    } else {
+        String::new()
+    };
+    Some(AppEntry {
+        name,
+        display_name,
+        path: path.to_string_lossy().to_string(),
+        icon,
+        kind: "app".to_string(),
+        modified_at: None,
+        aliases,
+    })
 }
 
 #[cfg(target_os = "windows")]
-fn scan_all_apps() -> Vec<AppEntry> {
-    fn scan_start_menu(dir: PathBuf, results: &mut Vec<AppEntry>) {
-        let mut stack = vec![dir];
-        while let Some(current) = stack.pop() {
-            let Ok(entries) = fs::read_dir(current) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    stack.push(path);
-                    continue;
-                }
-                let is_shortcut = path
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .map(|extension| extension.eq_ignore_ascii_case("lnk"))
-                    .unwrap_or(false);
-                if !is_shortcut {
-                    continue;
-                }
-                let name = path
-                    .file_stem()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("Unknown")
-                    .to_string();
-                results.push(AppEntry {
-                    display_name: name.clone(),
-                    name,
-                    path: path.to_string_lossy().to_string(),
-                    icon: String::new(),
-                    kind: "app".to_string(),
-                    modified_at: None,
-                    aliases: String::new(),
-                });
-            }
-        }
+fn scan_app_candidate(path: &Path) -> Option<AppEntry> {
+    let is_shortcut = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("lnk"));
+    if !is_shortcut {
+        return None;
     }
-
-    let mut roots = Vec::new();
-    if let Some(app_data) = std::env::var_os("APPDATA") {
-        roots.push(
-            PathBuf::from(app_data)
-                .join("Microsoft")
-                .join("Windows")
-                .join("Start Menu")
-                .join("Programs"),
-        );
-    }
-    if let Some(program_data) = std::env::var_os("PROGRAMDATA") {
-        roots.push(
-            PathBuf::from(program_data)
-                .join("Microsoft")
-                .join("Windows")
-                .join("Start Menu")
-                .join("Programs"),
-        );
-    }
-
-    let mut results = Vec::new();
-    for root in roots {
-        scan_start_menu(root, &mut results);
-    }
-    results.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
-    results.dedup_by(|left, right| left.path.eq_ignore_ascii_case(&right.path));
-    results
+    let name = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+    Some(AppEntry {
+        display_name: name.clone(),
+        name,
+        path: path.to_string_lossy().to_string(),
+        icon: String::new(),
+        kind: "app".to_string(),
+        modified_at: None,
+        aliases: String::new(),
+    })
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn scan_app_candidate(_path: &Path) -> Option<AppEntry> {
+    None
+}
+
+fn sort_and_dedupe_apps(results: &mut Vec<AppEntry>) {
+    results.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.path.to_lowercase().cmp(&right.path.to_lowercase()))
+    });
+    #[cfg(target_os = "windows")]
+    results.dedup_by(|left, right| left.path.eq_ignore_ascii_case(&right.path));
+    #[cfg(not(target_os = "windows"))]
+    results.dedup_by(|left, right| left.path == right.path);
+}
+
+fn scan_app_candidates<'a>(paths: impl Iterator<Item = &'a PathBuf>) -> Vec<AppEntry> {
+    let mut results = paths
+        .filter_map(|path| scan_app_candidate(path))
+        .collect::<Vec<_>>();
+    sort_and_dedupe_apps(&mut results);
+    results
+}
+
 fn scan_all_apps() -> Vec<AppEntry> {
-    Vec::new()
+    let candidates = catalog_refresh::candidate_snapshot();
+    scan_app_candidates(candidates.keys())
 }
 
 /// Initialize the app cache from persistent DB, then spawn a background
@@ -660,23 +628,7 @@ pub fn ensure_cache(app: Option<&AppHandle>) {
     // launch. Directory walking, plist reads and icon discovery must never
     // delay Tauri setup or shortcut/tray registration.
     if let Some(handle) = app {
-        let app_handle = handle.clone();
-        let _ = std::thread::Builder::new()
-            .name("qx-app-scan".to_string())
-            .spawn(move || {
-                let previous = app_cache_lock()
-                    .map(|cache| cache.clone())
-                    .unwrap_or_default();
-                let fresh = preserve_icons_from_previous(scan_all_apps(), &previous);
-                sync_db(&fresh);
-                if let Some(mut cache) = app_cache_lock() {
-                    *cache = fresh;
-                }
-                let _ = app_handle.emit("apps:updated", ());
-                // Generate missing PNGs *after* scan so we never race a fast
-                // scan that would wipe icons we just wrote.
-                fill_missing_icons(&app_handle);
-            });
+        let _ = catalog_refresh::schedule_full(handle.clone());
     } else if app_cache_lock()
         .map(|cache| cache.is_empty())
         .unwrap_or(true)
@@ -692,6 +644,15 @@ pub fn ensure_cache(app: Option<&AppHandle>) {
             *cache = fresh;
         }
     }
+}
+
+/// Reconcile the installed-app catalogue after the launcher becomes active.
+/// The command returns immediately after scheduling one bounded background
+/// check. Unchanged catalogues do no plist/database work; additions, removals,
+/// and in-place replacements refresh only the affected app entries.
+#[tauri::command]
+pub fn refresh_apps_if_changed(app: AppHandle) -> bool {
+    catalog_refresh::schedule_if_changed(app)
 }
 
 /// Convert missing app icons to PNG and update cache + DB.

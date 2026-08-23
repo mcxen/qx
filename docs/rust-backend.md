@@ -23,7 +23,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `apps.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，macOS 用 `sips` 生成最长边 128px 的紧凑 icon PNG（并迁移旧超尺寸缓存），中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`) |
+| `apps.rs` + `apps/catalog_refresh.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，并在 Launcher 激活后通过轻量候选签名增量发现新装、删除或原位替换的应用；无变化不解析 plist/写库，有变化只刷新受影响条目并发出 `apps:updated`。macOS 用 `sips` 生成最长边 128px 的紧凑 icon PNG（并迁移旧超尺寸缓存），中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`) |
 | `apps_zh_dict.rs` | 常见 macOS app 的中文别名 → pinyin 词典 |
 | `file_search.rs` + `file_search/platform_{macos,windows}.rs` | 共享文件分类、去重、排序与 latest-wins 调度；macOS Cardinal/Spotlight 和 Windows Everything 分别封装在平台适配器中。Windows 使用 Qx 私有命名实例与 LocalAppData 下的私有后台配置，不读取或拉起用户 Everything 界面；ES 结果通过 UTF-8 文本导出读取，不依赖控制台代码页 |
 | `history.rs` | `launch_history` / `search_history` / `search_click_events` SQLite 表；`record_*` 后台写入，`get_*` 批量读取；搜索结果 30 天点击量聚合供推荐加权 |

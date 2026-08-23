@@ -669,6 +669,7 @@ pub fn run() {
             diagnostics::qx_log_event,
             diagnostics::qx_log_path,
             apps::search_apps,
+            apps::refresh_apps_if_changed,
             apps::search_files,
             open_app,
             set_window_size,

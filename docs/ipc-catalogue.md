@@ -17,6 +17,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前命令数由 `npm 
 | 命令 | 签名 | 用途 |
 |---|---|---|
 | `search_apps` | `(query: String) -> Vec<AppEntry>` | 已安装 `.app` 打分排序，空 query 返回前 20 |
+| `refresh_apps_if_changed` | `() -> bool` | 主窗口激活后的非阻塞应用目录对账；轻量签名未变化时立即结束，新增、删除或原位替换时只刷新变化的应用并发出 `apps:updated` |
 | `search_files` | `(query: String, pass?: u32, categories?: FileSearchCategory[], category_id?: String, request_id?: u64) -> Vec<AppEntry>` | Cardinal / Everything 文件名搜索；Launcher 显式传 `pass=0/1/2` 获得渐进批次并自行合并，QxAI / 插件等省略 `pass` 的调用方由后端执行并去重全部三轮，不能退化为仅 quick pass；`request_id` 使旧查询失效；所有平台统一 leaf-name 后置匹配，短 ASCII 查询不做松散逐字符召回；返回可选 `modified_at`，同分类先按名称相关性、再按修改时间倒序；Spotlight 作为 macOS 补充回退 |
 
 调用方：`App.tsx`、`plugin/runtime.ts`、`plugin/context.ts`、`modules/qx-ai/react-agent.ts`
@@ -263,7 +264,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 <!-- IPC_COMMANDS_START -->
 `tray_panel_hide`, `tray_panel_open_settings`, `tray_panel_run_action`, `tray_panel_resize`,
 `tray_panel_get_focus_display`, `set_window_glass_effect`, `get_file_size`, `qx_log_event`, `qx_log_path`,
-`search_apps`, `search_files`, `open_app`, `set_window_size`, `get_clipboard_history`,
+`search_apps`, `refresh_apps_if_changed`, `search_files`, `open_app`, `set_window_size`, `get_clipboard_history`,
 `file_manager_get_selection`, `file_manager_perform_operation`, `file_preview_info`, `file_preview_read`,
 `file_preview_folder`,
 `get_clipboard_history_page`, `get_clipboard_entry`, `read_clipboard_image_now`, `write_clipboard_image_entry`,
