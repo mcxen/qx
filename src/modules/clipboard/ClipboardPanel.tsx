@@ -2,18 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import type { LucideIcon } from "lucide-react";
-import { AlignLeft, AudioLines, CalendarDays, Code2, File, FileText, Folder, Image, Link, Pin, Shrink, Video } from "lucide-react";
+import { File, FileText, Folder, Shrink, Video } from "lucide-react";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
-import {
-  Calendar,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  type CalendarRange,
-} from "../../components/ui";
+import { type CalendarRange } from "../../components/ui";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useLocale, useT } from "../../i18n";
@@ -34,6 +27,9 @@ import {
   prefetchClipboardOpen,
   refreshClipboardHistory,
 } from "./openSession";
+import ClipboardHistoryVirtualList, {
+  type ClipboardHistorySection,
+} from "./ClipboardHistoryVirtualList";
 import {
   classify,
   decodeClipboardUrl,
@@ -42,7 +38,6 @@ import {
   clipboardFilePaths,
   dateKey,
   sectionName,
-  preview,
   formatCopied,
   wordCount,
   contentType,
@@ -62,24 +57,6 @@ const FILTER_KEYS: Record<Filter, { key: string; fallback: string }> = {
   frequent: { key: "clipboard.filter.frequent", fallback: "Frequent" },
   image: { key: "clipboard.filter.image", fallback: "Images" },
   file: { key: "clipboard.filter.file", fallback: "Files" },
-};
-
-type ClipboardIconKind = ReturnType<typeof classify> | "pin" | "video" | "audio" | "pdf" | "folder";
-
-const CLIPBOARD_TYPE_ICONS: Record<ClipboardIconKind, LucideIcon> = {
-  pinned: Pin,
-  pin: Pin,
-  links: Link,
-  code: Code2,
-  long: AlignLeft,
-  frequent: FileText,
-  image: Image,
-  video: Video,
-  audio: AudioLines,
-  pdf: FileText,
-  folder: Folder,
-  file: File,
-  text: FileText,
 };
 
 const IMAGE_CACHE = new Map<string, string>();
@@ -202,27 +179,12 @@ function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
 }
 
-function ClipboardTypeIcon({ item }: { item: ClipboardEntry }) {
-  const kind: ClipboardIconKind = item.pinned
-    ? "pin"
-    : item.file_path
-      ? item.file_kind || clipboardFileKind(item.file_path)
-      : classify(item);
-  const Icon = CLIPBOARD_TYPE_ICONS[kind] ?? FileText;
-  return (
-    <Icon
-      className={`qx-clipboard-type-icon is-${kind}`}
-      size={15}
-      strokeWidth={2.1}
-      aria-hidden="true"
-    />
-  );
-}
-
 export default function ClipboardPanel() {
   const t = useT();
   const locale = useLocale();
-  const { clipboardHistory, setClipboardHistory, setTab } = useStore();
+  const clipboardHistory = useStore((state) => state.clipboardHistory);
+  const setClipboardHistory = useStore((state) => state.setClipboardHistory);
+  const setTab = useStore((state) => state.setTab);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [dateFilter, setDateFilter] = useState<CalendarRange>({ from: null, to: null });
@@ -235,6 +197,7 @@ export default function ClipboardPanel() {
   const [islandEffectNonce, setIslandEffectNonce] = useState(0);
   const [pasteTargetName, setPasteTargetName] = useState("");
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [visibleImagePaths, setVisibleImagePaths] = useState<string[]>([]);
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
   /** Right-pane file/PDF/video preview — loaded async, independent of list selection. */
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
@@ -244,6 +207,7 @@ export default function ClipboardPanel() {
   const [hasMoreCold, setHasMoreCold] = useState(false);
   const [loadingMoreCold, setLoadingMoreCold] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
   const preserveSelectionId = useRef<string | null>(null);
   const loadingMoreRef = useRef(false);
 
@@ -270,6 +234,19 @@ export default function ClipboardPanel() {
       loadingMoreRef.current = false;
       setLoadingMoreCold(false);
     }
+  }, []);
+
+  const handleVisibleImagePathsChange = useCallback((paths: string[]) => {
+    setVisibleImagePaths((current) => (
+      current.length === paths.length && current.every((path, index) => path === paths[index])
+        ? current
+        : paths
+    ));
+  }, []);
+
+  const bindListRef = useCallback((element: HTMLDivElement | null) => {
+    listRef.current = element;
+    setListElement(element);
   }, []);
 
   useEffect(() => {
@@ -376,6 +353,17 @@ export default function ClipboardPanel() {
     return matches;
   }, [clipboardHistory, dateFilter, filter, query]);
 
+  const grouped = useMemo(() => {
+    const sections: ClipboardHistorySection[] = [];
+    for (const item of filtered) {
+      const title = sectionName(item.timestamp, t);
+      const last = sections[sections.length - 1];
+      if (last?.title === title) last.items.push(item);
+      else sections.push({ key: dateKey(item.timestamp), title, items: [item] });
+    }
+    return sections;
+  }, [filtered, t]);
+
   // Infinite scroll: when the list reaches the bottom, pull the next cold page.
   // Also auto-fill when content does not overflow (short lists / type filters).
   useEffect(() => {
@@ -409,7 +397,9 @@ export default function ClipboardPanel() {
   const { getItemProps } = useQxListSelection({
     listRef,
     index: selected,
-    listSignature: filtered.map((item) => item.id).join("\0"),
+    listSignature: filtered.length === 0
+      ? "empty"
+      : `${filter}:${query}:${dateFilter.from ?? ""}:${dateFilter.to ?? ""}:${filtered.length}:${filtered[0]?.id}:${filtered[filtered.length - 1]?.id}`,
   });
 
   // Keyboard near the end of the loaded list also warms the next cold page.
@@ -419,23 +409,32 @@ export default function ClipboardPanel() {
     if (selected >= filtered.length - 4) void requestColdPage();
   }, [filtered.length, hasMoreCold, requestColdPage, selected]);
 
-  // Load clipboard images as data URLs (avoids asset protocol issues)
+  // Load only thumbnails inside the virtual viewport. A small worker pool keeps
+  // image-heavy history from issuing an unbounded burst of IPC/file reads.
   useEffect(() => {
-    const paths = filtered.filter((e) => e.image_path).map((e) => e.image_path!);
-    const uniquePaths = [...new Set(paths)];
-    const loadAll = async () => {
+    const paths = visibleImagePaths.filter((path) => !imageUrls[path] && !IMAGE_CACHE.has(path));
+    if (paths.length === 0) return;
+    let cancelled = false;
+    const loadVisible = async () => {
       const results: Record<string, string> = {};
-      await Promise.all(
-        uniquePaths.map(async (p) => {
+      let next = 0;
+      const worker = async () => {
+        while (!cancelled) {
+          const path = paths[next++];
+          if (!path) return;
           try {
-            results[p] = await loadImageAsDataUrl(p);
+            results[path] = await loadImageAsDataUrl(path);
           } catch {}
-        }),
-      );
-      setImageUrls((prev) => ({ ...prev, ...results }));
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(4, paths.length) }, worker));
+      if (!cancelled && Object.keys(results).length > 0) {
+        setImageUrls((prev) => ({ ...prev, ...results }));
+      }
     };
-    void loadAll();
-  }, [filtered]);
+    void loadVisible();
+    return () => { cancelled = true; };
+  }, [imageUrls, visibleImagePaths]);
 
   useEffect(() => {
     const activePaths = new Set([
@@ -599,23 +598,15 @@ export default function ClipboardPanel() {
     return () => { unlisten.then((dispose) => dispose()); };
   }, []);
 
-  const grouped = useMemo(() => {
-    const sections: { title: string; items: ClipboardEntry[] }[] = [];
-    for (const item of filtered) {
-      const title = sectionName(item.timestamp, t);
-      const last = sections[sections.length - 1];
-      if (last?.title === title) {
-        last.items.push(item);
-      } else {
-        sections.push({ title, items: [item] });
-      }
-    }
-    return sections;
-  }, [filtered, t]);
-
   const availableDateBounds = useMemo(() => {
-    const dates = clipboardHistory.map((item) => dateKey(item.timestamp)).filter(Boolean).sort();
-    return { min: dates[0] ?? null, max: dates[dates.length - 1] ?? null };
+    let min: string | null = null;
+    let max: string | null = null;
+    for (const item of clipboardHistory) {
+      const date = dateKey(item.timestamp);
+      if (!min || date < min) min = date;
+      if (!max || date > max) max = date;
+    }
+    return { min, max };
   }, [clipboardHistory]);
 
   const formatDateChoice = (value: string) => {
@@ -629,17 +620,6 @@ export default function ClipboardPanel() {
     if (!dateFilter.to || dateFilter.to === dateFilter.from) return formatDateChoice(dateFilter.from);
     return `${formatDateChoice(dateFilter.from)} – ${formatDateChoice(dateFilter.to)}`;
   }, [dateFilter, locale]);
-
-  const recentRange = (days: number): CalendarRange => {
-    const max = availableDateBounds.max ?? dateKey(new Date().toISOString());
-    const from = new Date(`${max}T00:00:00`);
-    from.setDate(from.getDate() - (days - 1));
-    const first = dateKey(from.toISOString());
-    return {
-      from: availableDateBounds.min && first < availableDateBounds.min ? availableDateBounds.min : first,
-      to: max,
-    };
-  };
 
   const selectItem = (item: ClipboardEntry, index: number) => {
     preserveSelectionId.current = item.id;
@@ -1092,8 +1072,6 @@ export default function ClipboardPanel() {
   ]);
   // importToTextTool / paste / pin closed over selectedItem — intentional
 
-  let flatIndex = 0;
-
   const searchSlot = (
     <QxModuleSearch
       className="qx-clipboard-search-wrap"
@@ -1195,105 +1173,26 @@ export default function ClipboardPanel() {
       actions={clipboardActions}
     >
       <div className={`qx-clipboard-body qx-content-split${detailOpen ? " has-detail" : ""}`}>
-        <div ref={listRef} className="qx-clipboard-list qx-content-list" role="listbox" aria-label={t("clipboard.listAria", "Clipboard history")}>
-          {grouped.map((section, sectionIndex) => {
-            const sectionKey = `${section.title}-${sectionIndex}`;
-            return (
-            <div key={sectionKey}>
-              <Popover
-                modal
-                open={datePopoverSection === sectionKey}
-                onOpenChange={(open) => setDatePopoverSection(open ? sectionKey : null)}
-              >
-                <PopoverTrigger asChild>
-                  <button className="qx-section-header qx-clipboard-date-trigger" type="button">
-                    <CalendarDays size={13} aria-hidden="true" />
-                    <span className="qx-clipboard-date-title">
-                      {dateFilterLabel ?? section.title}
-                    </span>
-                    <span>{section.items.length}</span>
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="qx-clipboard-date-popover" side="right" align="start">
-                  <Calendar
-                    value={dateFilter}
-                    onChange={(range) => {
-                      setDateFilter(range);
-                      setSelected(0);
-                    }}
-                    locale={locale}
-                    min={availableDateBounds.min}
-                    max={availableDateBounds.max}
-                    rangeLabel={t("clipboard.dateFilter", "Filter by date range")}
-                    previousMonthLabel={t("clipboard.calendar.previousMonth", "Previous month")}
-                    nextMonthLabel={t("clipboard.calendar.nextMonth", "Next month")}
-                  />
-                  <div className="qx-clipboard-date-presets">
-                    <button
-                      className={!dateFilter.from ? "is-active" : ""}
-                      type="button"
-                      onClick={() => {
-                        setDateFilter({ from: null, to: null });
-                        setSelected(0);
-                        setDatePopoverSection(null);
-                      }}
-                    >
-                      {t("clipboard.allDates", "All dates")}
-                    </button>
-                    {[1, 7, 30].map((days) => (
-                      <button key={days} type="button" onClick={() => {
-                        setDateFilter(recentRange(days));
-                        setSelected(0);
-                        setDatePopoverSection(null);
-                      }}>
-                        {days === 1
-                          ? t("clipboard.calendar.today", "Today")
-                          : t("clipboard.calendar.lastDays", "Last {n} days").replace("{n}", String(days))}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="qx-clipboard-date-summary" aria-live="polite">
-                    {dateFilterLabel ?? t("clipboard.allDates", "All dates")}
-                  </div>
-                </PopoverContent>
-              </Popover>
-              {section.items.map((item) => {
-                const index = flatIndex++;
-                const kind = classify(item);
-                const isImage = kind === "image";
-                const itemProps = getItemProps(index);
-                return (
-                  <button
-                    key={item.id}
-                    {...itemProps}
-                    onClick={() => selectItem(item, index)}
-                    onDoubleClick={() => beginTextEdit(item)}
-                  >
-                    <span className="qx-clipboard-row-icon" aria-hidden="true">
-                      <ClipboardTypeIcon item={item} />
-                    </span>
-                    <span className="qx-clipboard-row-copy">
-                      <span className="qx-clipboard-row-title">
-                        {item.pinned && <span className="qx-clipboard-pin-dot" />}
-                        {isImage ? (
-                          <img
-                            className="qx-clipboard-thumb"
-                            src={imageUrls[item.image_path!] || ""}
-                            alt={t("clipboard.imageAlt", "Clipboard image")}
-                          />
-                        ) : item.file_path ? (
-                          clipboardFileLabel(item, t)
-                        ) : (
-                          preview(item.text) || t("clipboard.emptyText", "Empty Text")
-                        )}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            );
-          })}
+        <div ref={bindListRef} className="qx-clipboard-list qx-content-list" role="listbox" aria-label={t("clipboard.listAria", "Clipboard history")}>
+          {grouped.length > 0 && (
+            <ClipboardHistoryVirtualList
+              listElement={listElement}
+              sections={grouped}
+              selected={selected}
+              getItemProps={getItemProps}
+              onSelect={selectItem}
+              onBeginTextEdit={beginTextEdit}
+              imageUrls={imageUrls}
+              onVisibleImagePathsChange={handleVisibleImagePathsChange}
+              dateFilter={dateFilter}
+              setDateFilter={setDateFilter}
+              datePopoverSection={datePopoverSection}
+              setDatePopoverSection={setDatePopoverSection}
+              setSelected={setSelected}
+              dateBounds={availableDateBounds}
+              dateFilterLabel={dateFilterLabel}
+            />
+          )}
           {filtered.length === 0 && (
             <div className="qx-empty-state">
               {clipboardHistory.length === 0

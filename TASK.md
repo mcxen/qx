@@ -1,5 +1,29 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — 剪切板 / RSS 切换、大数据与搜索延迟
+
+**状态**：代码、协议门禁、构建、存储测试与 localhost CDP 大列表复核完成。
+
+- 剪切板继续只打开 80 条热窗口、滚动加载 50 条冷页；列表改为虚拟 DOM，图片缩略图只读取
+  当前视口并限制 4 路并发。Host 与 Panel 同帧打开合并一次事务，原生图片探测 10 秒节流。
+- RSS 移除重复 mount 读取并取消额外 32ms 挂载延迟；feeds/folders 并行 single-flight，命中
+  30 秒内存缓存立即绘制。文章列表按 feed/filter/query 保存 12 个有界缓存 scope。
+- `rss_list_articles` 默认只返回 120 条摘要投影（最大 200，摘要 2000 字符，不带正文），
+  正文由 `rss_get_article` 按需读取；组合索引承担 feed/filter/date 排序，DB 读取离开 UI 线程。
+- RSS 搜索 160ms 防抖，并以稳定 query key 拒绝较慢旧响应覆盖新结果；启动后台按用户的
+  retention/max-per-feed 修复旧库，避免历史积累持续放大查询与序列化开销。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run check` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / RSS storage 定向测试
+- [x] CDP 合成大列表：剪切板 10,000 条只挂载 22–23 行；首次切换 328ms、热切换
+  277–299ms（均包含 Browser/CDP 命令开销）；本地筛选到稳定结果 19ms，End 跳至第 10,000 条
+  70ms。RSS 首次切换 284ms、热切换 266–298ms；120 条列表打开 287ms，包含 160ms
+  debounce 的搜索稳定结果 241ms。
+- [x] 真实 RSS DB 副本：最大订阅旧 500 条全文读取约 40ms；新 120 条摘要查询命中
+  `idx_articles_feed_published`，命令行计时低于 10ms（显示 0.00s）。
+
 ## Fix — 20 个市场插件的 Actions / Enter 一致性
 
 **状态**：宿主端口与自动验证完成；等待桌面键盘交互复核。

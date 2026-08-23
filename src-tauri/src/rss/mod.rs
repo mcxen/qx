@@ -62,8 +62,42 @@ pub fn init(app: &tauri::AppHandle) {
         Arc::new(tokio::sync::Mutex::new(())),
     );
     app.manage(db.clone());
+    tauri::async_runtime::spawn(maintain_article_retention(db.clone()));
     tauri::async_runtime::spawn(warm_feed_icon_cache(db.clone()));
     start_background_refresh(app.clone(), db);
+}
+
+async fn maintain_article_retention(db: RssDb) {
+    let result = crate::runtime::blocking(move || {
+        let rss_settings = rss_settings();
+        with_db(&db, |conn| {
+            let feed_ids = storage::all_feed_targets(conn)
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|(id, _, _)| id)
+                .collect::<Vec<_>>();
+            for feed_id in feed_ids {
+                storage::prune_articles(conn, feed_id, rss_settings.max_articles_per_feed)
+                    .map_err(|error| error.to_string())?;
+            }
+            if rss_settings.retention_days > 0 {
+                storage::delete_old_articles(conn, rss_settings.retention_days)
+                    .map_err(|error| error.to_string())?;
+            }
+            Ok(())
+        })
+    })
+    .await
+    .map_err(String::from)
+    .and_then(|inner| inner);
+    if let Err(error) = result {
+        crate::diagnostics::log(
+            crate::diagnostics::LogLevel::Warn,
+            "rss.retention",
+            "RSS startup retention repair failed",
+            serde_json::json!({ "error": error.to_string() }),
+        );
+    }
 }
 
 fn background_refresh_is_due(
@@ -224,8 +258,8 @@ fn prune_feed(conn: &rusqlite::Connection, feed_id: i64) -> rusqlite::Result<()>
 }
 
 #[command]
-pub fn rss_list_feeds(state: State<RssDb>) -> Result<Vec<Feed>, String> {
-    with_db(&state, |conn| {
+pub async fn rss_list_feeds(state: State<'_, RssDb>) -> Result<Vec<Feed>, String> {
+    with_db_async(&state, |conn| {
         let mut feeds = storage::list_feeds(conn).map_err(|e| format!("{e}"))?;
         for feed in &mut feeds {
             let icon = feed.icon.trim();
@@ -238,6 +272,7 @@ pub fn rss_list_feeds(state: State<RssDb>) -> Result<Vec<Feed>, String> {
         }
         Ok(feeds)
     })
+    .await
 }
 
 #[command]
@@ -290,16 +325,26 @@ pub fn rss_remove_feed(state: State<RssDb>, id: i64) -> Result<(), String> {
 }
 
 #[command]
-pub fn rss_list_articles(
-    state: State<RssDb>,
+pub async fn rss_list_articles(
+    state: State<'_, RssDb>,
     feed_id: Option<i64>,
     only_unread: bool,
+    only_starred: Option<bool>,
     query: Option<String>,
+    limit: Option<u32>,
 ) -> Result<Vec<Article>, String> {
-    with_db(&state, |conn| {
-        storage::list_articles(conn, feed_id, only_unread, query.as_deref())
-            .map_err(|e| format!("{e}"))
+    with_db_async(&state, move |conn| {
+        storage::list_articles(
+            conn,
+            feed_id,
+            only_unread,
+            only_starred.unwrap_or(false),
+            query.as_deref(),
+            limit.unwrap_or(120) as usize,
+        )
+        .map_err(|e| format!("{e}"))
     })
+    .await
 }
 
 #[command]
@@ -314,10 +359,11 @@ pub async fn rss_dashboard_snapshot(
 }
 
 #[command]
-pub fn rss_get_article(state: State<RssDb>, id: i64) -> Result<Option<Article>, String> {
-    with_db(&state, |conn| {
+pub async fn rss_get_article(state: State<'_, RssDb>, id: i64) -> Result<Option<Article>, String> {
+    with_db_async(&state, move |conn| {
         storage::get_article(conn, id).map_err(|e| format!("{e}"))
     })
+    .await
 }
 
 #[command]

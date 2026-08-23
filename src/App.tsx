@@ -975,9 +975,9 @@ function App() {
 
   useEffect(() => {
     if (tab === mountedTab) return;
-    // Launcher and clipboard must mount immediately: clipboard open is on a
-    // global shortcut critical path (chunk + history prefetch run in parallel).
-    if (tab === "launcher" || tab === "clipboard") {
+    // Data-backed hot modules mount immediately. Clipboard and RSS both own a
+    // cache-first open session, so delaying their mount only adds visible lag.
+    if (tab === "launcher" || tab === "clipboard" || tab === "rss") {
       setMountedTab(tab);
       return;
     }

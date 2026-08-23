@@ -39,7 +39,6 @@ export default function RssPanel() {
     refreshProgress,
     selectedIndex,
     setSelectedIndex,
-    loadFeeds,
     openFeed,
     refreshFeed,
     refreshAll,
@@ -60,10 +59,6 @@ export default function RssPanel() {
   const [folderTargetFeed, setFolderTargetFeed] = useState<RssFeed | null>(null);
   const [editFeed, setEditFeed] = useState<RssFeed | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    void loadFeeds();
-  }, [loadFeeds]);
 
   useEffect(() => {
     const pending = sessionStorage.getItem("qx.rss.pendingSurface");

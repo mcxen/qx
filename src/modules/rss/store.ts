@@ -60,6 +60,45 @@ export type RssStatusMessage =
   | { kind: "importingOpml" }
   | { kind: "importedFeeds"; count: number };
 
+interface RssLoadOptions {
+  force?: boolean;
+}
+
+const RSS_FEEDS_FRESH_MS = 30_000;
+const RSS_ARTICLES_FRESH_MS = 30_000;
+const RSS_ARTICLE_LIST_LIMIT = 120;
+const RSS_ARTICLE_CACHE_LIMIT = 12;
+
+let feedsLoadedAt = 0;
+let feedsInFlight: Promise<void> | null = null;
+const articleCache = new Map<string, { articles: RssArticle[]; loadedAt: number }>();
+const articleRequests = new Map<string, Promise<void>>();
+let activeArticlesKey = "";
+
+function articleCacheKey(
+  feedId: number,
+  filter: ArticleFilter,
+  search: string,
+): string {
+  return `${feedId}\0${filter}\0${search.trim().toLocaleLowerCase()}`;
+}
+
+function rememberArticles(key: string, articles: RssArticle[]): void {
+  articleCache.delete(key);
+  articleCache.set(key, { articles, loadedAt: Date.now() });
+  while (articleCache.size > RSS_ARTICLE_CACHE_LIMIT) {
+    const oldestKey = articleCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    articleCache.delete(oldestKey);
+  }
+}
+
+function invalidateArticleCache(feedId?: number): void {
+  for (const key of articleCache.keys()) {
+    if (feedId === undefined || key.startsWith(`${feedId}\0`)) articleCache.delete(key);
+  }
+}
+
 interface RssStore {
   view: RssView;
   selectedFeedId: number | null;
@@ -94,7 +133,7 @@ interface RssStore {
   setRefreshing: (id: number | null) => void;
   setStatusMessage: (m: RssStatusMessage | null) => void;
 
-  loadFeeds: () => Promise<void>;
+  loadFeeds: (options?: RssLoadOptions) => Promise<void>;
   loadFolders: () => Promise<void>;
   openFeed: (id: number) => Promise<void>;
   refreshFeed: (id: number) => Promise<void>;
@@ -109,7 +148,7 @@ interface RssStore {
   importOpml: (content: string) => Promise<number>;
   exportOpml: () => Promise<string>;
 
-  loadArticles: () => Promise<void>;
+  loadArticles: (options?: RssLoadOptions) => Promise<void>;
   openArticle: (id: number) => Promise<void>;
   markRead: (id: number, isRead: boolean) => Promise<void>;
   markAllRead: (feedId: number) => Promise<void>;
@@ -164,19 +203,36 @@ export const useRssStore = create<RssStore>((set, get) => ({
   setRefreshing: (refreshingFeedId) => set({ refreshingFeedId }),
   setStatusMessage: (statusMessage) => set({ statusMessage }),
 
-  loadFeeds: async () => {
+  loadFeeds: async (options = {}) => {
     if (!isTauriRuntime()) {
       set({ feeds: [], loading: false, error: null });
       return;
     }
-    set({ loading: true, error: null });
-    try {
-      const feeds = await invoke<RssFeed[]>("rss_list_feeds");
-      const folders = await invoke<RssFolder[]>("rss_list_folders").catch(() => [] as RssFolder[]);
-      set({ feeds, folders, loading: false });
-    } catch (e) {
-      set({ loading: false, error: String(e) });
+    if (!options.force && get().feeds.length > 0 && Date.now() - feedsLoadedAt < RSS_FEEDS_FRESH_MS) {
+      return;
     }
+    if (feedsInFlight) {
+      await feedsInFlight;
+      return;
+    }
+
+    const hasCachedFeeds = get().feeds.length > 0;
+    if (!hasCachedFeeds) set({ loading: true, error: null });
+    feedsInFlight = (async () => {
+      try {
+        const [feeds, folders] = await Promise.all([
+          invoke<RssFeed[]>("rss_list_feeds"),
+          invoke<RssFolder[]>("rss_list_folders").catch(() => [] as RssFolder[]),
+        ]);
+        feedsLoadedAt = Date.now();
+        set({ feeds, folders, loading: false, error: null });
+      } catch (e) {
+        set({ loading: false, error: String(e) });
+      } finally {
+        feedsInFlight = null;
+      }
+    })();
+    await feedsInFlight;
   },
 
   loadFolders: async () => {
@@ -218,9 +274,10 @@ export const useRssStore = create<RssStore>((set, get) => ({
         }
       });
       await invoke<number>("rss_refresh_feed", { id });
-      await get().loadFeeds();
+      await get().loadFeeds({ force: true });
       if (get().view === "articles" && get().selectedFeedId === id) {
-        await get().loadArticles();
+        invalidateArticleCache(id);
+        await get().loadArticles({ force: true });
       }
     } catch (e) {
       set({ error: String(e) });
@@ -255,8 +312,9 @@ export const useRssStore = create<RssStore>((set, get) => ({
         }
       });
       await invoke<number>("rss_refresh_all");
-      await get().loadFeeds();
-      if (get().view === "articles") await get().loadArticles();
+      await get().loadFeeds({ force: true });
+      invalidateArticleCache();
+      if (get().view === "articles") await get().loadArticles({ force: true });
     } catch (e) {
       set({ error: String(e) });
     } finally {
@@ -269,7 +327,8 @@ export const useRssStore = create<RssStore>((set, get) => ({
     if (!isTauriRuntime()) return;
     try {
       await invoke("rss_remove_feed", { id });
-      await get().loadFeeds();
+      invalidateArticleCache(id);
+      await get().loadFeeds({ force: true });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -280,7 +339,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       await invoke<RssFeed>("rss_add_feed", { url });
-      await get().loadFeeds();
+      await get().loadFeeds({ force: true });
       set({ loading: false });
     } catch (e) {
       set({ loading: false, error: String(e) });
@@ -293,7 +352,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       await invoke<RssFeed>("rss_update_feed", { id, url, title });
-      await get().loadFeeds();
+      await get().loadFeeds({ force: true });
       set({ loading: false });
     } catch (e) {
       set({ loading: false, error: String(e) });
@@ -305,7 +364,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
     if (!isTauriRuntime()) return;
     try {
       await invoke<RssFeed>("rss_set_feed_folder", { feedId, folderId });
-      await get().loadFeeds();
+      await get().loadFeeds({ force: true });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -330,7 +389,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
     if (!isTauriRuntime()) return;
     try {
       await invoke("rss_rename_folder", { id, name });
-      await get().loadFeeds();
+      await get().loadFeeds({ force: true });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -340,7 +399,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
     if (!isTauriRuntime()) return;
     try {
       await invoke("rss_delete_folder", { id });
-      await get().loadFeeds();
+      await get().loadFeeds({ force: true });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -351,7 +410,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
     set({ loading: true, error: null, statusMessage: { kind: "importingOpml" } });
     try {
       const count = await invoke<number>("rss_import_opml", { content });
-      await get().loadFeeds();
+      await get().loadFeeds({ force: true });
       set({
         loading: false,
         statusMessage: { kind: "importedFeeds", count },
@@ -372,7 +431,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
     return content;
   },
 
-  loadArticles: async () => {
+  loadArticles: async (options = {}) => {
     const { selectedFeedId, filter, search } = get();
     if (!isTauriRuntime()) {
       set({ articles: [], error: null });
@@ -382,20 +441,52 @@ export const useRssStore = create<RssStore>((set, get) => ({
       set({ articles: [] });
       return;
     }
-    try {
-      const onlyUnread = filter === "unread";
-      let articles = await invoke<RssArticle[]>("rss_list_articles", {
-        feedId: selectedFeedId,
-        onlyUnread,
-        query: search.trim() || null,
-      });
-      if (filter === "starred") {
-        articles = articles.filter((a) => a.is_starred);
-      }
-      set({ articles, error: null });
-    } catch (e) {
-      set({ error: String(e) });
+    const key = articleCacheKey(selectedFeedId, filter, search);
+    const cached = articleCache.get(key);
+    if (cached) {
+      articleCache.delete(key);
+      articleCache.set(key, cached);
+      activeArticlesKey = key;
+      set({ articles: cached.articles, error: null });
+      if (!options.force && Date.now() - cached.loadedAt < RSS_ARTICLES_FRESH_MS) return;
+    } else if (activeArticlesKey !== key) {
+      activeArticlesKey = key;
+      set({ articles: [] });
     }
+    const existingRequest = articleRequests.get(key);
+    if (existingRequest) {
+      await existingRequest;
+      return;
+    }
+
+    const request = (async () => {
+      try {
+        const articles = await invoke<RssArticle[]>("rss_list_articles", {
+          feedId: selectedFeedId,
+          onlyUnread: filter === "unread",
+          onlyStarred: filter === "starred",
+          query: search.trim() || null,
+          limit: RSS_ARTICLE_LIST_LIMIT,
+        });
+        rememberArticles(key, articles);
+        const latest = get();
+        if (latest.selectedFeedId != null
+          && articleCacheKey(latest.selectedFeedId, latest.filter, latest.search) === key) {
+          activeArticlesKey = key;
+          set({ articles, error: null });
+        }
+      } catch (e) {
+        const latest = get();
+        if (latest.selectedFeedId != null
+          && articleCacheKey(latest.selectedFeedId, latest.filter, latest.search) === key) {
+          set({ error: String(e) });
+        }
+      } finally {
+        articleRequests.delete(key);
+      }
+    })();
+    articleRequests.set(key, request);
+    await request;
   },
 
   openArticle: async (id) => {
@@ -416,8 +507,9 @@ export const useRssStore = create<RssStore>((set, get) => ({
             article.id === id ? { ...article, is_read: true } : article,
           ),
         }));
-        void get().loadArticles();
-        void get().loadFeeds();
+        invalidateArticleCache(a.feed_id);
+        void get().loadArticles({ force: true });
+        void get().loadFeeds({ force: true });
       }
     } catch (e) {
       set({ error: String(e) });
@@ -436,7 +528,8 @@ export const useRssStore = create<RssStore>((set, get) => ({
             ? { ...s.currentArticle, is_read: isRead }
             : s.currentArticle,
       }));
-      void get().loadFeeds();
+      invalidateArticleCache(get().selectedFeedId ?? undefined);
+      void get().loadFeeds({ force: true });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -450,7 +543,8 @@ export const useRssStore = create<RssStore>((set, get) => ({
         articles: s.articles.map((a) => ({ ...a, is_read: true })),
         readingArticles: s.readingArticles.map((a) => ({ ...a, is_read: true })),
       }));
-      void get().loadFeeds();
+      invalidateArticleCache(feedId);
+      void get().loadFeeds({ force: true });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -472,6 +566,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
             ? { ...s.currentArticle, is_starred: isStarred }
             : s.currentArticle,
       }));
+      invalidateArticleCache(get().selectedFeedId ?? undefined);
     } catch (e) {
       set({ error: String(e) });
     }

@@ -200,6 +200,12 @@ export default function ArticleList() {
     setLocalQuery(search);
   }, [search]);
 
+  useEffect(() => {
+    if (localQuery === search) return;
+    const timer = window.setTimeout(() => setSearch(localQuery), 160);
+    return () => window.clearTimeout(timer);
+  }, [localQuery, search, setSearch]);
+
   const feed = useMemo(
     () => feeds.find((f) => f.id === selectedFeedId) ?? null,
     [feeds, selectedFeedId],
@@ -681,10 +687,7 @@ export default function ArticleList() {
         <QxModuleSearch
           value={localQuery}
           autoFocus={!isReading}
-          onChange={(next) => {
-            setLocalQuery(next);
-            setSearch(next);
-          }}
+          onChange={setLocalQuery}
           placeholder={feed
             ? t("rss.searchInFeed", "Search in {feed}…").replace("{feed}", feed.title)
             : t("rss.searchArticles", "Search articles...")}

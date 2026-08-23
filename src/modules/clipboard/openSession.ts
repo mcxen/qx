@@ -16,6 +16,7 @@ import { useStore, type ClipboardEntry } from "../../store";
 export const CLIPBOARD_HOT_LIMIT = 80;
 /** Older history page size when scrolling into cold storage. */
 export const CLIPBOARD_COLD_PAGE = 50;
+const CLIPBOARD_LIVE_IMAGE_PROBE_TTL_MS = 10_000;
 
 /** @deprecated Use CLIPBOARD_HOT_LIMIT — kept for call sites that only need a hot window. */
 export const CLIPBOARD_HISTORY_LIMIT = CLIPBOARD_HOT_LIMIT;
@@ -47,6 +48,7 @@ function isTauriRuntime(): boolean {
 let historyInFlight: Promise<ClipboardHistorySession> | null = null;
 let openInFlight: Promise<ClipboardHistorySession> | null = null;
 let moreInFlight: Promise<ClipboardHistorySession> | null = null;
+let lastLiveImageProbeAt = 0;
 
 /** Session cursor for cold load-more (module panel + event refresh share this). */
 let sessionCursor: ClipboardHistoryCursor | null = null;
@@ -166,7 +168,12 @@ export function refreshClipboardHistory(options?: {
   /** Drop cold tail and reset session (open path / search change). */
   reset?: boolean;
 }): Promise<ClipboardHistorySession> {
-  if (historyInFlight) return historyInFlight;
+  if (historyInFlight) {
+    if (options?.reset || options?.query !== undefined) {
+      return historyInFlight.then(() => refreshClipboardHistory(options));
+    }
+    return historyInFlight;
+  }
   if (!isTauriRuntime()) {
     return Promise.resolve({
       items: useStore.getState().clipboardHistory,
@@ -290,7 +297,20 @@ export function prefetchClipboardOpen(
     return refreshClipboardHistory({ reset: true });
   }
 
+  // Panel mount and host navigation commonly arrive in the same frame. Join
+  // the complete open transaction before consulting the probe TTL so both
+  // callers observe the same history/image result.
   if (openInFlight) return openInFlight;
+
+  const now = Date.now();
+  if (
+    useStore.getState().clipboardHistory.length > 0
+    && now - lastLiveImageProbeAt < CLIPBOARD_LIVE_IMAGE_PROBE_TTL_MS
+  ) {
+    return refreshClipboardHistory({ reset: true });
+  }
+  lastLiveImageProbeAt = now;
+
   if (!isTauriRuntime()) {
     return Promise.resolve({
       items: useStore.getState().clipboardHistory,

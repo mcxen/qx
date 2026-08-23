@@ -286,13 +286,14 @@ export const MODULE_RSS_TOOLS: ToolSpec[] = [
   },
   {
     name: "rss_list_articles",
-    description: "List articles, optionally filtered by feedId, onlyUnread, or query.",
-    inputHint: '{"feedId": 1, "onlyUnread": true, "query": "rust"}',
+    description: "List bounded article summaries, optionally filtered by feedId, read/star state, or query.",
+    inputHint: '{"feedId": 1, "onlyUnread": true, "onlyStarred": false, "query": "rust"}',
     parameters: {
       type: "object",
       properties: {
         feedId: { type: "number" },
         onlyUnread: { type: "boolean" },
+        onlyStarred: { type: "boolean" },
         query: { type: "string" },
       },
     },
@@ -307,11 +308,14 @@ export const MODULE_RSS_TOOLS: ToolSpec[] = [
             ? rec.feed_id
             : null;
       const onlyUnread = rec.onlyUnread === true || rec.only_unread === true;
+      const onlyStarred = rec.onlyStarred === true || rec.only_starred === true;
       const query = stringField(rec, "query").trim() || null;
       const articles = await invoke("rss_list_articles", {
         feedId,
         onlyUnread,
+        onlyStarred,
         query,
+        limit: 120,
       });
       return truncate(JSON.stringify(articles, null, 2));
     },

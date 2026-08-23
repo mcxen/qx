@@ -101,6 +101,12 @@ fn migrate_schema(conn: &mut Connection) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_articles_feed ON rss_articles(feed_id);
         CREATE INDEX IF NOT EXISTS idx_articles_read ON rss_articles(is_read);
+        CREATE INDEX IF NOT EXISTS idx_articles_feed_published
+            ON rss_articles(feed_id, published_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_articles_feed_read_published
+            ON rss_articles(feed_id, is_read, published_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_articles_feed_starred_published
+            ON rss_articles(feed_id, is_starred, published_at DESC, id DESC);
         CREATE INDEX IF NOT EXISTS idx_feeds_folder ON rss_feeds(folder_id);
         CREATE TABLE IF NOT EXISTS rss_meta (
             key TEXT PRIMARY KEY NOT NULL,
@@ -502,10 +508,16 @@ pub fn list_articles(
     conn: &Connection,
     feed_id: Option<i64>,
     only_unread: bool,
+    only_starred: bool,
     query: Option<&str>,
+    limit: usize,
 ) -> rusqlite::Result<Vec<Article>> {
     let mut sql = String::from(
-        "SELECT id, feed_id, guid, title, summary, content, author, link, image_url, is_read, is_starred, reading_progress, published_at, created_at FROM rss_articles WHERE 1=1",
+        "SELECT id, feed_id, guid, title,
+                substr(COALESCE(summary, ''), 1, 2000), '' AS content,
+                author, link, image_url, is_read, is_starred, reading_progress,
+                published_at, created_at
+         FROM rss_articles WHERE 1=1",
     );
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     if let Some(fid) = feed_id {
@@ -515,6 +527,9 @@ pub fn list_articles(
     if only_unread {
         sql.push_str(" AND is_read = 0");
     }
+    if only_starred {
+        sql.push_str(" AND is_starred = 1");
+    }
     if let Some(q) = query {
         if !q.is_empty() {
             sql.push_str(" AND (title LIKE ? OR summary LIKE ?)");
@@ -523,7 +538,8 @@ pub fn list_articles(
             params_vec.push(Box::new(like));
         }
     }
-    sql.push_str(" ORDER BY published_at DESC NULLS LAST LIMIT 500");
+    sql.push_str(" ORDER BY published_at DESC NULLS LAST, id DESC LIMIT ?");
+    params_vec.push(Box::new(i64::try_from(limit.clamp(1, 200)).unwrap_or(120)));
     let mut stmt = conn.prepare(&sql)?;
     let params_ref: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
     let rows = stmt.query_map(params_ref.as_slice(), |row| {
@@ -907,5 +923,43 @@ mod tests {
         assert_eq!(feeds.len(), 1);
         assert_eq!(feeds[0].last_fetched, 9_999);
         assert_eq!(feeds[0].latest_article_published_at, 300);
+    }
+
+    #[test]
+    fn article_list_is_bounded_summary_only_and_filters_in_sql() {
+        let mut conn = Connection::open_in_memory().expect("open rss db");
+        migrate_schema(&mut conn).expect("create schema");
+        conn.execute(
+            "INSERT INTO rss_feeds (url, title, created_at) VALUES (?1, ?2, ?3)",
+            params!["https://example.com/feed.xml", "Example", 1],
+        )
+        .expect("insert feed");
+        let long_summary = "s".repeat(2_500);
+        for (guid, title, is_read, is_starred, published_at) in [
+            ("newest", "Target newest", 0_i64, 1_i64, 30_i64),
+            ("older", "Target older", 0_i64, 0_i64, 20_i64),
+            ("read", "Different", 1_i64, 1_i64, 10_i64),
+        ] {
+            conn.execute(
+                "INSERT INTO rss_articles
+                 (feed_id, guid, title, summary, content, is_read, is_starred,
+                  published_at, created_at)
+                 VALUES (1, ?1, ?2, ?3, 'full body must stay private', ?4, ?5, ?6, ?6)",
+                params![guid, title, long_summary, is_read, is_starred, published_at],
+            )
+            .expect("insert article");
+        }
+
+        let bounded = list_articles(&conn, Some(1), false, false, Some("Target"), 1)
+            .expect("read bounded list");
+        assert_eq!(bounded.len(), 1);
+        assert_eq!(bounded[0].title, "Target newest");
+        assert_eq!(bounded[0].summary.len(), 2_000);
+        assert!(bounded[0].content.is_empty());
+
+        let starred_unread =
+            list_articles(&conn, Some(1), true, true, None, 120).expect("read starred unread list");
+        assert_eq!(starred_unread.len(), 1);
+        assert_eq!(starred_unread[0].title, "Target newest");
     }
 }

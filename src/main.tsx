@@ -20,6 +20,11 @@ installGlobalQxLogging();
 installOverlayScrollbars();
 
 const params = new URLSearchParams(window.location.search);
+if (import.meta.env.DEV) {
+  void import("./dev/performanceFixture").then(({ installDevPerformanceFixture }) => {
+    installDevPerformanceFixture(params.get("perf-fixture"));
+  });
+}
 const surface = params.get("surface") ?? params.get("view");
 const isRecordingControls = surface === "recording-controls";
 const isRegionPicker = surface === "region-picker";
