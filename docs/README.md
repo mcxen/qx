@@ -17,6 +17,7 @@
 | 文档 | 覆盖范围 |
 |---|---|
 | [architecture-principles.md](./architecture-principles.md) | SOLID 落点、抽象分层、接口检查清单、反模式 |
+| [interface-protocols.md](./interface-protocols.md) | **运行时依赖、IPC、事件、启动/重启与 macOS/Windows 通信不变量** |
 | [technical-architecture.md](./technical-architecture.md) | 顶层架构、状态、tab 路由、module 深潜、性能与安全笔记 |
 | [frontend-architecture.md](./frontend-architecture.md) | 前端子系统、状态管理、搜索管线、灵动岛、i18n、样式约定 |
 | [shell-and-shortcuts.md](./shell-and-shortcuts.md) | **浮动面板 / 全局快捷键 toggle / managed State / 搜索重聚焦**（优先查这份） |
@@ -82,7 +83,7 @@
 - **接口与抽象先契约、后实现**；公共 surface 变更必须同步文档（见 [architecture-principles.md](./architecture-principles.md)）。
 - **禁止逐文件打补丁式修复**：能力问题修 host/converter/注册表/i18n 字典一次；然后 `npm run check`。
 - 文档写**意图、边界、不变量**，避免只贴大段实现代码。
-- 统一闸门：`npm run check`（含 architecture / docs / i18n / shell / island）。
+- 统一闸门：`npm run check`（含 architecture / interface protocols / docs / i18n / shell / island）。
 - 修改 `src-tauri/src/lib.rs` 的 `generate_handler!` 后，同步 `ipc-catalogue.md` 并运行 `npm run docs:check`。
 - 修改依赖主版本、应用版本或平台支持范围后，同步顶层架构和 README。
 - 新增跨前后端功能时，至少更新前端/后端导览、IPC、权限与验证方式。

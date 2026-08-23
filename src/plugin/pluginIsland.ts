@@ -1,4 +1,4 @@
-import { islandHost } from "../island";
+import { islandHost } from "../island/session/hostApi";
 import type { IslandShowInput } from "../island/types";
 import type {
   InstalledPlugin,

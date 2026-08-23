@@ -26,8 +26,9 @@
 2. **模块快捷键**（剪贴板 / RSS / GIF）：打开对应 tab；若已在该 tab 再按 → 隐藏窗口；若窗口开着但在别的 tab → 切到该模块。
 3. **所有关闭路径**应尽量走 Rust `floating_panel::hide*`，保证内部 `PANEL_OPEN` / `LAST_HIDE_AT` 一致。
 4. **Tauri managed state**（`RssDb`、`ClipboardDb`）在启动时**始终** `app.manage(...)`，不能因 DB open 失败而漏注册（否则前端会报 *state not managed* / 缺少 `.manage()`）。
-5. **进程首窗可见**：Qx 完全退出后再次启动时，`App.tsx` 在设置与窗口尺寸恢复完成后
-   主动 `floating_show` 一次；这与同一进程内的快捷键 toggle / hide 状态分开。首次安装
+5. **进程首窗握手**：显式启动时，`App.tsx` 先调用 Rust
+   `claim_initial_window_show`，认领成功后才恢复尺寸并 `floating_show` 一次；
+   `--autostart`、同进程 WebView 重挂载与 HMR 都不能再次认领或抢焦点。首次安装
    使用能显示 Launcher 右侧 Quick Entries 的宽窗尺寸，老用户继续恢复保存尺寸。
 
 Windows 的透明无边框主窗口使用 Tao 的 undecorated-shadow 模式，由 DWM 在 WebView

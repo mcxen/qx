@@ -1,23 +1,7 @@
 import type { AgentSettings } from "../../settings/store";
-import type { G4fMessage } from "../store";
-
-export interface AgentStep {
-  id: string;
-  kind: "thought" | "action" | "observation" | "final" | "error";
-  tool?: string;
-  input?: string;
-  output?: string;
-  text?: string;
-  state: "running" | "completed" | "error";
-}
-
-export interface QxAiFileAttachment {
-  path: string;
-  name: string;
-  kind: string;
-  size: number;
-  mimeType?: string;
-}
+import type { G4fMessage } from "../contracts";
+export type { AgentStep, QxAiFileAttachment } from "../contracts";
+import type { AgentStep, QxAiFileAttachment } from "../contracts";
 
 export interface ToolExecutionResult {
   observation: string;

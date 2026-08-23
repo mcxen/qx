@@ -1,4 +1,4 @@
-import type { PluginIslandDisplayInput } from "./types";
+import type { PluginIslandDisplayInput } from "./islandTypes";
 import type { QxActivityProgress } from "../types/contentActivity";
 
 export type PluginWorkbenchTone = "neutral" | "success" | "warning" | "danger" | "accent";

@@ -11,7 +11,7 @@ import {
   unloadPluginRuntime,
 } from "./runtime";
 import { createUnavailableContext } from "./context";
-import { BUILTIN_PLUGINS } from "./builtin";
+import { BUILTIN_PLUGINS, buildBuiltinRegistrations } from "./builtin";
 import { createQxLogger, qxLog } from "../lib/logger";
 import { normalizeLanguagePreference, resolveLocale } from "../i18n";
 import { useSettingsStore } from "../modules/settings/store";
@@ -151,6 +151,22 @@ function backgroundJobKey(pluginId: string, commandName: string): string {
 export interface CommandMatch {
   command: RegisteredCommand;
   score: number;
+}
+
+/**
+ * Install the pure built-in catalogue after this store module is initialized.
+ * Keeping store mutation here preserves a one-way builtin -> contract dependency
+ * and prevents module-evaluation order from deciding whether panels exist.
+ */
+export function registerAllBuiltins(): void {
+  const { commands, panels } = buildBuiltinRegistrations();
+  usePluginRegistry.setState((state) => ({
+    commands: [
+      ...state.commands.filter((command) => !command.pluginId.startsWith("builtin:")),
+      ...commands,
+    ],
+    panels: { ...state.panels, ...panels },
+  }));
 }
 
 interface PluginRuntimeHooks {

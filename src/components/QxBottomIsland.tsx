@@ -5,35 +5,10 @@
 import ShellContent from "../island/surface/ShellContent";
 import QxIslandSurface from "../island/surface/QxIslandSurface";
 import { mapBottomIslandContent } from "../island/compat/mapBottomIslandContent";
-import type {
-  IslandActionIcon,
-  IslandActionVariant,
-  IslandActivity,
-  IslandProgressStyle,
-} from "../island/types";
+import type { BottomIslandContent } from "../island/compat/bottomIslandTypes";
 import { useIslandProgress } from "../island/surface/useIslandProgress";
 
-export interface BottomIslandAction {
-  id: string;
-  label: string;
-  shortcut?: string;
-  onAction: () => void;
-  icon?: IslandActionIcon;
-  variant?: IslandActionVariant;
-}
-
-export interface BottomIslandContent {
-  label: string;
-  detail?: string;
-  progress?: number;
-  progressStyle?: IslandProgressStyle;
-  activity?: IslandActivity;
-  tone?: "neutral" | "success" | "warning" | "danger";
-  actionLabel?: string;
-  onAction?: () => void;
-  actions?: BottomIslandAction[];
-  effect?: { kind: "orbit"; nonce: number };
-}
+export type { BottomIslandAction, BottomIslandContent } from "../island/compat/bottomIslandTypes";
 
 export default function QxBottomIsland({
   content,

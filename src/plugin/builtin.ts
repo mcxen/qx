@@ -1,4 +1,3 @@
-import { usePluginRegistry } from "./registry";
 import type { RegisteredCommand, RegisteredPanel, PluginContext, InstalledPlugin, PluginPreference } from "./types";
 import { isBuiltinModuleEnabled } from "../modules/moduleAvailability";
 
@@ -334,7 +333,10 @@ function navigateToTab(tabId: string): void {
  * registry store has been created (which happens at module-import time thanks
  * to zustand's `create`).
  */
-export function registerAllBuiltins(): void {
+export function buildBuiltinRegistrations(): {
+  commands: RegisteredCommand[];
+  panels: Record<string, RegisteredPanel>;
+} {
   const commands: RegisteredCommand[] = [];
   const panels: Record<string, RegisteredPanel> = {};
 
@@ -371,13 +373,5 @@ export function registerAllBuiltins(): void {
     }
   }
 
-  // Merge into the existing zustand store while replacing prior built-ins.
-  // This keeps HMR and repeated startup paths from duplicating command keys.
-  usePluginRegistry.setState((state) => ({
-    commands: [
-      ...state.commands.filter((command) => !command.pluginId.startsWith("builtin:")),
-      ...commands,
-    ],
-    panels: { ...state.panels, ...panels },
-  }));
+  return { commands, panels };
 }

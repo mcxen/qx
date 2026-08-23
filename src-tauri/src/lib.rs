@@ -516,12 +516,13 @@ pub fn run() {
                 }
             }
 
-            // Present the launcher on first launch so a fresh install is not
-            // invisible at startup (which looks like Qx failed to open). The
-            // frontend `restoreWindow` effect also shows the window, but it
-            // depends on the settings store hydrating first; guaranteeing it
-            // here makes a first launch reliable regardless of frontend timing.
-            if !startup_settings.general.has_shown_launcher {
+            // Persist first explicit-launch intent here, but let the hydrated
+            // frontend own the single show after it restores logical window
+            // size. Showing both here and in React produced two focus/center
+            // transitions; login autostart must not mark or present onboarding.
+            if !startup_settings.general.has_shown_launcher
+                && !startup::is_current_autostart_invocation()
+            {
                 startup_settings.general.has_shown_launcher = true;
                 if let Err(error) = settings::write_settings(&startup_settings) {
                     diagnostics::log(
@@ -531,19 +532,6 @@ pub fn run() {
                         serde_json::json!({ "error": error }),
                     );
                 }
-                // Showing during `setup` is a no-op on macOS: the run loop is
-                // not running yet and the WebviewWindow hand-off has not
-                // completed, so `win.show()` is ignored. Defer a beat so first
-                // launch actually surfaces the window once the event loop is up.
-                let show_handle = handle.clone();
-                runtime::pool::spawn_after(std::time::Duration::from_millis(700), move || {
-                    floating_panel::show_floating(&show_handle);
-                    // At first launch the panel does not win focus, so the blur
-                    // auto-hide would blank it within 500ms before the user
-                    // notices. Suppress long enough for the user to interact,
-                    // which re-arms the normal auto-hide via Focused(true).
-                    floating_panel::suppress_auto_hide(std::time::Duration::from_secs(60));
-                });
             }
 
             // A system-owned or third-party global chord (PowerToys commonly
@@ -721,6 +709,7 @@ pub fn run() {
             floating_panel::floating_toggle,
             floating_panel::floating_request_key,
             floating_panel::set_active_route,
+            startup::claim_initial_window_show,
             rss::rss_list_feeds,
             rss::rss_add_feed,
             rss::rss_update_feed,

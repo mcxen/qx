@@ -1,4 +1,4 @@
-import type { BottomIslandContent } from "../../components/QxBottomIsland";
+import type { BottomIslandContent } from "./bottomIslandTypes";
 import type { IslandSlotContent, IslandTone } from "../types";
 
 /** Map legacy BottomIslandContent → IslandSlotContent (actions bound separately). */

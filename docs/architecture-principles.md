@@ -118,6 +118,8 @@ HTML 片段（内置 RSS）与 Workbench 结构化 `image` 走同一 `inlineRemo
 - 设置文案依赖 `useT(key, fallback)`，不散落硬编码中文/英文分支。
 - 开机启动是 host capability：Settings 只持久化用户意图，
   `src-tauri/src/startup.rs` 统一负责原生注册和启动参数语义；UI 与功能模块不得直接写平台启动项。
+- 运行时 import 图必须无环：契约下沉到中立模块，catalogue 不反向写 registry，
+  RPC 通过窄回调端口调度命令。`npm run check` 自动阻止循环求值与未注册 `invoke`。
 
 ### QxAI：异步解耦、高可用与可扩展边界
 

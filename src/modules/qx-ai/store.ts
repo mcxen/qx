@@ -4,7 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "../settings/store";
 // Types only — agent harness is dynamically imported when a turn actually runs
 // so opening QxAI sessions/providers does not parse the full tool graph.
-import type { AgentStep, AgentStreamMetrics, QxAiFileAttachment } from "./agent/types";
+import type { AgentStreamMetrics } from "./agent/types";
+import type { AgentStep, G4fMessage, QxAiFileAttachment } from "./contracts";
 import { computeTokenSpeed, estimateTokens } from "./message-rendering";
 import {
   messageHasImages,
@@ -43,32 +44,7 @@ import {
 } from "./conversation-title";
 import { removeLegacySyntheticErrorMessages } from "./error-presentation";
 
-export type { AgentStep, QxAiFileAttachment } from "./agent/types";
-
-export interface G4fMessage {
-  role: "user" | "assistant" | "system";
-  content: string;
-  /** Stable display timestamp; legacy sessions fall back to conversation time. */
-  createdAt?: number;
-  reasoning?: string;
-  steps?: AgentStep[];
-  attachments?: QxAiFileAttachment[];
-  skill?: Pick<QxAiSkillDocument, "id" | "name">;
-  /** Estimated completion tokens (chars/4) for Jan-style speed display. */
-  tokenCount?: number;
-  /** Tokens per second for the completion stream. */
-  tokenSpeed?: number;
-  durationMs?: number;
-  /** Observed visible reasoning/thought phase duration, in milliseconds. */
-  reasoningDurationMs?: number;
-  /** Provider usage; estimated is true when derived from chars/4. */
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-    estimated?: boolean;
-  };
-}
+export type { AgentStep, G4fMessage, QxAiFileAttachment } from "./contracts";
 
 export interface QueuedAiMessage {
   id: string;

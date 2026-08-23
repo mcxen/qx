@@ -38,7 +38,6 @@ import {
   type PluginQxAiHookRegistration,
   type QxAiHookPhase,
 } from "../modules/qx-ai/agent/hooks";
-import { usePluginRegistry } from "./registry";
 
 const pluginSessionStorage = new Map<string, Map<string, unknown>>();
 
@@ -734,7 +733,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
     return runModuleAction(id, input);
   },
 
-  aiActionsRegister: async (plugin, perms, payload) => {
+  aiActionsRegister: async (plugin, perms, payload, options) => {
     assertPermission(plugin, perms, "ai-tools");
     const settings = await readAgentRuntimeSettings();
     assertAgentToolsEnabled(settings);
@@ -776,15 +775,10 @@ export const rpcHandlers: Record<string, RpcHandler> = {
         }
       },
       runCommand: async (commandName, input) => {
-        const command = await usePluginRegistry
-          .getState()
-          .resolveCommand(plugin.id, commandName);
-        if (!command) {
-          throw new Error(`Plugin command "${commandName}" not found for ${plugin.id}`);
+        if (!options.onRunPluginCommand) {
+          throw new Error(`Plugin command dispatcher unavailable for ${plugin.id}`);
         }
-        await usePluginRegistry.getState().runCommand(command, {
-          launchType: "userInitiated",
-        });
+        await options.onRunPluginCommand(plugin.id, commandName);
         return `Dispatched plugin command ${plugin.id}:${commandName}${
           Object.keys(input).length ? ` (input: ${JSON.stringify(input)})` : ""
         }.`;
@@ -818,7 +812,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
     return listQxAiHooks(phase);
   },
 
-  aiHooksRegister: async (plugin, perms, payload) => {
+  aiHooksRegister: async (plugin, perms, payload, options) => {
     assertPermission(plugin, perms, "ai-tools");
     const settings = await readAgentRuntimeSettings();
     assertAgentToolsEnabled(settings);
@@ -840,15 +834,10 @@ export const rpcHandlers: Record<string, RpcHandler> = {
       .filter((item) => item.id && item.command);
     registerPluginQxAiHooks(plugin.id, hooks, {
       runCommand: async (commandName) => {
-        const command = await usePluginRegistry
-          .getState()
-          .resolveCommand(plugin.id, commandName);
-        if (!command) {
-          throw new Error(`Plugin command "${commandName}" not found for ${plugin.id}`);
+        if (!options.onRunPluginCommand) {
+          throw new Error(`Plugin command dispatcher unavailable for ${plugin.id}`);
         }
-        await usePluginRegistry.getState().runCommand(command, {
-          launchType: "userInitiated",
-        });
+        await options.onRunPluginCommand(plugin.id, commandName);
       },
     });
     qxLog("info", "plugin.rpc.ai", "Plugin AI hooks registered", {

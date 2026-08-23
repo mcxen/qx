@@ -1,4 +1,9 @@
-import type { RecordingOptions } from "./store";
+export interface RecordingOptions {
+  outputFormat: "mp4" | "mov";
+  fps: 15 | 24 | 30;
+  quality: "compact" | "balanced" | "high";
+  resolution: "720p" | "1080p" | "native";
+}
 
 export const DEFAULT_RECORDING_OPTIONS: RecordingOptions = {
   outputFormat: "mp4",

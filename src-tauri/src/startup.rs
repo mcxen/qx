@@ -3,10 +3,34 @@
 //! Settings own the user's intent; this module owns native registration.
 //! Windows uses the current-user Run key so enabling startup needs no elevation.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 pub(crate) const AUTOSTART_ARG: &str = "--autostart";
+static INITIAL_WINDOW_SHOW_CLAIMED: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn is_autostart_invocation(args: &[String]) -> bool {
     args.iter().any(|arg| arg == AUTOSTART_ARG)
+}
+
+pub(crate) fn is_current_autostart_invocation() -> bool {
+    is_autostart_invocation(&std::env::args().collect::<Vec<_>>())
+}
+
+fn claim_initial_window_show_for(args: &[String], claimed: &AtomicBool) -> bool {
+    !is_autostart_invocation(args)
+        && claimed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+}
+
+/// Process-scoped startup handshake consumed by the frontend after hydration.
+/// Autostart stays hidden and a WebView remount/HMR cannot re-summon the panel.
+#[tauri::command]
+pub(crate) fn claim_initial_window_show() -> bool {
+    claim_initial_window_show_for(
+        &std::env::args().collect::<Vec<_>>(),
+        &INITIAL_WINDOW_SHOW_CLAIMED,
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -118,7 +142,8 @@ pub(crate) fn sync(_enabled: bool) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_autostart_invocation, AUTOSTART_ARG};
+    use super::{claim_initial_window_show_for, is_autostart_invocation, AUTOSTART_ARG};
+    use std::sync::atomic::AtomicBool;
 
     #[test]
     fn recognizes_only_explicit_autostart_argument() {
@@ -131,5 +156,16 @@ mod tests {
             "qx".to_string(),
             "--autostarted".to_string()
         ]));
+    }
+
+    #[test]
+    fn initial_show_is_single_use_and_autostart_never_consumes_it() {
+        let claimed = AtomicBool::new(false);
+        let autostart = vec!["qx".to_string(), AUTOSTART_ARG.to_string()];
+        let explicit = vec!["qx".to_string()];
+
+        assert!(!claim_initial_window_show_for(&autostart, &claimed));
+        assert!(claim_initial_window_show_for(&explicit, &claimed));
+        assert!(!claim_initial_window_show_for(&explicit, &claimed));
     }
 }

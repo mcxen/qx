@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { DEFAULT_RECORDING_OPTIONS } from "./preferences";
+import { DEFAULT_RECORDING_OPTIONS, type RecordingOptions } from "./preferences";
 import { islandHost } from "../../island";
 import { revealSystemPath, writeImageFileToClipboard } from "../../system";
 
@@ -24,12 +24,7 @@ export interface RecordArea {
   monitorId?: number | null;
 }
 
-export interface RecordingOptions {
-  outputFormat: "mp4" | "mov";
-  fps: 15 | 24 | 30;
-  quality: "compact" | "balanced" | "high";
-  resolution: "720p" | "1080p" | "native";
-}
+export type { RecordingOptions } from "./preferences";
 
 export type CaptureMode = "screenshot" | "recording";
 

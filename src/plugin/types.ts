@@ -659,54 +659,14 @@ export interface PluginKillProcessResult {
   message: string;
 }
 
-export type PluginIslandTone = "neutral" | "success" | "warning" | "danger";
-export type PluginIslandActionIcon = "pause" | "play" | "stop" | "open";
-export type PluginIslandActivity = "wave" | "dots" | "spinner" | "pulse";
-export type PluginIslandProgressStyle =
-  | "surface-fill"
-  | "icon-ring"
-  | "island-ring"
-  | "compact-line";
-
-/** Structured, host-rendered content for the optional external QxIsland surface. */
-export interface PluginIslandDisplayInput {
-  primary: string;
-  secondary?: string;
-  tone?: PluginIslandTone;
-  /** Real progress from 0–100. Omit for a non-progress display. */
-  progress?: number;
-  /** Host-owned progress presentation. Defaults to surface-fill. */
-  progressStyle?: PluginIslandProgressStyle;
-  /** Host-rendered indeterminate loading animation. Ignored when progress is set. */
-  activity?: PluginIslandActivity;
-  /** Host-rendered real-time countdown; use endsAt while running. */
-  countdown?: {
-    endsAt?: number;
-    remainingMs?: number;
-    durationMs?: number;
-    paused?: boolean;
-  };
-  /** Primary manifest command shown on the island (compat alias of actions[0]). */
-  action?: {
-    label: string;
-    command: string;
-    icon?: PluginIslandActionIcon;
-    variant?: "default" | "danger";
-  };
-  /**
-   * Up to two host-rendered trailing actions (e.g. Pause + Stop). Each command
-   * must exist on the plugin manifest. When both `action` and `actions` are set,
-   * `actions` wins.
-   */
-  actions?: Array<{
-    label: string;
-    command: string;
-    icon?: PluginIslandActionIcon;
-    variant?: "default" | "danger";
-  }>;
-  /** Optional expiry. Omit for a standing data display. */
-  ttlMs?: number;
-}
+export type {
+  PluginIslandActionIcon,
+  PluginIslandActivity,
+  PluginIslandDisplayInput,
+  PluginIslandProgressStyle,
+  PluginIslandTone,
+} from "./islandTypes";
+import type { PluginIslandDisplayInput } from "./islandTypes";
 
 export interface PluginLatestWriter<T> {
   /**

@@ -10,6 +10,7 @@ import process from "node:process";
 
 const steps = [
   ["architecture", "scripts/check-architecture.mjs"],
+  ["interface-protocols", "scripts/check-interface-protocols.mjs"],
   ["docs", "scripts/check-docs.mjs"],
   ["i18n", "scripts/check-i18n.mjs"],
   ["shell-navigation", "scripts/check-qx-shell-navigation.mjs"],

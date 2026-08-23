@@ -4,7 +4,9 @@
 >
 > 事实来源：`src-tauri/src/lib.rs` 中的 `tauri::generate_handler!`
 
-Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_handler!` 注册 **196 个命令**；不要引用易漂移的固定行号。本文按领域解释主要接口，文末“注册命令基线”必须与注册宏逐项一致。
+Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前命令数由 `npm run docs:check` 与
+`scripts/check-interface-protocols.mjs` 从 `tauri::generate_handler!` 自动核对；不要在说明中
+手写易漂移的固定数量或行号。本文按领域解释主要接口，文末“注册命令基线”必须与注册宏逐项一致。
 
 `capabilities/default.json` 声明 Tauri IPC 边界及插件权限（`opener`、`global-shortcut`、`clipboard-manager`、`shell`、`core:window`、`core:path`）。任何窗口若未匹配 capability，就不能使用 IPC；当前 `main`、`recording-controls` 和 `region-picker` 都必须显式列入。自定义命令仍由 `generate_handler!` 注册，但动态创建的捕获窗口不能省略窗口 capability。
 
@@ -272,6 +274,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `display_brightness_list`, `display_brightness_set`, `desktop_windows_list`, `floating_show`, `floating_hide`,
 `floating_hide_restore_focus`, `floating_previous_app_name`, `floating_set_onboarding_active`,
 `floating_set_external_interaction_active`, `floating_toggle`, `floating_request_key`, `set_active_route`,
+`claim_initial_window_show`,
 `rss_list_feeds`, `rss_add_feed`, `rss_update_feed`, `rss_remove_feed`, `rss_list_articles`, `rss_dashboard_snapshot`, `rss_get_article`,
 `rss_mark_read`, `rss_set_reading_progress`, `rss_mark_all_read`, `rss_toggle_star`, `rss_refresh_feed`,
 `rss_refresh_all`, `rss_import_opml`, `rss_export_opml`, `rss_list_folders`, `rss_create_folder`,
@@ -370,4 +373,6 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 - 每个命令的错误统一 `Result<T, String>`，字符串直接前端 `catch (e)` 展示。
 - 后端不接触 UI；命令内如需异步用 `#[tauri::command]` + `async`，重活起 `std::thread::spawn` + 通过事件回主线程。
 - 前端 `invoke("cmd", { camelCaseArg })`；后端参数用 snake_case，Tauri 自动转换。
+- `claim_initial_window_show` 是进程级一次性启动握手：显式启动返回一次 `true`，
+  `--autostart` 与同进程 WebView 重挂载始终返回 `false`。
 - 插件永远不直接 `invoke`；先经过 `plugin/rpcMethods.ts` 的白名单和权限检查。见 [plugin-architecture.md](./plugin-architecture.md)。

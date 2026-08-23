@@ -10,7 +10,7 @@ import { requestLauncherSearchFocus } from "./SearchBar";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
 import { startMarketplaceCatalogCheck } from "./plugin/marketplaceCatalog";
-import { usePluginRegistry } from "./plugin/registry";
+import { registerAllBuiltins, usePluginRegistry } from "./plugin/registry";
 import { installPluginDeepLinkHandler } from "./plugin/deepLinkInstall";
 import type { PluginRuntimeStatus } from "./plugin/types";
 import QxShell from "./components/QxShell";
@@ -25,7 +25,6 @@ import {
   resetSearchProgress,
 } from "./launcher/searchProgress";
 import { LoadingLabel, Skeleton } from "./components/ui";
-import { registerAllBuiltins } from "./plugin/builtin";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
 import { resolveCalculationEntryAsync } from "./search/calculatorAsync";
 import { decodeCalculationResult, isCalculationPath } from "./search/calculatorProvider";
@@ -705,7 +704,6 @@ function App() {
   const pluginCommandCount = usePluginRegistry((state) => state.commands.length);
   const pluginPanelCount = usePluginRegistry((state) => Object.keys(state.panels).length);
   const phase1Ref = useRef(false);
-  const startupWindowRestoredRef = useRef(false);
   const autoUpdateStartedRef = useRef(false);
   const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const pendingWindowSizeRef = useRef<{ width: number; height: number } | null>(null);
@@ -1651,15 +1649,16 @@ function App() {
     });
   }, [settings.appearance.glass_enabled, settingsLoaded]);
 
-  // Every new Qx desktop process presents the launcher once. This makes an
-  // explicit relaunch or updater restart visible instead of looking like Qx
-  // failed to start. The ref keeps settings hydration/HMR from showing twice.
+  // Every explicit Qx desktop process presents the launcher once. Rust owns
+  // the process-scoped claim so login startup remains hidden and WebView
+  // hydration/HMR cannot re-summon the window.
   // A fresh install also receives a wide default size that keeps Quick Entries
   // visible; existing users retain their saved dimensions.
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
-    if (startupWindowRestoredRef.current) return;
     const restoreWindow = async () => {
+      const shouldShow = await invoke<boolean>("claim_initial_window_show").catch(() => false);
+      if (!shouldShow) return;
       const win = getCurrentWindow();
       const currentSettings = useSettingsStore.getState().settings;
       const appearance = currentSettings.appearance;
@@ -1678,7 +1677,6 @@ function App() {
         });
       }
 
-      startupWindowRestoredRef.current = true;
       setTab("launcher");
       const needsOnboarding =
         !currentSettings.general.has_completed_onboarding
@@ -1702,8 +1700,6 @@ function App() {
       await invoke("floating_show").catch(() => {});
       // Ensure a cold-start window already contains useful launcher rows.
       await loadEmptyLauncherApps(setResults, setLoadingPhase);
-      // Re-center once more after the panel is actually visible.
-      await invoke("floating_show").catch(() => {});
       setMainWindowAvailable(true);
       publishWindowActivation("show");
       if (needsOnboarding) {

@@ -1,4 +1,4 @@
-import type { AppEntry, SearchHistoryEntry } from "../store";
+import type { AppEntry, SearchHistoryEntry } from "../types/launcher";
 import type { RssDashboardSnapshot } from "../plugin/surfaceProviders";
 
 const HOME_APP_CACHE_KEY = "qx.home-dashboard.apps.v1";
