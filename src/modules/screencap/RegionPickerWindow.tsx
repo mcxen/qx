@@ -9,6 +9,8 @@ import { CaptureToolbar } from "./CaptureToolbar";
 import { useCaptureToolbarPlacement } from "./useCaptureToolbarPlacement";
 import { useCaptureAnnotations, type Point, type Rect } from "./useCaptureAnnotations";
 import { CaptureTextAnnotations } from "./CaptureTextAnnotations";
+import { CapturePickerFeedback } from "./CapturePickerFeedback";
+import { CaptureSelectionShade } from "./CaptureSelectionShade";
 import {
   clamp,
   clampRectToViewport,
@@ -16,35 +18,14 @@ import {
   rectFromPoints,
   selectionFromLogicalArea,
 } from "./captureSelectionGeometry";
-interface LogicalArea {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  monitorId?: number | null;
-}
-interface PickerStatus {
-  mode: CaptureMode;
-  monitorId: number;
-  monitorName: string;
-  coordinateScale: number;
-  logicalArea?: LogicalArea | null;
-  restoreSelection?: boolean;
-  /** When false (single display), skip cross-display pointer-follow IPC. */
-  multiDisplay?: boolean;
-}
-type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
-type PickMode = "region" | "fullscreen";
-interface RectInteraction {
-  kind: "move" | "resize";
-  start: Point;
-  origin: Rect;
-  handle?: ResizeHandle;
-}
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
+import {
+  CAPTURE_RESIZE_HANDLES,
+  waitForPickerFrame,
+  type PickerStatus,
+  type PickMode,
+  type RectInteraction,
+  type ResizeHandle,
+} from "./regionPickerModel";
 /** Full-display protected overlay: draw, refine, annotate, then capture. */
 export default function RegionPickerWindow() {
   const t = useT();
@@ -75,8 +56,9 @@ export default function RegionPickerWindow() {
   const {
     tool, setTool, color, setColor, annotations, setAnnotations, redoStack, setRedoStack,
     shapeDraft, setShapeDraft, setNextNumber, penDraft, setPenDraft, activeTextId, setActiveTextId,
-    canvasRef, undo, redo, onCanvasMouseDown, onCanvasMouseMove, onCanvasMouseUp,
-    updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64, exportMosaicOps,
+    canvasRef, undo, redo, onCanvasPointerDown, onCanvasPointerMove, onCanvasPointerUp,
+    onCanvasPointerCancel,
+    updateTextAnnotation, deleteTextAnnotation, exportAnnotations,
   } = useCaptureAnnotations(selection, busy);
   const multiDisplay = picker?.multiDisplay === true;
   const multiDisplayRef = useRef(false);
@@ -281,7 +263,7 @@ export default function RegionPickerWindow() {
   ) => {
     const target = areaOverride ?? selection;
     if (busy || !target || countdown !== null) return;
-    if (action === "recording" && annotations.some((annotation) => annotation.type !== "mosaic")) {
+    if (action === "recording" && annotations.length > 0) {
       setError(t("screencap.picker.annotationsBlockRecord", "Clear annotations before recording."));
       return;
     }
@@ -289,11 +271,7 @@ export default function RegionPickerWindow() {
     setError(null);
     cancelCountdownRef.current = false;
 
-    const mosaicOps = action === "screenshot" ? exportMosaicOps() : [];
-    const hasVectorAnnotations = annotations.some((annotation) => annotation.type !== "mosaic");
-    const annotationOverlayBase64 = action === "screenshot" && hasVectorAnnotations
-      ? exportOverlayBase64()
-      : undefined;
+    const annotationPayload = action === "screenshot" ? exportAnnotations() : [];
 
     // Copy-and-continue (Cmd/Ctrl+C) always skips the delay countdown.
     const dismissUi = options?.dismissUi === true;
@@ -312,7 +290,7 @@ export default function RegionPickerWindow() {
           return;
         }
         setCountdown(remaining);
-        await sleep(1000);
+        await waitForPickerFrame(1000);
       }
       setCountdown(null);
       await invoke("screencap_set_picker_passthrough", { enabled: false }).catch(() => {});
@@ -368,36 +346,11 @@ export default function RegionPickerWindow() {
             : captureSettings.recording_include_cursor,
           showMouseClicks: action === "recording" && captureSettings.recording_show_mouse_clicks,
           microphoneId: action === "recording" ? captureSettings.recording_microphone_id : null,
-          recordingMasks: action === "recording"
-            ? annotations.flatMap((annotation) => {
-              if (annotation.type !== "mosaic") return [];
-              if (annotation.mode === "region") {
-                const x = Math.min(annotation.x1, annotation.x2);
-                const y = Math.min(annotation.y1, annotation.y2);
-                return [{
-                  x,
-                  y,
-                  w: Math.abs(annotation.x2 - annotation.x1),
-                  h: Math.abs(annotation.y2 - annotation.y1),
-                }];
-              }
-              if (annotation.points.length === 0) return [];
-              const xs = annotation.points.map((point) => point.x);
-              const ys = annotation.points.map((point) => point.y);
-              const pad = annotation.radius;
-              const minX = Math.max(0, Math.min(...xs) - pad);
-              const minY = Math.max(0, Math.min(...ys) - pad);
-              const maxX = Math.min(1, Math.max(...xs) + pad);
-              const maxY = Math.min(1, Math.max(...ys) + pad);
-              return [{ x: minX, y: minY, w: maxX - minX, h: maxY - minY }];
-            })
-            : [],
           playSound: action === "screenshot" && captureSettings.screenshot_sound_enabled,
           pinToDesktop: action === "screenshot" && options?.pinToDesktop === true,
         },
         ocrDestination: action === "screenshot" ? (ocrDestination ?? null) : null,
-        annotationOverlayBase64,
-        mosaicOps: mosaicOps.length > 0 ? mosaicOps : null,
+        annotations: annotationPayload.length > 0 ? annotationPayload : null,
         copyToClipboard: shouldCopy,
         dismissUi: action === "screenshot" && (dismissUi || options?.pinToDesktop === true),
       });
@@ -405,7 +358,7 @@ export default function RegionPickerWindow() {
       setBusy(false);
       setError(String(captureError));
     }
-  }, [annotations, busy, captureSettings, countdown, exportMosaicOps, exportOverlayBase64, picker?.monitorId, selection, t]);
+  }, [annotations, busy, captureSettings, countdown, exportAnnotations, picker?.monitorId, selection, t]);
 
   useEffect(() => {
     // WebView2 can leave focus on body or an overlay-owned element. Capture
@@ -743,7 +696,7 @@ export default function RegionPickerWindow() {
     fullscreen: pickMode === "fullscreen",
     intent,
   });
-  const handles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+  const handles = CAPTURE_RESIZE_HANDLES;
 
   return (
     <div
@@ -893,15 +846,15 @@ export default function RegionPickerWindow() {
           } else if (key === "tab") {
             event.preventDefault();
             switchPickMode(pickMode === "region" ? "fullscreen" : "region");
-          } else if (key === "1") setTool("rect");
-          else if (key === "2") setTool("arrow");
-          else if (key === "3") {
+          } else if (intent === "screenshot" && key === "1") setTool("rect");
+          else if (intent === "screenshot" && key === "2") setTool("arrow");
+          else if (intent === "screenshot" && key === "3") {
             setActiveTextId(null);
             setTool((current) => (current === "text" ? null : "text"));
           }
-          else if (key === "4") setTool("pen");
-          else if (key === "5") setTool("number");
-          else if (key === "6") setTool("mosaic");
+          else if (intent === "screenshot" && key === "4") setTool("pen");
+          else if (intent === "screenshot" && key === "5") setTool("number");
+          else if (intent === "screenshot" && key === "6") setTool("mosaic");
         }
       }}
       onPointerDown={onRootPointerDown}
@@ -909,34 +862,14 @@ export default function RegionPickerWindow() {
       onPointerUp={onRootPointerUp}
       onPointerCancel={onRootPointerUp}
     >
-      {/* Dim the active display immediately so multi-monitor capture reads as a
-          single capture session; cutout shades replace this once a rect exists. */}
-      {countdown === null && !visibleRect && (
-        <div className="qx-region-picker-shade is-full" aria-hidden="true" />
-      )}
-
+      <CaptureSelectionShade
+        rect={visibleRect}
+        countdown={countdown}
+        recordingActive={recordingActive}
+        snapshotPath={picker?.snapshotPath}
+      />
       {visibleRect && (
         <>
-          {countdown === null && <>
-            <div className="qx-region-picker-shade" style={{ left: 0, top: 0, right: 0, height: visibleRect.y }} />
-            <div className="qx-region-picker-shade" style={{ left: 0, top: visibleRect.y + visibleRect.h, right: 0, bottom: 0 }} />
-            <div className="qx-region-picker-shade" style={{ left: 0, top: visibleRect.y, width: visibleRect.x, height: visibleRect.h }} />
-            <div className="qx-region-picker-shade" style={{ left: visibleRect.x + visibleRect.w, top: visibleRect.y, right: 0, height: visibleRect.h }} />
-          </>}
-          {/* Recording ring sits fully outside the capture hole so it never
-              samples into the video — only the transparent rect is the hole. */}
-          {recordingActive && (
-            <div
-              className="qx-region-picker-recording-ring"
-              style={{
-                left: visibleRect.x - 3,
-                top: visibleRect.y - 3,
-                width: visibleRect.w + 6,
-                height: visibleRect.h + 6,
-              }}
-              aria-hidden="true"
-            />
-          )}
           <div
             className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}${recordingActive ? " is-recording" : ""}`}
             style={{ left: visibleRect.x, top: visibleRect.y, width: visibleRect.w, height: visibleRect.h }}
@@ -946,9 +879,10 @@ export default function RegionPickerWindow() {
                 <canvas
                   ref={canvasRef}
                   className="qx-region-picker-annotations"
-                  onMouseDown={onCanvasMouseDown}
-                  onMouseMove={onCanvasMouseMove}
-                  onMouseUp={onCanvasMouseUp}
+                  onPointerDown={onCanvasPointerDown}
+                  onPointerMove={onCanvasPointerMove}
+                  onPointerUp={onCanvasPointerUp}
+                  onPointerCancel={onCanvasPointerCancel}
                 />
                 <CaptureTextAnnotations
                   selection={selection}
@@ -980,11 +914,6 @@ export default function RegionPickerWindow() {
               </>
             )}
           </div>
-          {!recordingActive && countdown === null && (
-            <div className="qx-region-picker-size" style={{ left: visibleRect.x, top: Math.max(8, visibleRect.y - 28) }}>
-              {Math.round(visibleRect.w)} × {Math.round(visibleRect.h)}
-            </div>
-          )}
         </>
       )}
 
@@ -1027,52 +956,16 @@ export default function RegionPickerWindow() {
         />
       )}
 
-      {!rect && !busy && !recordingActive && countdown === null && (
-        <div className="qx-region-picker-hint">
-          {t(
-            "screencap.picker.draw",
-            "Drag on {display} · Ctrl/⌘+C copies · R last region · Esc cancel",
-          ).replace("{display}", display)}
-        </div>
-      )}
-      {selection && !tool && !recordingActive && countdown === null && (
-        <div className="qx-region-picker-hint is-tool-hint">
-          {t(
-            "screencap.picker.selectionHint",
-            "⌘/Ctrl+C copy & dismiss · Enter confirm · Esc clear",
-          )}
-        </div>
-      )}
-      {selection && tool && countdown === null && (
-        <div className="qx-region-picker-hint is-tool-hint">
-          {tool === "text"
-            ? t(
-              "screencap.picker.textHint",
-              "Click to place text · Enter finish · drag to move · corners resize · small fonts auto-zoom while typing",
-            )
-            : tool === "arrow"
-              ? t("screencap.picker.arrowHint", "Drag inside the selection to draw an arrow")
-              : tool === "rect"
-                ? t("screencap.picker.rectHint", "Drag inside the selection to draw a rectangle")
-                : tool === "number"
-                  ? t("screencap.picker.numberHint", "Click to place numbered step markers")
-                  : tool === "mosaic"
-                    ? t(
-                      "screencap.picker.mosaicHint",
-                      "Drag a rectangle to pixelate · hold Shift and drag for a brush stroke",
-                    )
-                    : t("screencap.picker.penHint", "Drag inside the selection to draw freehand")}
-        </div>
-      )}
-      {countdown !== null && (
-        <div className="qx-region-picker-countdown" aria-live="assertive">
-          <strong>{countdown}</strong>
-          <span>{t("screencap.picker.countdown", "Capturing… Esc to cancel")}</span>
-        </div>
-      )}
-      {error && !recordingActive && countdown === null && (
-        <div className="qx-region-picker-error">{error}</div>
-      )}
+      <CapturePickerFeedback
+        rect={visibleRect}
+        selection={selection}
+        display={display}
+        tool={tool}
+        busy={busy}
+        recordingActive={recordingActive}
+        countdown={countdown}
+        error={error}
+      />
     </div>
   );
 }

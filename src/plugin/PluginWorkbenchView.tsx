@@ -44,6 +44,7 @@ import {
   resolveWorkbenchImageUrl,
   workbenchToneClass,
 } from "./PluginWorkbenchPrimitives";
+import { resolveWorkbenchDetailMetadata } from "./workbenchDetailMetadata";
 
 export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
@@ -520,11 +521,20 @@ function WorkbenchDetail({
   ) : detail.body ? (
     <p className="qx-host-workbench-body">{detail.body}</p>
   ) : null;
+  const detailMetadata = resolveWorkbenchDetailMetadata(detail);
   return (
     <div ref={scrollRef} className="qx-content-detail-scroll" data-qx-region-scroll>
       {detail.mediaPlacement !== "after-body" ? detailMedia : null}
       {detail.title ? <h2 className="qx-content-detail-heading">{detail.title}</h2> : null}
-      {detail.subtitle ? <div className="qx-content-detail-meta">{detail.subtitle}</div> : null}
+      {detailMetadata.items.length ? (
+        <div className="qx-content-detail-meta qx-host-workbench-detail-meta">
+          {detailMetadata.items.map((item) => (
+            <span key={item.key} className={workbenchToneClass(item.tone).trim() || undefined}>
+              {item.text}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <WorkbenchStatus status={detail.status} />
       {detail.form ? (
         <section className="qx-host-workbench-form">
@@ -575,7 +585,7 @@ function WorkbenchDetail({
       {detailContent}
       {detail.mediaPlacement === "after-body" ? detailMedia : null}
       <WorkbenchChart chart={detail.chart} />
-      <WorkbenchFields fields={detail.fields} />
+      <WorkbenchFields fields={detailMetadata.fields} />
       {detail.sections?.map((section, index) => (
         <section className="qx-host-workbench-section" key={`${section.title || "section"}-${index}`}>
           {section.title ? <h3>{section.title}</h3> : null}

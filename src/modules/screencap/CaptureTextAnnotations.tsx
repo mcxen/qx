@@ -21,8 +21,10 @@ import {
 } from "./useCaptureAnnotations";
 import {
   captureTextEditScale,
+  captureTextOutsideDismissId,
   measureCaptureTextBox,
   projectCaptureTextCornerScale,
+  shouldApplyCaptureTextOutsideDismiss,
   shouldCommitCaptureTextChange,
   shouldFinishCaptureTextEditing,
 } from "./captureTextLayout";
@@ -87,9 +89,13 @@ export function CaptureTextAnnotations({
   const [editingId, setEditingId] = useState<string | null>(null);
   const composingIdRef = useRef<string | null>(null);
   const annotationsRef = useRef(annotations);
+  const activeIdRef = useRef(activeId);
+  const editingIdRef = useRef(editingId);
   const interaction = useRef<TextInteraction | null>(null);
   const [interactionId, setInteractionId] = useState<string | null>(null);
   annotationsRef.current = annotations;
+  activeIdRef.current = activeId;
+  editingIdRef.current = editingId;
 
   useEffect(() => {
     if (!activeId) {
@@ -112,13 +118,26 @@ export function CaptureTextAnnotations({
     const onDocumentPointerDown = (event: globalThis.PointerEvent) => {
       const target = event.target as Node | null;
       if (target && rootRef.current?.contains(target)) return;
+      const dismissId = captureTextOutsideDismissId(
+        activeIdRef.current,
+        editingIdRef.current,
+      );
+      // The capture listener runs before the canvas placement handler. With no
+      // existing text, this pointer belongs to the new text box and must not
+      // schedule a blind clear that immediately closes its textarea.
+      if (!dismissId) return;
       // Let the focused textarea deliver compositionend/blur before selection
       // state can unmount it. Blur owns the final DOM-value commit and empty-box
       // cleanup, so clicking outside cannot discard a just-confirmed candidate.
       finishTimer = window.setTimeout(() => {
-        setEditingId(null);
-        composingIdRef.current = null;
-        onActiveChange(null);
+        if (!shouldApplyCaptureTextOutsideDismiss(
+          dismissId,
+          activeIdRef.current,
+          editingIdRef.current,
+        )) return;
+        setEditingId((current) => (current === dismissId ? null : current));
+        if (composingIdRef.current === dismissId) composingIdRef.current = null;
+        if (activeIdRef.current === dismissId) onActiveChange(null);
       }, 0);
     };
     document.addEventListener("pointerdown", onDocumentPointerDown, true);

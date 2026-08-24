@@ -26,6 +26,9 @@ import {
   workbenchScrollTopForProgress,
 } from "../src/plugin/useWorkbenchReadingPosition.ts";
 import {
+  resolveWorkbenchDetailMetadata,
+} from "../src/plugin/workbenchDetailMetadata.ts";
+import {
   clampCaptureToolbarPosition,
   resolveCaptureToolbarPosition,
 } from "../src/modules/screencap/captureToolbarPosition.ts";
@@ -34,11 +37,14 @@ import {
   captureNumberOutline,
 } from "../src/modules/screencap/captureColor.ts";
 import {
+  captureTextOutsideDismissId,
   measureCaptureTextBox,
   projectCaptureTextCornerScale,
+  shouldApplyCaptureTextOutsideDismiss,
   shouldCommitCaptureTextChange,
   shouldFinishCaptureTextEditing,
 } from "../src/modules/screencap/captureTextLayout.ts";
+import { resolveCaptureHintPosition } from "../src/modules/screencap/captureHintPosition.ts";
 import { launcherActionModel } from "../src/launcher/actionModel.ts";
 import { isOsReservedGlobalShortcutForPlatform } from "../src/utils/keyboard.ts";
 
@@ -74,8 +80,63 @@ const regionPickerSource = readFileSync(
   new URL("../src/modules/screencap/RegionPickerWindow.tsx", import.meta.url),
   "utf8",
 );
+const captureToolbarSource = readFileSync(
+  new URL("../src/modules/screencap/CaptureToolbar.tsx", import.meta.url),
+  "utf8",
+);
+const captureSelectionShadeSource = readFileSync(
+  new URL("../src/modules/screencap/CaptureSelectionShade.tsx", import.meta.url),
+  "utf8",
+);
+const regionPickerShadeSource = readFileSync(
+  new URL("../src/modules/screencap/RegionPickerShadeWindow.tsx", import.meta.url),
+  "utf8",
+);
+const captureAnnotationsSource = readFileSync(
+  new URL("../src/modules/screencap/useCaptureAnnotations.ts", import.meta.url),
+  "utf8",
+);
+const captureAnnotationCompositorSource = readFileSync(
+  new URL("../src-tauri/src/screencap/annotations.rs", import.meta.url),
+  "utf8",
+);
+const capturePickerWindowSource = readFileSync(
+  new URL("../src-tauri/src/screencap/picker_window.rs", import.meta.url),
+  "utf8",
+);
 const listIconsStyles = readFileSync(
   new URL("../src/styles/lists-icons.css", import.meta.url),
+  "utf8",
+);
+
+const articleMetadata = resolveWorkbenchDetailMetadata({
+  title: "Post",
+  subtitle: "Author A · 2026-08-24 10:00",
+  body: "Body",
+  fields: [
+    { label: "Author", value: "Author A" },
+    { label: "Likes", value: 0 },
+    { label: "Comments", value: 0 },
+    { label: "Published", value: "2026-08-24 10:00" },
+    { label: "Source", value: "Web" },
+  ],
+});
+assert.equal(articleMetadata.promoted, true);
+assert.equal(articleMetadata.fields, undefined);
+assert.deepEqual(
+  articleMetadata.items.map((item) => item.text),
+  ["Author A · 2026-08-24 10:00", "Likes 0", "Comments 0", "Source Web"],
+);
+const managementMetadata = resolveWorkbenchDetailMetadata({
+  title: "Task",
+  subtitle: "Running",
+  fields: [{ label: "Elapsed", value: "10m" }],
+});
+assert.equal(managementMetadata.promoted, false);
+assert.deepEqual(managementMetadata.fields, [{ label: "Elapsed", value: "10m" }]);
+assert.match(listIconsStyles, /\.qx-host-workbench-detail-meta\s*>\s*span:not\(:last-child\)::after/);
+const screencapStyles = readFileSync(
+  new URL("../src/styles/screencap.css", import.meta.url),
   "utf8",
 );
 
@@ -190,6 +251,10 @@ assert.equal(shouldFinishCaptureTextEditing("Enter", false, true, 229, true), fa
 assert.equal(shouldFinishCaptureTextEditing("Enter", false, false, 13, false), true);
 assert.equal(shouldFinishCaptureTextEditing("Enter", true, false, 13, false), false);
 assert.equal(shouldFinishCaptureTextEditing("Escape", false, false, 229, false), true);
+assert.equal(captureTextOutsideDismissId(null, null), null);
+assert.equal(captureTextOutsideDismissId("text-1", null), "text-1");
+assert.equal(shouldApplyCaptureTextOutsideDismiss("text-1", "text-2", null), false);
+assert.equal(shouldApplyCaptureTextOutsideDismiss("text-1", "text-2", "text-1"), true);
 
 // Corner dragging always projects onto one proportional scale, while committed
 // text grows to its horizontal boundary and then adds wrapped lines.
@@ -202,6 +267,65 @@ const expandedCaptureTextLayout = measureCaptureTextBox("abcdefgh", 18, 16, 400)
 const shrunkCaptureTextLayout = measureCaptureTextBox("a", 18, 16, 400);
 assert.ok(shrunkCaptureTextLayout.width < expandedCaptureTextLayout.width);
 assert.equal(shrunkCaptureTextLayout.lines.length, 1);
+
+// Capture hints move to another edge instead of covering a selected corner;
+// an almost-full-screen selection hides the hint when no clear edge remains.
+assert.deepEqual(
+  resolveCaptureHintPosition(
+    { x: 0, y: 500, w: 600, h: 300 },
+    { width: 300, height: 40 },
+    { width: 1000, height: 800 },
+  ),
+  { left: 684, top: 744 },
+);
+assert.deepEqual(
+  resolveCaptureHintPosition(
+    { x: 0, y: 500, w: 1000, h: 300 },
+    { width: 300, height: 40 },
+    { width: 1000, height: 800 },
+  ),
+  { left: 16, top: 16 },
+);
+assert.equal(
+  resolveCaptureHintPosition(
+    { x: 0, y: 0, w: 1000, h: 800 },
+    { width: 300, height: 40 },
+    { width: 1000, height: 800 },
+  ),
+  null,
+);
+assert.match(captureAnnotationsSource, /setPointerCapture\(event\.pointerId\)/);
+assert.match(captureAnnotationsSource, /const currentShape = shapeDraftRef\.current/);
+assert.match(captureAnnotationsSource, /selection\.w \/ Math\.max\(1, bounds\.width\)/);
+assert.match(captureAnnotationsSource, /const exportAnnotations = useCallback/);
+assert.doesNotMatch(captureAnnotationsSource, /exportOverlayBase64|toDataURL\("image\/png"\)/);
+assert.match(regionPickerSource, /annotations: annotationPayload\.length/);
+assert.doesNotMatch(regionPickerSource, /annotationOverlayBase64|mosaicOps:/);
+assert.doesNotMatch(regionPickerSource, /onMouseDown=\{onCanvas/);
+assert.match(screencapStyles, /\.qx-region-picker-rect \{[\s\S]*?border: 0;[\s\S]*?outline: 2px solid/);
+assert.match(captureAnnotationCompositorSource, /pub fn composite\(/);
+assert.match(captureAnnotationCompositorSource, /apply_mosaic_ops\(image,[\s\S]*for annotation in annotations/);
+assert.match(captureAnnotationCompositorSource, /CaptureAnnotation::Text/);
+
+// On macOS the backing NSWindow owns the Screen Saver level. Generic Tauri
+// floating state stays disabled there so it cannot demote the capture surface.
+assert.match(capturePickerWindowSource, /CG_SCREEN_SAVER_WINDOW_LEVEL_KEY/);
+assert.match(capturePickerWindowSource, /setLevel: level/);
+assert.match(capturePickerWindowSource, /always_on_top\(!cfg!\(target_os = "macos"\)\)/);
+
+// The capture surface is backed by the immutable whole-display frame on both
+// the active picker and every outer-display shade; no live desktop is exposed.
+assert.match(regionPickerSource, /snapshotPath=\{picker\?\.snapshotPath\}/);
+assert.match(captureSelectionShadeSource, /convertFileSrc\(snapshotPath\)/);
+assert.match(captureSelectionShadeSource, /qx-region-picker-frozen-frame/);
+assert.match(regionPickerShadeSource, /screencap_picker_snapshot/);
+assert.match(regionPickerShadeSource, /screencap:snapshot-ready/);
+
+// Recording intentionally has no annotation or mosaic surface. Screenshot
+// keeps tool 6, while numeric annotation shortcuts are gated to screenshot.
+assert.doesNotMatch(captureToolbarSource, /recordingMosaic|Recording mosaic mask/);
+assert.doesNotMatch(regionPickerSource, /recordingMasks/);
+assert.match(regionPickerSource, /intent === "screenshot" && key === "6"/);
 
 // Recording retains the real selected rectangle and the same four outside
 // shades; it must not replace the visible cutout with a full-screen rectangle.

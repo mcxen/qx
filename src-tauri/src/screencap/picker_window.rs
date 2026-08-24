@@ -42,11 +42,71 @@ fn set_windows_cloaked(window: &tauri::WebviewWindow, cloaked: bool) {
 #[cfg(not(target_os = "windows"))]
 fn set_windows_cloaked(_window: &tauri::WebviewWindow, _cloaked: bool) {}
 
+#[cfg(target_os = "macos")]
+fn promote_macos_capture_surface(window: &tauri::WebviewWindow) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    use objc2_app_kit::NSWindowCollectionBehavior;
+
+    const CG_SCREEN_SAVER_WINDOW_LEVEL_KEY: i32 = 13;
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGWindowLevelForKey(key: i32) -> i32;
+    }
+
+    let Ok(ptr) = window.ns_window() else {
+        return;
+    };
+    let ns_window = ptr as *mut AnyObject;
+    if ns_window.is_null() {
+        return;
+    }
+
+    unsafe {
+        // Ordinary `always_on_top` windows sit below the menu/status bar and
+        // Dock. A capture picker must own those pixels and their pointer input
+        // too, otherwise the supposedly frozen desktop remains interactive.
+        let level = CGWindowLevelForKey(CG_SCREEN_SAVER_WINDOW_LEVEL_KEY) as isize;
+        let current: NSWindowCollectionBehavior = msg_send![ns_window, collectionBehavior];
+        let behavior = current
+            | NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::FullScreenAuxiliary;
+        let _: () = msg_send![ns_window, setLevel: level];
+        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+        let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn promote_macos_capture_surface(_window: &tauri::WebviewWindow) {}
+
+#[cfg(target_os = "macos")]
+fn demote_macos_recording_surface(window: &tauri::WebviewWindow) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    let Ok(ptr) = window.ns_window() else {
+        return;
+    };
+    let ns_window = ptr as *mut AnyObject;
+    if ns_window.is_null() {
+        return;
+    }
+    unsafe {
+        // Once recording starts this surface is passive decoration. Keep the
+        // dedicated level-3 recording controls above it and clickable.
+        let _: () = msg_send![ns_window, setLevel: 3isize];
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn demote_macos_recording_surface(_window: &tauri::WebviewWindow) {}
+
 /// Prepare a reusable transparent picker surface before restoring its geometry.
 /// Windows keeps the HWND alive but excludes it from DWM while hidden, so it
 /// must be uncloaked before the next show.
 pub(super) fn prepare_for_show(window: &tauri::WebviewWindow) {
     set_windows_cloaked(window, false);
+    promote_macos_capture_surface(window);
 }
 
 fn hide_surface(window: &tauri::WebviewWindow) {
@@ -143,7 +203,9 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
             .transparent(true)
             .background_color(Color(0, 0, 0, 0))
             .shadow(false)
-            .always_on_top(true)
+            // macOS uses the native Screen Saver level below; keeping Tauri's
+            // generic floating state enabled would continuously reset it.
+            .always_on_top(!cfg!(target_os = "macos"))
             .skip_taskbar(true)
             .focused(false)
             // First click on an outer display must activate that picker surface.
@@ -153,6 +215,7 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
             .map_err(|error| format!("open capture shade: {error}"))?
         };
         let _ = shade.set_content_protected(true);
+        #[cfg(not(target_os = "macos"))]
         let _ = shade.set_always_on_top(true);
         prepare_for_show(&shade);
         shade
@@ -171,6 +234,9 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
                 .show()
                 .map_err(|error| format!("show capture shade: {error}"))?;
         }
+        // AppKit/Tauri may restore the builder's floating level while ordering
+        // a hidden window front; assert the capture level after Show as well.
+        prepare_for_show(&shade);
     }
     Ok(())
 }
@@ -209,19 +275,24 @@ pub(super) fn reassert_interactive(app: &AppHandle) -> Result<(), String> {
         let picker = app
             .get_webview_window(PICKER_LABEL)
             .ok_or_else(|| "region picker window is unavailable".to_string())?;
-        prepare_for_show(&picker);
         picker
             .set_ignore_cursor_events(false)
             .map_err(|error| format!("picker input: {error}"))?;
+        #[cfg(not(target_os = "macos"))]
         picker
             .set_always_on_top(true)
             .map_err(|error| format!("picker z-order: {error}"))?;
+        prepare_for_show(&picker);
         picker
             .show()
             .map_err(|error| format!("show region picker: {error}"))?;
+        prepare_for_show(&picker);
         picker
             .set_focus()
             .map_err(|error| format!("focus region picker: {error}"))?;
+        // AppKit can normalize an ordered/focused Tauri window back to the
+        // floating level. The capture level must be the final window mutation.
+        prepare_for_show(&picker);
         Ok::<(), String>(())
     })?
 }
@@ -267,7 +338,9 @@ pub(super) fn restore_editable_selection(app: &AppHandle, session: &PickerSessio
             let _ = picker.hide();
             return false;
         }
+        prepare_for_show(&picker);
         let _ = picker.set_focus();
+        prepare_for_show(&picker);
         true
     })
     .unwrap_or(false)
@@ -317,6 +390,7 @@ pub(super) fn show_recording_frame(
         #[cfg(target_os = "windows")]
         let _ = picker.set_content_protected(false);
         prepare_for_show(&picker);
+        demote_macos_recording_surface(&picker);
         picker
             .set_position(PhysicalPosition::new(
                 monitor.position().x,

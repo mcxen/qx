@@ -73,6 +73,8 @@ fn picker_status_from_session(session: &PickerSession, restore_selection: bool) 
         monitor_id: session.monitor_id,
         monitor_name: session.monitor_name.clone(),
         coordinate_scale: session.coordinate_scale,
+        snapshot_path: super::snapshot::descriptor(session.monitor_id)
+            .map(|snapshot| snapshot.path),
         logical_area: session.logical_area.clone(),
         restore_selection,
         multi_display: session.multi_display,
@@ -82,6 +84,13 @@ fn picker_status_from_session(session: &PickerSession, restore_selection: bool) 
 /// True when the host has two or more capture displays.
 /// `force_refresh` bypasses the macOS inventory TTL so hot-plug is visible.
 fn host_is_multi_display(force_refresh: bool) -> bool {
+    let frozen_count = super::snapshot::count();
+    if frozen_count > 0 {
+        // A picker session owns the display topology captured at its start.
+        // Newly attached displays cannot join without an immutable backing
+        // frame, so they are deliberately deferred until the next session.
+        return frozen_count > 1;
+    }
     let monitors = if force_refresh {
         crate::display::refresh_capture_monitor_cache()
     } else {
@@ -199,6 +208,7 @@ pub(super) fn finish_capture_session(
     if let Ok(mut session) = picker_session().lock() {
         *session = None;
     }
+    super::snapshot::clear();
     set_recording_ui_protected(app, false);
     if restore_main_ui {
         restore_capture_surface(app, suppress_ms)?;
@@ -240,6 +250,9 @@ fn show_region_picker_internal(
     let monitor_id = selected_capture
         .id()
         .map_err(|error| format!("display id: {error}"))?;
+    if super::snapshot::descriptor(monitor_id).is_none() {
+        return Err("Selected display is not part of the frozen desktop frame".to_string());
+    }
     let monitor_name = selected_capture
         .friendly_name()
         .or_else(|_| selected_capture.name())
@@ -308,7 +321,9 @@ fn show_region_picker_internal(
             // Windows 8+ transparent WebView contract in Tauri.
             .background_color(Color(0, 0, 0, 0))
             .shadow(false)
-            .always_on_top(true)
+            // AppKit capture surfaces use a native Screen Saver level. Tauri's
+            // generic macOS floating state would overwrite that level.
+            .always_on_top(!cfg!(target_os = "macos"))
             .skip_taskbar(true)
             .focused(true)
             .accept_first_mouse(true)
@@ -321,9 +336,10 @@ fn show_region_picker_internal(
         let picker = app_for_ui
             .get_webview_window(PICKER_LABEL)
             .ok_or_else(|| "region picker window is unavailable".to_string())?;
-        picker_window::prepare_for_show(&picker);
         let _ = picker.set_content_protected(true);
+        #[cfg(not(target_os = "macos"))]
         let _ = picker.set_always_on_top(true);
+        picker_window::prepare_for_show(&picker);
         // Cover the selected display exactly. Physical size/position matches the
         // monitor framebuffer; CSS clientX/Y stay in logical points (DPR scaled).
         let _ = picker.set_position(PhysicalPosition::new(pos_x, pos_y));
@@ -331,8 +347,10 @@ fn show_region_picker_internal(
         picker
             .show()
             .map_err(|error| format!("show region picker: {error}"))?;
+        picker_window::prepare_for_show(&picker);
         let _ = picker.set_ignore_cursor_events(false);
         let _ = picker.set_focus();
+        picker_window::prepare_for_show(&picker);
         Ok::<(), String>(())
     })??;
     if let Some(status) = screencap_region_select_status_with_restore(false) {
@@ -480,9 +498,45 @@ pub async fn screencap_begin_capture_select(
     }
     // Invalidate any stale picker tracker before replacing its session.
     let generation = begin_picker_session();
-    // Map/show the picker before hiding every existing Qx surface. If display
-    // matching or window creation fails, the user must never be left with an
-    // apparently terminated app and no way to recover.
+    super::snapshot::clear();
+    // Freeze the desktop before the picker exists. Normal in-module capture
+    // hides Qx first; the explicit include-main path deliberately leaves the
+    // current Qx window in the immutable frame.
+    hide_recording_controls_internal(&app);
+    if !keep_main_visible {
+        crate::floating_panel::hide(&app);
+    }
+    // Let WindowServer/DWM commit the Qx surface change before sampling every
+    // display. The user edits these exact pixels for the rest of the session.
+    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    let include_cursor = crate::settings::read_settings()
+        .screencap
+        .screenshot_include_cursor;
+    let frozen_frames =
+        crate::runtime::blocking(move || super::snapshot::capture_all(generation, include_cursor))
+            .await
+            .map_err(|error| format!("freeze desktop worker failed: {error}"))
+            .and_then(|result| result);
+    let frozen_frames = match frozen_frames {
+        Ok(frames) => frames,
+        Err(error) => {
+            end_picker_session();
+            super::snapshot::clear();
+            crate::floating_panel::set_capture_main_visible_active(false);
+            set_recording_ui_protected(&app, false);
+            if main_was_visible {
+                let _ = restore_capture_surface(&app, 800);
+            }
+            return Err(error);
+        }
+    };
+    super::snapshot::install(frozen_frames);
+    for snapshot in super::snapshot::descriptors() {
+        let _ = app.emit("screencap:snapshot-ready", snapshot);
+    }
+
+    // Only after immutable frames are installed do we map the topmost picker.
+    // If window creation fails, restore the prior Qx surface immediately.
     show_region_picker_internal(&app, mode, None, main_was_visible).map_err(|error| {
         crate::diagnostics::log(
             crate::diagnostics::LogLevel::Error,
@@ -491,12 +545,16 @@ pub async fn screencap_begin_capture_select(
             serde_json::json!({ "error": error, "mode": mode.as_str() }),
         );
         end_picker_session();
+        super::snapshot::clear();
         crate::floating_panel::set_capture_main_visible_active(false);
+        set_recording_ui_protected(&app, false);
+        if main_was_visible {
+            let _ = restore_capture_surface(&app, 800);
+        }
         error
     })?;
     // Only multi-display sessions pay for the pointer-follow task.
     start_pointer_display_tracker(app.clone(), generation);
-    hide_recording_controls_internal(&app);
     if keep_main_visible {
         // Keep the current module capturable while the picker and controller
         // remain protected and excluded from the screenshot.
@@ -518,8 +576,6 @@ pub async fn screencap_begin_capture_select(
             }
             return Err(error);
         }
-    } else {
-        crate::floating_panel::hide(&app);
     }
     Ok(())
 }
@@ -530,9 +586,9 @@ pub fn screencap_list_displays() -> Result<Vec<CaptureDisplay>, String> {
     displays()
 }
 
-/// Snapshot the current picker selection for live mosaic preview (PNG base64).
-/// Does not write history or play sounds. Safe while the picker is open: the
-/// picker surface is content-protected and excluded from the capture stack.
+/// Crop the current picker selection from its immutable desktop frame for live
+/// mosaic preview (PNG base64). Does not sample the live desktop, write history,
+/// or play sounds.
 #[command]
 pub async fn screencap_selection_preview(area: RecordArea) -> Result<String, String> {
     let session = picker_session()
@@ -576,6 +632,7 @@ pub fn screencap_set_picker_passthrough(app: AppHandle, enabled: bool) -> Result
         .map_err(|error| format!("picker passthrough: {error}"))?;
     if !enabled {
         let _ = picker.set_focus();
+        picker_window::prepare_for_show(&picker);
     }
     Ok(())
 }
@@ -616,6 +673,23 @@ pub fn screencap_region_select_status() -> Option<PickerStatus> {
     screencap_region_select_status_with_restore(false)
 }
 
+/// Browser-readable immutable frame for a picker or outer-display shade.
+#[command]
+pub fn screencap_picker_snapshot(
+    monitor_id: Option<u32>,
+) -> Result<super::snapshot::PickerSnapshotDescriptor, String> {
+    let monitor_id = monitor_id.or_else(|| {
+        picker_session()
+            .lock()
+            .ok()
+            .and_then(|session| session.as_ref().map(|session| session.monitor_id))
+    });
+    let monitor_id =
+        monitor_id.ok_or_else(|| "Capture selection session is unavailable".to_string())?;
+    super::snapshot::descriptor(monitor_id)
+        .ok_or_else(|| "Frozen desktop frame is unavailable".to_string())
+}
+
 /// Picker-webview readiness handshake. WebView2 may finish mounting after the
 /// native transparent window was first shown, especially through Remote
 /// Desktop. Reassert input/focus only after React has installed its listeners,
@@ -634,11 +708,15 @@ pub fn screencap_region_picker_ready(app: AppHandle) -> Result<Option<PickerStat
         picker
             .set_ignore_cursor_events(false)
             .map_err(|error| format!("picker input: {error}"))?;
+        #[cfg(not(target_os = "macos"))]
+        let _ = picker.set_always_on_top(true);
+        picker_window::prepare_for_show(&picker);
         picker
             .show()
             .map_err(|error| format!("show region picker: {error}"))?;
-        let _ = picker.set_always_on_top(true);
+        picker_window::prepare_for_show(&picker);
         let _ = picker.set_focus();
+        picker_window::prepare_for_show(&picker);
         Ok::<(), String>(())
     })??;
     if let Some(payload) = status.clone() {
@@ -660,6 +738,7 @@ pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String
     if let Ok(mut session) = picker_session().lock() {
         *session = None;
     }
+    super::snapshot::clear();
     set_recording_ui_protected(&app, false);
     hide_recording_controls_internal(&app);
     if main_was_visible {
@@ -678,9 +757,9 @@ pub async fn screencap_confirm_region_select(
     options: Option<RecordingOptions>,
     capture_options: Option<CaptureExecutionOptions>,
     action: Option<String>,
-    annotation_overlay_base64: Option<String>,
-    // True block-pixelate ops applied to the real capture before the vector overlay.
-    mosaic_ops: Option<Vec<super::mosaic::MosaicOp>>,
+    // Selection-normalized vectors; Rust composites every annotation against
+    // the immutable source crop at its native pixel scale.
+    annotations: Option<Vec<super::annotations::CaptureAnnotation>>,
     copy_to_clipboard: Option<bool>,
     // After a screenshot: "clipboard" copies OCR text; "editor" opens Text Toolbox.
     ocr_destination: Option<String>,
@@ -719,8 +798,7 @@ pub async fn screencap_confirm_region_select(
         .unwrap_or(session.mode);
     let capture_options = capture_options.unwrap_or_default();
     if action == CaptureMode::Recording
-        && (annotation_overlay_base64.is_some()
-            || mosaic_ops.as_ref().is_some_and(|ops| !ops.is_empty()))
+        && annotations.as_ref().is_some_and(|items| !items.is_empty())
     {
         return Err("Annotations can only be applied to screenshots".to_string());
     }
@@ -742,7 +820,7 @@ pub async fn screencap_confirm_region_select(
         let include_cursor = capture_options.include_cursor.unwrap_or(false);
         let pin_monitor_id = area.monitor_id;
         let result = crate::runtime::blocking(move || {
-            take_screenshot_blocking(area, annotation_overlay_base64, include_cursor, mosaic_ops)
+            take_screenshot_blocking(area, annotations, scale, include_cursor)
         })
         .await
         .map_err(|error| format!("screenshot worker failed: {error}"))
@@ -1015,7 +1093,7 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
 
     let include_cursor = capture_settings.screenshot_include_cursor;
     let result = crate::runtime::blocking(move || {
-        take_screenshot_blocking(physical, None, include_cursor, None)
+        take_screenshot_blocking(physical, None, 1.0, include_cursor)
     })
     .await
     .map_err(|error| format!("screenshot worker failed: {error}"))

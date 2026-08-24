@@ -286,25 +286,6 @@ pub fn apply_mosaic_ops(image: &mut RgbaImage, ops: &[MosaicOp]) {
     }
 }
 
-/// Convenience for recording masks that only carry axis-aligned rectangles.
-pub fn pixelate_relative_rects(
-    image: &mut RgbaImage,
-    rects: &[super::types::RelativeCaptureRect],
-    block_size: f64,
-) {
-    let ops: Vec<MosaicOp> = rects
-        .iter()
-        .map(|rect| MosaicOp::Region {
-            x1: rect.x,
-            y1: rect.y,
-            x2: rect.x + rect.w,
-            y2: rect.y + rect.h,
-            block_size,
-        })
-        .collect();
-    apply_mosaic_ops(image, &ops);
-}
-
 #[cfg(test)]
 mod tests {
     use super::{apply_mosaic_ops, pixelate_region_px, MosaicOp, MosaicPoint};

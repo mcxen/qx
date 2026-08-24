@@ -27,6 +27,23 @@ export function shouldCommitCaptureTextChange(
   return !sessionComposing && !eventComposing;
 }
 
+/** Capture the text box that an outside pointer is allowed to dismiss. */
+export function captureTextOutsideDismissId(
+  activeId: string | null,
+  editingId: string | null,
+): string | null {
+  return activeId ?? editingId;
+}
+
+/** Do not let a deferred outside click clear a newer text box placement. */
+export function shouldApplyCaptureTextOutsideDismiss(
+  dismissId: string,
+  activeId: string | null,
+  editingId: string | null,
+): boolean {
+  return activeId === dismissId || editingId === dismissId;
+}
+
 export function shouldFinishCaptureTextEditing(
   key: string,
   shiftKey: boolean,

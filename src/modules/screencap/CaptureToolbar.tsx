@@ -285,7 +285,7 @@ export const CaptureToolbar = forwardRef<HTMLDivElement, CaptureToolbarProps>(fu
           <CaptureFrameIcon recording={!screenshot} display />
         </ToolButton>
 
-        {screenshot ? (
+        {screenshot && (
           <>
             <span />
             <ToolButton shortcut="1" label={t("screencap.picker.rectangle", "Rectangle")} active={tool === "rect"} disabled={busy} onClick={() => toggleTool("rect")}>
@@ -322,13 +322,6 @@ export const CaptureToolbar = forwardRef<HTMLDivElement, CaptureToolbarProps>(fu
             </ToolButton>
             <ToolButton shortcut="⇧⌘/Ctrl+Z" label={t("common.redo", "Redo")} disabled={!canRedo || busy} onClick={onRedo}>
               <Redo2 size={20} strokeWidth={1.8} />
-            </ToolButton>
-          </>
-        ) : (
-          <>
-            <span />
-            <ToolButton shortcut="6" label={t("screencap.picker.recordingMosaic", "Recording mosaic mask")} active={tool === "mosaic"} disabled={busy} onClick={() => toggleTool("mosaic")}>
-              <MosaicIcon size={17} />
             </ToolButton>
           </>
         )}

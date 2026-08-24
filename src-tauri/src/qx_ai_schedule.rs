@@ -163,7 +163,7 @@ pub fn capture_desktop_sync(
         h: height,
         monitor_id: Some(id),
     };
-    let output = crate::screencap::screenshot::capture(area, None, false, None)?;
+    let output = crate::screencap::screenshot::capture(area, None, 1.0, false)?;
     let path = output.path.to_string_lossy().into_owned();
     let mut copied_to = None;
     if let Some(dir) = dest_dir {

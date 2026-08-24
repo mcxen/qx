@@ -7,23 +7,6 @@ use super::geometry::{clamp_area, crop_physical_into};
 use super::state::{set_capture_error, FRAME_COUNT};
 use super::types::{NormalizedRecordingOptions, RecordArea, RecordingOutput};
 
-fn frame_with_masks<'a>(
-    source: &image::RgbaImage,
-    scratch: &'a mut image::RgbaImage,
-    masks: &[super::types::RelativeCaptureRect],
-) -> Option<&'a image::RgbaImage> {
-    if masks.is_empty() {
-        return None;
-    }
-    if scratch.dimensions() != source.dimensions() {
-        *scratch = image::RgbaImage::new(source.width(), source.height());
-    }
-    scratch.as_mut().copy_from_slice(source.as_raw());
-    // Real block pixelation of source pixels (same path as screenshot mosaic).
-    super::mosaic::pixelate_relative_rects(scratch, masks, 0.035);
-    Some(scratch)
-}
-
 fn frame_with_pointer<'a>(
     source: &image::RgbaImage,
     scratch: &'a mut image::RgbaImage,
@@ -285,7 +268,6 @@ fn recording_loop_inner(
     let mut encode_scratch = FrameEncodeScratch::default();
     let mut crop_scratch = image::RgbaImage::new(0, 0);
     let mut pointer_scratch = image::RgbaImage::new(0, 0);
-    let mut mask_scratch = image::RgbaImage::new(0, 0);
     let mut timeline_origin = None;
     let mut cover_frame = None;
     let mut next_frame_at = std::time::Instant::now();
@@ -397,13 +379,6 @@ fn recording_loop_inner(
                             options.execution.show_mouse_clicks.unwrap_or(false),
                         )
                         .unwrap_or(prepared);
-                        let prepared = frame_with_masks(
-                            prepared,
-                            &mut mask_scratch,
-                            &options.execution.recording_masks,
-                        )
-                        .unwrap_or(prepared);
-
                         encode_rgba_frame(
                             &mut encoder,
                             &mut writer,
@@ -474,12 +449,6 @@ fn recording_loop_inner(
                         options.execution.show_mouse_clicks.unwrap_or(false),
                     )
                     .unwrap_or(source);
-                    let prepared = frame_with_masks(
-                        prepared,
-                        &mut mask_scratch,
-                        &options.execution.recording_masks,
-                    )
-                    .unwrap_or(prepared);
                     encode_rgba_frame(
                         &mut encoder,
                         &mut writer,
@@ -555,7 +524,7 @@ fn recording_loop_inner(
 #[cfg(test)]
 mod tests {
     use super::{
-        advance_frame_deadline, capture_timestamp_ms, drain_latest_frame, frame_with_masks,
+        advance_frame_deadline, capture_timestamp_ms, drain_latest_frame,
         windows_stream_frame_requires_fallback, write_recording_cover, FrameEncodeScratch,
     };
     use openh264::formats::YUVSource;
@@ -614,29 +583,6 @@ mod tests {
         let mut buffered = Some(0_u8);
         drain_latest_frame(&receiver, &mut buffered);
         assert_eq!(buffered, Some(3));
-    }
-
-    #[test]
-    fn recording_masks_are_scaled_and_applied_to_every_prepared_frame() {
-        let mut source = image::RgbaImage::new(100, 80);
-        for y in 0..80 {
-            for x in 0..100 {
-                let tone = if ((x / 2) + (y / 2)) % 2 == 0 { 255 } else { 0 };
-                source.put_pixel(x, y, image::Rgba([tone, tone, tone, 255]));
-            }
-        }
-        let mut scratch = image::RgbaImage::new(0, 0);
-        let masks = vec![crate::screencap::types::RelativeCaptureRect {
-            x: 0.25,
-            y: 0.25,
-            w: 0.5,
-            h: 0.5,
-        }];
-        let prepared = frame_with_masks(&source, &mut scratch, &masks).unwrap();
-        // Outside the mask keeps the original checker contrast.
-        assert_eq!(prepared.get_pixel(5, 5), source.get_pixel(5, 5));
-        // Inside the mask, neighboring samples of a block collapse to one tone.
-        assert_eq!(prepared.get_pixel(50, 40), prepared.get_pixel(51, 40));
     }
 
     #[test]

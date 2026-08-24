@@ -97,6 +97,12 @@ type WorkbenchStatus = {
 `{ type: "asset-image", assetPath, alt }`。`assetPath` 必须是插件根目录内的相对路径，
 由宿主统一解析；行内图片采用紧凑正文尺寸，不进入媒体预览，缺失时显示 `alt`/正文回退。
 
+资讯/社区详情仍可把作者、互动数、发布时间、来源、地区等发布为顶层 `detail.fields[]`。
+只要详情包含 `body`、`content[]` 或 `replies`，宿主就会将这些字段统一追加到标题下的可换行
+副标题元数据区，并移除与现有 `detail.subtitle` 同值的重复项；正文下方不会再画第二张属性表。
+管理面板的顶层字段以及 `sections[].fields[]` 仍按结构化表格显示，因此不要把有分组语义的
+管理数据伪装成文章属性。
+
 ### 2.1 增量更新与宿主缓存
 
 Workbench 默认启用宿主管理的 stale-while-revalidate 快照。打开插件时，Qx 先显示上次成功

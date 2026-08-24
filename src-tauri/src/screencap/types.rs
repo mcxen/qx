@@ -4,15 +4,6 @@ use std::sync::atomic::AtomicBool;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RelativeCaptureRect {
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CaptureExecutionOptions {
     pub destination: Option<String>,
     pub custom_directory: Option<String>,
@@ -22,8 +13,6 @@ pub struct CaptureExecutionOptions {
     pub include_cursor: Option<bool>,
     pub show_mouse_clicks: Option<bool>,
     pub microphone_id: Option<String>,
-    #[serde(default)]
-    pub recording_masks: Vec<RelativeCaptureRect>,
     pub play_sound: Option<bool>,
     /// After a successful screenshot, open a desktop pin (贴图) surface.
     pub pin_to_desktop: Option<bool>,
@@ -176,6 +165,9 @@ pub struct PickerStatus {
     pub(super) monitor_name: String,
     /// Capture-pixel → picker logical scale for this session (from display service).
     pub(super) coordinate_scale: f64,
+    /// Immutable full-display PNG shown beneath all picker interaction.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) snapshot_path: Option<String>,
     /// Logical selection on the picker display, when one has been confirmed or restored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) logical_area: Option<RecordArea>,

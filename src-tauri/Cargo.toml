@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.6.100"
+version = "0.6.101"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -31,6 +31,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 xcap = "0.9"
 image = "0.25"
+imageproc = { version = "0.27", default-features = false, features = ["text"] }
+ab_glyph = "0.2"
+fontdb = "0.24"
 rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = "0.4"
 blake3 = "1"

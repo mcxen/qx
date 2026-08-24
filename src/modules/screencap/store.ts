@@ -28,13 +28,6 @@ export type { RecordingOptions } from "./preferences";
 
 export type CaptureMode = "screenshot" | "recording";
 
-export interface RelativeCaptureRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 export interface CaptureExecutionOptions {
   destination?: "library" | "desktop" | "documents" | "clipboard" | "custom";
   customDirectory?: string | null;
@@ -44,7 +37,6 @@ export interface CaptureExecutionOptions {
   includeCursor?: boolean;
   showMouseClicks?: boolean;
   microphoneId?: string | null;
-  recordingMasks?: RelativeCaptureRect[];
   playSound?: boolean;
   /** Capture then open a floating desktop pin (贴图). */
   pinToDesktop?: boolean;

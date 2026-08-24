@@ -3,8 +3,8 @@ use chrono::Local;
 use image::ImageEncoder;
 use std::io::BufWriter;
 
+use super::annotations::{composite as composite_annotations, contains_mosaic, CaptureAnnotation};
 use super::geometry::clamp_area;
-use super::mosaic::{apply_mosaic_ops, MosaicOp};
 use super::storage::{captures_dir, insert_history};
 use super::types::{RecordArea, RecordingOutput};
 use crate::display::{capture_monitor, capture_region_from_monitor};
@@ -13,9 +13,9 @@ use crate::display::{capture_monitor, capture_region_from_monitor};
 /// Used by the interactive picker and headless QxAI / schedule jobs.
 pub(crate) fn capture(
     area: RecordArea,
-    annotation_overlay_base64: Option<String>,
+    annotations: Option<Vec<CaptureAnnotation>>,
+    annotation_scale: f64,
     include_cursor: bool,
-    mosaic_ops: Option<Vec<MosaicOp>>,
 ) -> Result<RecordingOutput, String> {
     // The picker hide is dispatched synchronously to the UI thread. Synchronize
     // with DWM on Windows, then keep only a short driver grace period instead
@@ -23,7 +23,7 @@ pub(crate) fn capture(
     // Mosaic redaction needs a clean post-hide frame; Windows layered-window
     // teardown can lag slightly longer when the picker also hosted a freeze
     // capture earlier in the session.
-    let has_mosaic = mosaic_ops.as_ref().is_some_and(|ops| !ops.is_empty());
+    let has_mosaic = annotations.as_deref().is_some_and(contains_mosaic);
     #[cfg(target_os = "windows")]
     {
         let dwm_synced = unsafe { windows_sys::Win32::Graphics::Dwm::DwmFlush() } >= 0;
@@ -64,10 +64,15 @@ pub(crate) fn capture(
         .map_err(|error| format!("display height: {error}"))?;
     let area = clamp_area(area, mon_w, mon_h)
         .ok_or_else(|| "Selection is outside the selected display".to_string())?;
-    // Region still-frame is a display system capability; screencap only owns
-    // annotation composite + history persistence.
-    let mut image = capture_region_from_monitor(&monitor, area.x, area.y, area.w, area.h)?;
-    if include_cursor {
+    // Interactive capture crops the immutable frame displayed by the picker;
+    // silent/headless recapture has no picker snapshot and samples live pixels.
+    let frozen = super::snapshot::crop(&area)?;
+    let used_frozen_frame = frozen.is_some();
+    let mut image = match frozen {
+        Some(image) => image,
+        None => capture_region_from_monitor(&monitor, area.x, area.y, area.w, area.h)?,
+    };
+    if include_cursor && !used_frozen_frame {
         crate::input_events::composite_pointer(
             &mut image,
             (
@@ -79,14 +84,12 @@ pub(crate) fn capture(
             false,
         );
     }
-    // Pixelate against the real captured frame before drawing vector overlays so
-    // privacy redaction cannot be undone by reading through a soft blur layer.
-    // Coordinates are selection-normalized (0..1), so multi-DPI Windows scales
-    // correctly without depending on WebView devicePixelRatio.
-    if let Some(ops) = mosaic_ops.as_ref() {
-        apply_mosaic_ops(&mut image, ops);
+    // One source-pixel compositor owns mosaic, rectangle, arrow, pen, number,
+    // and text output. The WebView canvas is preview-only and is never resized
+    // or overlaid onto the saved image.
+    if let Some(annotations) = annotations.as_deref() {
+        composite_annotations(&mut image, annotations, annotation_scale)?;
     }
-    composite_annotation_overlay(&mut image, annotation_overlay_base64.as_deref())?;
     let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let output_path = captures_dir().join(format!("screenshot_{timestamp}.png"));
     let (width, height) = image.dimensions();
@@ -134,13 +137,8 @@ pub(super) fn preview_region_base64(area: RecordArea) -> Result<String, String> 
         .map_err(|error| format!("display height: {error}"))?;
     let area = clamp_area(area, mon_w, mon_h)
         .ok_or_else(|| "Selection is outside the selected display".to_string())?;
-    let image = capture_region_from_monitor(&monitor, area.x, area.y, area.w, area.h)?;
-    // Shared black-frame detector (Windows WGC/GDI fallbacks + harmless on macOS).
-    if crate::display::frame_is_effectively_black(&image) {
-        return Err(
-            "selection preview unavailable (capture excluded the picker surface)".to_string(),
-        );
-    }
+    let image = super::snapshot::crop(&area)?
+        .ok_or_else(|| "Frozen desktop frame is unavailable".to_string())?;
     let mut bytes = Vec::new();
     {
         let writer = BufWriter::new(&mut bytes);
@@ -158,51 +156,4 @@ pub(super) fn preview_region_base64(area: RecordArea) -> Result<String, String> 
         .map_err(|error| format!("encode selection preview: {error}"))?;
     }
     Ok(BASE64.encode(bytes))
-}
-
-fn composite_annotation_overlay(
-    image: &mut image::RgbaImage,
-    annotation_overlay_base64: Option<&str>,
-) -> Result<(), String> {
-    let Some(encoded) = annotation_overlay_base64.filter(|value| !value.is_empty()) else {
-        return Ok(());
-    };
-    let bytes = BASE64
-        .decode(encoded)
-        .map_err(|error| format!("decode screenshot annotations: {error}"))?;
-    let overlay = image::load_from_memory(&bytes)
-        .map_err(|error| format!("read screenshot annotations: {error}"))?
-        .to_rgba8();
-    let overlay = if overlay.dimensions() == image.dimensions() {
-        overlay
-    } else {
-        image::imageops::resize(
-            &overlay,
-            image.width(),
-            image.height(),
-            image::imageops::FilterType::Lanczos3,
-        )
-    };
-    image::imageops::overlay(image, &overlay, 0, 0);
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-
-    use super::composite_annotation_overlay;
-
-    #[test]
-    fn annotations_are_composited() {
-        let mut base = image::RgbaImage::from_pixel(4, 4, image::Rgba([0, 0, 0, 255]));
-        let overlay = image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 255]));
-        let mut bytes = std::io::Cursor::new(Vec::new());
-        image::DynamicImage::ImageRgba8(overlay)
-            .write_to(&mut bytes, image::ImageFormat::Png)
-            .unwrap();
-        let encoded = BASE64.encode(bytes.into_inner());
-        composite_annotation_overlay(&mut base, Some(&encoded)).unwrap();
-        assert_eq!(base.get_pixel(2, 2), &image::Rgba([255, 0, 0, 255]));
-    }
 }

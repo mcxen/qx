@@ -1318,7 +1318,6 @@ const zh: Record<string, string> = {
   "screencap.picker.pen": "画笔",
   "screencap.picker.number": "序号",
   "screencap.picker.mosaic": "马赛克",
-  "screencap.picker.recordingMosaic": "录屏马赛克遮挡",
   "screencap.picker.color": "标注颜色",
   "screencap.picker.options": "选项",
   "screencap.picker.delay": "延迟",

@@ -225,6 +225,28 @@
   font-size: 11px;
 }
 
+.qx-host-workbench-detail-meta {
+  align-items: baseline;
+  gap: 3px 0;
+  line-height: 1.5;
+}
+
+.qx-host-workbench-detail-meta > span {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.qx-host-workbench-detail-meta > span:not(:last-child)::after {
+  content: "\00a0 ·\00a0 ";
+  color: var(--qx-text-tertiary);
+}
+
+.qx-host-workbench-detail-meta > .tone-success { color: var(--qx-success); }
+.qx-host-workbench-detail-meta > .tone-warning { color: var(--qx-warning); }
+.qx-host-workbench-detail-meta > .tone-danger { color: var(--qx-danger); }
+.qx-host-workbench-detail-meta > .tone-accent { color: var(--qx-accent); }
+
 .qx-content-detail-footer {
   margin-top: 16px;
   padding-top: 10px;

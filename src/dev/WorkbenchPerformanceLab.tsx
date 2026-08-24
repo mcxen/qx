@@ -4,6 +4,22 @@ import { Button, Input } from "../components/ui";
 import type { PluginWorkbenchItem } from "../plugin/workbenchTypes";
 
 const ITEM_COUNT = 10_000;
+const SHOW_ARTICLE_DETAIL = new URLSearchParams(window.location.search).get("fixture") === "article-detail";
+
+const ARTICLE_DETAIL_FIXTURE = {
+  title: "Workbench article metadata fixture",
+  subtitle: "空愁居 · 2026年8月23日 21:26",
+  body: "A deterministic reading detail used to verify host-owned article metadata layout.",
+  fields: [
+    { label: "作者", value: "空愁居" },
+    { label: "点赞", value: 0 },
+    { label: "评论", value: 0 },
+    { label: "转发", value: 1 },
+    { label: "发布时间", value: "2026年8月23日 21:26" },
+    { label: "来源", value: "微博网页版" },
+    { label: "地区", value: "发布于 加拿大" },
+  ],
+};
 
 const ALL_ITEMS: PluginWorkbenchItem[] = Array.from({ length: ITEM_COUNT }, (_, index) => ({
   id: `workbench-perf-${index}`,
@@ -87,8 +103,9 @@ export default function WorkbenchPerformanceLab() {
               : { kind: "list" },
             items,
             selectedId,
+            detail: SHOW_ARTICLE_DETAIL ? ARTICLE_DETAIL_FIXTURE : undefined,
           }}
-          detailOpen={false}
+          detailOpen={SHOW_ARTICLE_DETAIL}
           onActivate={setSelectedId}
           onInput={() => {}}
           onAction={() => {}}

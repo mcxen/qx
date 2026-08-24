@@ -1,3 +1,4 @@
+mod annotations;
 pub(crate) mod commands;
 mod controls;
 mod delivery;
@@ -10,6 +11,7 @@ mod recording_engine;
 pub(crate) mod recording_session;
 pub(crate) mod screenshot;
 pub(crate) mod selection;
+mod snapshot;
 mod state;
 mod storage;
 mod types;
