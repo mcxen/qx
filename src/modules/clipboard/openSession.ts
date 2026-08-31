@@ -16,7 +16,6 @@ import { useStore, type ClipboardEntry } from "../../store";
 export const CLIPBOARD_HOT_LIMIT = 80;
 /** Older history page size when scrolling into cold storage. */
 export const CLIPBOARD_COLD_PAGE = 50;
-const CLIPBOARD_LIVE_IMAGE_PROBE_TTL_MS = 10_000;
 
 /** @deprecated Use CLIPBOARD_HOT_LIMIT — kept for call sites that only need a hot window. */
 export const CLIPBOARD_HISTORY_LIMIT = CLIPBOARD_HOT_LIMIT;
@@ -48,7 +47,6 @@ function isTauriRuntime(): boolean {
 let historyInFlight: Promise<ClipboardHistorySession> | null = null;
 let openInFlight: Promise<ClipboardHistorySession> | null = null;
 let moreInFlight: Promise<ClipboardHistorySession> | null = null;
-let lastLiveImageProbeAt = 0;
 
 /** Session cursor for cold load-more (module panel + event refresh share this). */
 let sessionCursor: ClipboardHistoryCursor | null = null;
@@ -275,41 +273,16 @@ export function getClipboardHistorySession(): ClipboardHistorySession {
   };
 }
 
-export interface PrefetchClipboardOpenOptions {
-  /**
-   * When true (default on panel open), also probe the live system clipboard for
-   * an image and re-fetch history if a new entry was saved.
-   * Idle warm-up should pass false so background prefetch has no side effects.
-   */
-  captureLiveImage?: boolean;
-}
-
 /**
  * Warm history as soon as clipboard is requested. Safe from navigate, idle
- * warm, and ClipboardPanel mount — callers share in-flight work.
+ * warm, and ClipboardPanel mount — callers share in-flight work. The native
+ * clipboard listener owns live capture and publishes `clipboard-updated`;
+ * opening the panel must not synchronously decode the same bitmap again.
  */
-export function prefetchClipboardOpen(
-  options: PrefetchClipboardOpenOptions = {},
-): Promise<ClipboardHistorySession> {
-  const captureLiveImage = options.captureLiveImage !== false;
-
-  if (!captureLiveImage) {
-    return refreshClipboardHistory({ reset: true });
-  }
-
+export function prefetchClipboardOpen(): Promise<ClipboardHistorySession> {
   // Panel mount and host navigation commonly arrive in the same frame. Join
-  // the complete open transaction before consulting the probe TTL so both
-  // callers observe the same history/image result.
+  // one history transaction so eager callers do not serialize duplicate DB reads.
   if (openInFlight) return openInFlight;
-
-  const now = Date.now();
-  if (
-    useStore.getState().clipboardHistory.length > 0
-    && now - lastLiveImageProbeAt < CLIPBOARD_LIVE_IMAGE_PROBE_TTL_MS
-  ) {
-    return refreshClipboardHistory({ reset: true });
-  }
-  lastLiveImageProbeAt = now;
 
   if (!isTauriRuntime()) {
     return Promise.resolve({
@@ -319,20 +292,9 @@ export function prefetchClipboardOpen(
     });
   }
 
-  openInFlight = (async () => {
-    try {
-      // History and live-image capture run concurrently. If capture inserts a
-      // row, refresh once more so the new image is in the store before settle.
-      const historyPromise = refreshClipboardHistory({ reset: true });
-      const imagePromise = invoke<unknown>("read_clipboard_image_now")
-        .then((saved) => Boolean(saved))
-        .catch(() => false);
-      const [, saved] = await Promise.all([historyPromise, imagePromise]);
-      if (saved) return refreshClipboardHistory({ reset: true });
-      return getClipboardHistorySession();
-    } finally {
+  openInFlight = refreshClipboardHistory({ reset: true })
+    .finally(() => {
       openInFlight = null;
-    }
-  })();
+    });
   return openInFlight;
 }

@@ -731,6 +731,11 @@
   vertical-align: middle;
 }
 
+.qx-clipboard-thumb-loading {
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+}
+
 .qx-clipboard-image-wrap {
   flex: 1;
   display: flex;

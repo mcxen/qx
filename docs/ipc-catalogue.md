@@ -29,12 +29,14 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前命令数由 `npm 
 | `get_clipboard_history(limit?)` | 读取热窗口（置顶 + 最近）文本/图片/原生文件列表；文件返回主项 `file_path`、有序 `file_paths` 与 `file_kind`。默认约 80 条；完整冷存储分页见 `get_clipboard_history_page` |
 | `get_clipboard_history_page(limit?, before_timestamp?, before_id?, before_pinned?, query?)` | 游标分页：首屏热窗口 omit `before_*`；滚到底传入上一页 `next_before_*` 加载冷存储更早记录。`query` 在全文/OCR/路径上检索。返回 `{ items, has_more, next_before_* }` |
 | `get_clipboard_entry(id)` | 按 id 读取单条（热/冷均可见），供深链粘贴 |
-| `read_clipboard_image_now()` | 立即读当前剪贴板图片，落盘并触发 `clipboard-updated` |
+| `read_clipboard_image_now()` | 兼容显式捕获：立即读当前剪贴板图片，落盘并触发 `clipboard-updated`；Clipboard 面板首屏不调用，实时捕获由原生监听器负责 |
 | `write_clipboard_image_entry(id)` | 将历史图片回写系统剪贴板 |
 | `write_clipboard_file_entry(id)` | 使用原有顺序将历史文件列表作为真实文件对象整体回写系统剪贴板，使用时逐项校验存在性 |
 | `clipboard_write_file_paths(paths)` | 将现有本地路径列表按原生文件对象写入剪贴板（macOS file list / Windows `CF_HDROP`）；供 QxAI 与内置模块复用，不降级为路径文本 |
 | `clipboard_write_image_file(path)` | **系统能力**：把磁盘上的图片文件写入系统剪贴板（捕获 toast、导出等） |
-| `clipboard_file_metadata(path)` | 异步读取文件大小、图片尺寸、媒体时长与预览 |
+| `clipboard_file_metadata(path)` | blocking 边界内快速读取文件 stat 与类型，不解码图片或生成预览 |
+| `clipboard_file_preview(path, max_edge?)` | blocking 边界内生成图片/视频/PDF 可重建预览并返回 Qx asset scope 内的缓存路径；图片按源路径、大小、mtime、目标边长失效，前端不得经 raw byte IPC 搬运原图 |
+| `clipboard_file_media_probe(path)` | 后台补充图片尺寸或媒体时长；不在首屏信息绘制前同步等待 |
 | `file_manager_get_selection()` | 读取 Qx 获得焦点前捕获的 Finder / Windows Explorer 选择快照；返回稳定 `revision`、来源和有序文件/文件夹列表 |
 | `file_manager_perform_operation(request)` | 对同一 `revision` 执行受校验的 `rename` / `collect` / `compress` / `extract`；拒绝过期选择、目标覆盖与不安全 ZIP 路径 |
 | `file_preview_info(revision, index)` / `file_preview_read(revision, index, maxBytes?)` | 读取当前选择快照内单项的元数据/受限字节流；文本可读取受限前缀，完整读取拒绝过期 revision、消失路径、目录和超过 256 MB 的文件 |
@@ -47,7 +49,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前命令数由 `npm 
 | `record_clipboard_copy(id)` | 累加 `copy_count` |
 | `update_clipboard_text_entry(id, text)` | 明确保存文本条目的编辑草稿，不自动改写系统剪贴板 |
 | `create_clipboard_text_entry(text)` | 将文本草稿另存为新历史条目并返回 ID |
-| `read_image_file(path)` | 校验魔数后读磁盘图片二进制 |
+| `read_image_file(path)` | 仅兼容旧调用的后台原始图片字节端口，限制 8 MiB；第一方 Clipboard UI 必须使用 `clipboard_file_preview` + asset URL |
 
 ## display / desktop windows（系统能力层）
 

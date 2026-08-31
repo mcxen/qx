@@ -1000,7 +1000,7 @@ function App() {
   // after ModuleLoadingShell / Suspense / panel mount (serial path felt empty).
   useEffect(() => {
     if (tab !== "clipboard") return;
-    void prefetchClipboardOpen({ captureLiveImage: true });
+    void prefetchClipboardOpen();
   }, [tab]);
 
   // After apps are ready, warm clipboard history on idle so the first shortcut
@@ -1012,7 +1012,7 @@ function App() {
     let timerId: ReturnType<typeof window.setTimeout> | undefined;
     const warm = () => {
       if (cancelled) return;
-      void prefetchClipboardOpen({ captureLiveImage: false });
+      void prefetchClipboardOpen();
     };
     const ric = (
       window as Window & {
@@ -1470,7 +1470,7 @@ function App() {
           || tabId === "rss" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "file-actions" || tabId === "file-preview" || tabId === "qx-tty") {
         if (!isBuiltinModuleEnabled(tabId)) return;
         if (tabId === "clipboard") {
-          void prefetchClipboardOpen({ captureLiveImage: true });
+          void prefetchClipboardOpen();
         }
         setTab(tabId);
       } else if (tabId?.startsWith("plugin:")) {
@@ -1904,7 +1904,7 @@ function App() {
         if (!isBuiltinModuleEnabled(next)) return;
         // Start clipboard open work before React commits the tab switch.
         if (next === "clipboard") {
-          void prefetchClipboardOpen({ captureLiveImage: true });
+          void prefetchClipboardOpen();
         }
         setTab(next);
       } else if (next === "launcher") {

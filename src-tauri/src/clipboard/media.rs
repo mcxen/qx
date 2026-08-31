@@ -74,6 +74,14 @@ fn preview_cache_dir() -> Option<PathBuf> {
 
 const MAX_FILE_PREVIEW_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_FILE_PREVIEW_PIXELS: u64 = 32_000_000;
+const DEFAULT_IMAGE_PREVIEW_EDGE: u32 = 1280;
+const MIN_IMAGE_PREVIEW_EDGE: u32 = 96;
+const MAX_IMAGE_PREVIEW_EDGE: u32 = 2400;
+const PREVIEW_CACHE_MAX_BYTES: u64 = 256 * 1024 * 1024;
+const PREVIEW_CACHE_MAX_FILES: usize = 512;
+/// Compatibility-only raw byte IPC. First-party clipboard UI renders bounded
+/// cache assets and must never serialize a full image as a JSON number array.
+const MAX_LEGACY_RAW_IMAGE_IPC_BYTES: u64 = 8 * 1024 * 1024;
 
 fn preview_worker_lock() -> &'static Mutex<()> {
     static LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
@@ -85,24 +93,165 @@ fn media_probe_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
-fn image_preview(path: &Path) -> Option<String> {
-    let metadata = fs::metadata(path).ok()?;
-    if metadata.len() > MAX_FILE_PREVIEW_BYTES {
-        return None;
+fn normalized_preview_edge(max_edge: Option<u32>) -> u32 {
+    max_edge
+        .unwrap_or(DEFAULT_IMAGE_PREVIEW_EDGE)
+        .clamp(MIN_IMAGE_PREVIEW_EDGE, MAX_IMAGE_PREVIEW_EDGE)
+}
+
+fn image_preview_cache_path(
+    cache: &Path,
+    path: &Path,
+    metadata: &fs::Metadata,
+    max_edge: u32,
+) -> PathBuf {
+    let modified_ns = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|value| value.as_nanos())
+        .unwrap_or(0);
+    let seed = format!(
+        "image\0{}\0{}\0{}\0{}",
+        path.to_string_lossy(),
+        metadata.len(),
+        modified_ns,
+        max_edge
+    );
+    cache.join(format!("image-{}-{max_edge}.png", compute_id(&seed)))
+}
+
+fn prune_preview_cache(cache: &Path, keep: &Path, max_bytes: u64, max_files: usize) {
+    let Ok(entries) = fs::read_dir(cache) else {
+        return;
+    };
+    let mut files = entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path).ok()?;
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                return None;
+            }
+            Some((
+                path,
+                metadata.len(),
+                metadata
+                    .modified()
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut total_bytes = files.iter().map(|(_, size, _)| *size).sum::<u64>();
+    let mut total_files = files.len();
+    if total_bytes <= max_bytes && total_files <= max_files {
+        return;
     }
-    let (width, height) = image::image_dimensions(path).ok()?;
+    files.sort_by_key(|(_, _, modified)| *modified);
+    for (path, size, _) in files {
+        if total_bytes <= max_bytes && total_files <= max_files {
+            break;
+        }
+        if path == keep {
+            continue;
+        }
+        if fs::remove_file(&path).is_ok() {
+            total_bytes = total_bytes.saturating_sub(size);
+            total_files = total_files.saturating_sub(1);
+        }
+    }
+}
+
+fn image_preview_in_cache(
+    path: &Path,
+    cache: &Path,
+    max_edge: u32,
+) -> Result<Option<PathBuf>, String> {
+    let metadata = fs::metadata(path).map_err(|e| format!("read preview metadata: {e}"))?;
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+    if metadata.len() > MAX_FILE_PREVIEW_BYTES {
+        return Err("image exceeds the 128 MiB preview limit".to_string());
+    }
+    let (width, height) = match image::image_dimensions(path) {
+        Ok(dimensions) => dimensions,
+        Err(_) => return Ok(None),
+    };
     if u64::from(width).saturating_mul(u64::from(height)) > MAX_FILE_PREVIEW_PIXELS {
-        return None;
+        return Err("image exceeds the 32 megapixel preview limit".to_string());
     }
 
-    let cache = preview_cache_dir()?;
-    let key = compute_id(&path.to_string_lossy());
-    let output = cache.join(format!("{key}.png"));
+    let output = image_preview_cache_path(cache, path, &metadata, max_edge);
     if !output.exists() {
-        let decoded = image::open(path).ok()?;
-        decoded.thumbnail(1280, 1280).save(&output).ok()?;
+        let decoded = match image::open(path) {
+            Ok(image) => image,
+            Err(_) => return Ok(None),
+        };
+        let preview = if width <= max_edge && height <= max_edge {
+            decoded
+        } else {
+            let preview = decoded.thumbnail(max_edge, max_edge);
+            drop(decoded);
+            preview
+        };
+        let temp = cache.join(format!(
+            ".{}.{}.tmp",
+            output
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("clipboard-preview"),
+            std::process::id()
+        ));
+        if let Err(error) = preview.save_with_format(&temp, image::ImageFormat::Png) {
+            let _ = fs::remove_file(&temp);
+            return Err(format!("encode clipboard preview: {error}"));
+        }
+        if let Err(error) = fs::rename(&temp, &output) {
+            let _ = fs::remove_file(&temp);
+            if !output.exists() {
+                return Err(format!("publish clipboard preview: {error}"));
+            }
+        }
+        prune_preview_cache(
+            cache,
+            &output,
+            PREVIEW_CACHE_MAX_BYTES,
+            PREVIEW_CACHE_MAX_FILES,
+        );
     }
-    Some(output.to_string_lossy().to_string())
+    Ok(Some(output))
+}
+
+fn image_preview(path: &Path, max_edge: u32) -> Result<Option<String>, String> {
+    let Some(cache) = preview_cache_dir() else {
+        return Ok(None);
+    };
+    image_preview_in_cache(path, &cache, max_edge)
+        .map(|path| path.map(|value| value.to_string_lossy().to_string()))
+}
+
+pub(crate) fn prepare_clipboard_ocr_preview(
+    path: &Path,
+    max_edge: u32,
+) -> Result<Option<PathBuf>, String> {
+    let path = path
+        .canonicalize()
+        .map_err(|e| format!("OCR image unavailable: {e}"))?;
+    if media_kind(&path) != "image" {
+        return Ok(None);
+    }
+    let _permit = preview_worker_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(cache) = preview_cache_dir() else {
+        return Ok(None);
+    };
+    image_preview_in_cache(
+        &path,
+        &cache,
+        max_edge.clamp(MIN_IMAGE_PREVIEW_EDGE, MAX_IMAGE_PREVIEW_EDGE),
+    )
 }
 
 fn video_preview(path: &Path) -> Option<String> {
@@ -195,12 +344,12 @@ fn pdf_preview(path: &Path) -> Option<String> {
 }
 
 /// Heavy preview generation (video frame / PDF page). Call off the UI path.
-fn generate_file_preview(path: &Path) -> Option<String> {
+fn generate_file_preview(path: &Path, max_edge: u32) -> Result<Option<String>, String> {
     match media_kind(path) {
-        "image" => image_preview(path),
-        "video" => video_preview(path),
-        "pdf" => pdf_preview(path),
-        _ => None,
+        "image" => image_preview(path, max_edge),
+        "video" => Ok(video_preview(path)),
+        "pdf" => Ok(pdf_preview(path)),
+        _ => Ok(None),
     }
 }
 
@@ -243,26 +392,26 @@ fn inspect_file(path: PathBuf) -> Result<ClipboardFileMetadata, String> {
 
 #[command]
 pub async fn clipboard_file_metadata(path: String) -> Result<ClipboardFileMetadata, String> {
-    tauri::async_runtime::spawn_blocking(move || inspect_file(PathBuf::from(path)))
+    crate::runtime::blocking(move || inspect_file(PathBuf::from(path)))
         .await
         .map_err(|e| format!("metadata task failed: {e}"))?
 }
 
 /// Async preview path for image / video / PDF (cached under clipboard image dir).
 #[command]
-pub async fn clipboard_file_preview(path: String) -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+pub async fn clipboard_file_preview(
+    path: String,
+    max_edge: Option<u32>,
+) -> Result<Option<String>, String> {
+    let max_edge = normalized_preview_edge(max_edge);
+    crate::runtime::blocking(move || {
         let path = PathBuf::from(path)
             .canonicalize()
             .map_err(|e| format!("file unavailable: {e}"))?;
-        let _permit = match preview_worker_lock().try_lock() {
-            Ok(permit) => permit,
-            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
-            Err(std::sync::TryLockError::WouldBlock) => {
-                return Err("preview worker busy".to_string());
-            }
-        };
-        Ok(generate_file_preview(&path))
+        let _permit = preview_worker_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        generate_file_preview(&path, max_edge)
     })
     .await
     .map_err(|e| format!("preview task failed: {e}"))?
@@ -271,7 +420,7 @@ pub async fn clipboard_file_preview(path: String) -> Result<Option<String>, Stri
 /// Optional media probe (dimensions / duration) — never blocks the info panel first paint.
 #[command]
 pub async fn clipboard_file_media_probe(path: String) -> Result<ClipboardFileMetadata, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::runtime::blocking(move || {
         let mut meta = inspect_file(PathBuf::from(&path))?;
         let p = PathBuf::from(&meta.path);
         let probe_permit = match media_probe_lock().try_lock() {
@@ -291,19 +440,23 @@ pub async fn clipboard_file_media_probe(path: String) -> Result<ClipboardFileMet
             }
         }
         // Attach preview path if already cached (no generation).
-        let key = compute_id(&meta.path);
         if let Some(cache) = preview_cache_dir() {
+            let key = compute_id(&meta.path);
             let jpg = cache.join(format!("{key}.jpg"));
             let png = cache.join(format!("{key}.png"));
             if meta.kind == "image" {
-                meta.preview_path = Some(meta.path.clone());
+                if let Ok(metadata) = fs::metadata(&p) {
+                    let preview =
+                        image_preview_cache_path(&cache, &p, &metadata, DEFAULT_IMAGE_PREVIEW_EDGE);
+                    if preview.exists() {
+                        meta.preview_path = Some(preview.to_string_lossy().to_string());
+                    }
+                }
             } else if jpg.exists() {
                 meta.preview_path = Some(jpg.to_string_lossy().to_string());
             } else if png.exists() {
                 meta.preview_path = Some(png.to_string_lossy().to_string());
             }
-        } else if meta.kind == "image" {
-            meta.preview_path = Some(meta.path.clone());
         }
         Ok(meta)
     })
@@ -679,15 +832,31 @@ pub fn clipboard_video_to_gif(app: AppHandle, path: String) -> Result<String, St
     Ok(job_id)
 }
 
-#[command]
-pub fn read_image_file(path: String) -> Result<Vec<u8>, String> {
-    use std::fs;
-    let bytes = fs::read(&path).map_err(|e| format!("Failed to read image file: {e}"))?;
+fn read_image_file_bounded(path: &Path) -> Result<Vec<u8>, String> {
+    let metadata = fs::metadata(path).map_err(|e| format!("Failed to stat image file: {e}"))?;
+    if !metadata.is_file() {
+        return Err("Image path is not a file".to_string());
+    }
+    if metadata.len() > MAX_LEGACY_RAW_IMAGE_IPC_BYTES {
+        return Err(
+            "Image exceeds the legacy 8 MiB raw IPC limit; use clipboard_file_preview".to_string(),
+        );
+    }
+    let bytes = fs::read(path).map_err(|e| format!("Failed to read image file: {e}"))?;
     if is_supported_image_bytes(&bytes) {
         Ok(bytes)
     } else {
         Err("File is not a supported clipboard image".to_string())
     }
+}
+
+/// Legacy compatibility port. Clipboard UI uses bounded preview paths and the
+/// asset protocol, never raw image bytes over JSON IPC.
+#[command]
+pub async fn read_image_file(path: String) -> Result<Vec<u8>, String> {
+    crate::runtime::blocking(move || read_image_file_bounded(Path::new(&path)))
+        .await
+        .map_err(|e| format!("image read task failed: {e}"))?
 }
 
 fn is_supported_image_bytes(bytes: &[u8]) -> bool {
@@ -696,6 +865,136 @@ fn is_supported_image_bytes(bytes: &[u8]) -> bool {
         || bytes.starts_with(b"GIF87a")
         || bytes.starts_with(b"GIF89a")
         || (bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP")
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+    use image::{Rgb, RgbImage, Rgba, RgbaImage};
+    use std::fs::File;
+    use std::time::Instant;
+
+    fn temp_root(label: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "qx-clipboard-{label}-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn image_preview_uses_bounded_cache_assets_for_list_and_detail() {
+        let root = temp_root("preview");
+        let cache = root.join("cache");
+        fs::create_dir_all(&cache).unwrap();
+        let source = root.join("source.png");
+        RgbaImage::from_pixel(800, 400, Rgba([12, 34, 56, 255]))
+            .save(&source)
+            .unwrap();
+
+        let thumbnail = image_preview_in_cache(&source, &cache, 320)
+            .unwrap()
+            .unwrap();
+        let detail = image_preview_in_cache(&source, &cache, 1600)
+            .unwrap()
+            .unwrap();
+
+        assert_ne!(thumbnail, source);
+        assert_ne!(detail, source);
+        assert_ne!(thumbnail, detail);
+        assert_eq!(image::image_dimensions(thumbnail).unwrap(), (320, 160));
+        assert_eq!(image::image_dimensions(detail).unwrap(), (800, 400));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn image_preview_cache_invalidates_when_source_changes_in_place() {
+        let root = temp_root("preview-invalidation");
+        let cache = root.join("cache");
+        fs::create_dir_all(&cache).unwrap();
+        let source = root.join("source.png");
+        RgbaImage::from_pixel(640, 320, Rgba([12, 34, 56, 255]))
+            .save(&source)
+            .unwrap();
+        let first = image_preview_in_cache(&source, &cache, 320)
+            .unwrap()
+            .unwrap();
+
+        // Keep the same path and encoded dimensions so the cache key must rely
+        // on source metadata rather than path alone.
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        RgbaImage::from_pixel(640, 320, Rgba([210, 120, 30, 255]))
+            .save(&source)
+            .unwrap();
+        let second = image_preview_in_cache(&source, &cache, 320)
+            .unwrap()
+            .unwrap();
+
+        assert_ne!(first, second);
+        assert!(first.exists());
+        assert!(second.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn legacy_raw_image_ipc_rejects_oversized_files_before_reading() {
+        let root = temp_root("raw-limit");
+        let source = root.join("oversized.png");
+        let file = File::create(&source).unwrap();
+        file.set_len(MAX_LEGACY_RAW_IMAGE_IPC_BYTES + 1).unwrap();
+
+        let error = read_image_file_bounded(&source).unwrap_err();
+        assert!(error.contains("8 MiB"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn preview_cache_prunes_by_bytes_without_deleting_active_asset() {
+        let root = temp_root("cache-prune");
+        let keep = root.join("keep.png");
+        let old_a = root.join("old-a.png");
+        let old_b = root.join("old-b.png");
+        fs::write(&keep, [1_u8; 8]).unwrap();
+        fs::write(&old_a, [2_u8; 8]).unwrap();
+        fs::write(&old_b, [3_u8; 8]).unwrap();
+
+        prune_preview_cache(&root, &keep, 8, 1);
+
+        assert!(keep.exists());
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    #[ignore = "allocates and decodes an approximately 100 MB source image"]
+    fn large_image_preview_regression_stays_on_the_bounded_derivative_path() {
+        let root = temp_root("large-preview");
+        let cache = root.join("cache");
+        fs::create_dir_all(&cache).unwrap();
+        let source = root.join("large.bmp");
+        RgbImage::from_pixel(5656, 5656, Rgb([18, 52, 86]))
+            .save_with_format(&source, image::ImageFormat::Bmp)
+            .unwrap();
+        let source_bytes = fs::metadata(&source).unwrap().len();
+        assert!(source_bytes >= 90_000_000);
+        assert!(source_bytes <= MAX_FILE_PREVIEW_BYTES);
+
+        let started = Instant::now();
+        let preview = image_preview_in_cache(&source, &cache, 320)
+            .unwrap()
+            .unwrap();
+        let elapsed = started.elapsed();
+
+        assert_eq!(image::image_dimensions(&preview).unwrap(), (320, 320));
+        assert!(fs::metadata(&preview).unwrap().len() < 2 * 1024 * 1024);
+        eprintln!(
+            "large clipboard preview: source={} bytes, elapsed={elapsed:?}",
+            source_bytes
+        );
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 #[cfg(all(test, target_os = "windows"))]

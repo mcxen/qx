@@ -632,7 +632,10 @@ fn ensure_clipboard_png_file(
     }
 
     let file = fs::File::create(image_path).map_err(|e| format!("create clipboard image: {e}"))?;
-    let encoder = PngEncoder::new_with_quality(file, CompressionType::Best, FilterType::Adaptive);
+    // Clipboard observation runs continuously. Best PNG compression can pin a
+    // CPU core for seconds on a large bitmap and make the whole utility feel
+    // frozen; the durable 12 MiB guard still bounds storage independently.
+    let encoder = PngEncoder::new_with_quality(file, CompressionType::Fast, FilterType::Adaptive);
     if let Err(e) = encoder.write_image(rgba, width, height, ExtendedColorType::Rgba8) {
         let _ = fs::remove_file(image_path);
         return Err(format!("encode clipboard image: {e}"));

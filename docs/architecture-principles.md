@@ -207,6 +207,7 @@ blocking HTTP · filesystem · native APIs
 | 顶层窗口清单与几何 | `desktop_windows` | `desktop_windows_list` / `src/system/desktopWindows.ts` |
 | 区域 still-frame / 录制降级抓帧 | `display::capture_region*` | 内部 API（工作流封装；Windows WGC still-frame 失败走 GDI，原生连续流失败后的高频轮询复用一个 GDI DC/DIB/RGBA session，避免逐帧重建 WGC/D3D 或 GDI 资源） |
 | 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |
+| 剪贴板图片派生预览 | `clipboard::media` | `clipboard_file_preview(path, max_edge?)` + FE `modules/clipboard/imageAssets`；只返回可重建缓存路径，禁止原图字节 JSON IPC |
 | 文件管理器选择、预览与文件操作 | `file_manager` + `file_preview` | 唤起前 Finder/Explorer 快照；预览只接受当前 revision/index 且有 256 MB 上限；`src/system/fileManager.ts`；插件 `context.files.selection/performSelectionOperation` |
 | 视频/GIF 编解码 | `media/` | 既有 convert 命令 |
 | 主线程 UI / 后台算力 | `runtime/` | `runtime::ui` · `runtime::blocking` · `runtime::install`（见 runtime-threading.md） |

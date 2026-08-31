@@ -13,6 +13,24 @@
 
 ## 当前工作
 
+### Fix — Clipboard 100MB 图片显示卡死
+
+**状态**：修复、全量门禁、构建和签名安装态大图复核完成。
+
+- Clipboard 列表/详情不再走整图 `Vec<u8> → number[] → Uint8Array → Blob` IPC；前端只接收
+  Qx 缓存路径并使用 Tauri asset URL。
+- Rust 按源路径、大小、mtime、目标边长生成 320px 列表缩略图与 1600px 详情预览；单源限制
+  128 MiB / 3200 万像素，派生缓存限制 256 MiB / 512 文件并沿用 Storage 清理注册表。
+- 重解码串行进入 blocking 边界，Clipboard 自动 OCR 复用同一派生图；首屏不再重复执行
+  `read_clipboard_image_now`，实时图片继续由原生监听器捕获。旧 raw byte IPC 只保留 8 MiB 兼容上限。
+
+**完成条件**：
+
+- [x] `npx tsc --noEmit` / `cargo check` / `cargo test --lib preview_tests`（4 tests）
+- [x] 95,971,062 bytes BMP 定向回归、`npm run check` / `npm run build` / `cargo fmt --check`
+- [x] 签名安装版 `/Applications/Qx.app`：91.5MB BMP 约 1 秒内显示；生成时 UI 状态读取
+  116ms，连续 10 次上下切换 939ms，PageDown / Home 正常，进程 RSS 从约 273MB 峰值回落到约 105MB。
+
 ### Fix — Workbench 文章属性统一进入副标题
 
 **状态**：宿主呈现、规范、自动门禁与本地可视回归已完成；只剩签名桌面 QxWeibo 复核。

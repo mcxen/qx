@@ -119,6 +119,9 @@ pub async fn feature_do_thing(app: AppHandle, input: In) -> Result<Out, String> 
 5. **插件持久化**：`plugin_storage_*`、`plugin_preferences_*` 与 `plugin_data_*` 的磁盘读取、
    JSON 编解码、目录统计和清理统一进入 `runtime::blocking`；同一插件的 persist 写入按 plugin id
    串行，不同插件可并发，IPC 名称和序列化结果保持不变。
+6. **大图预览**：Clipboard 图片尺寸探测、解码、缩放和编码必须在 blocking 边界，并与自动 OCR
+   共用单一解码锁；前端只接收 asset scope 内派生路径。禁止用 `Vec<u8>` / `number[]` 经 JSON IPC
+   搬运原图，也禁止在 Clipboard 打开事务中重复探测当前系统位图。
 
 ## 4. 与 SOLID 对齐
 

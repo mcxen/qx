@@ -89,7 +89,7 @@ interface ClipboardHistoryVirtualListProps {
   getItemProps: (itemIndex: number) => QxListItemProps;
   onSelect: (item: ClipboardEntry, index: number) => void;
   onBeginTextEdit: (item: ClipboardEntry) => void;
-  imageUrls: Record<string, string>;
+  thumbnailUrls: Record<string, string>;
   onVisibleImagePathsChange: (paths: string[]) => void;
   dateFilter: CalendarRange;
   setDateFilter: Dispatch<SetStateAction<CalendarRange>>;
@@ -107,7 +107,7 @@ export default function ClipboardHistoryVirtualList({
   getItemProps,
   onSelect,
   onBeginTextEdit,
-  imageUrls,
+  thumbnailUrls,
   onVisibleImagePathsChange,
   dateFilter,
   setDateFilter,
@@ -282,11 +282,19 @@ export default function ClipboardHistoryVirtualList({
                 <span className="qx-clipboard-row-title">
                   {item.pinned && <span className="qx-clipboard-pin-dot" />}
                   {isImage ? (
-                    <img
-                      className="qx-clipboard-thumb"
-                      src={imageUrls[item.image_path!] || ""}
-                      alt={t("clipboard.imageAlt", "Clipboard image")}
-                    />
+                    thumbnailUrls[item.image_path!] ? (
+                      <img
+                        className="qx-clipboard-thumb"
+                        src={thumbnailUrls[item.image_path!]}
+                        alt={t("clipboard.imageAlt", "Clipboard image")}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : (
+                      <span className="qx-clipboard-thumb-loading">
+                        {t("clipboard.type.image", "Image")}
+                      </span>
+                    )
                   ) : item.file_path ? (
                     clipboardFileLabel(item, t)
                   ) : (

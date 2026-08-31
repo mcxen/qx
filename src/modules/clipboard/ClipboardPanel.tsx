@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { File, FileText, Folder, Shrink, Video } from "lucide-react";
+import { File, FileText, Folder, Image as ImageIcon, Shrink, Video } from "lucide-react";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
@@ -31,6 +31,11 @@ import ClipboardHistoryVirtualList, {
   type ClipboardHistorySection,
 } from "./ClipboardHistoryVirtualList";
 import {
+  CLIPBOARD_DETAIL_MAX_EDGE,
+  CLIPBOARD_THUMBNAIL_MAX_EDGE,
+  resolveClipboardPreviewAsset,
+} from "./imageAssets";
+import {
   classify,
   decodeClipboardUrl,
   clipboardFileLabel,
@@ -58,9 +63,6 @@ const FILTER_KEYS: Record<Filter, { key: string; fallback: string }> = {
   image: { key: "clipboard.filter.image", fallback: "Images" },
   file: { key: "clipboard.filter.file", fallback: "Files" },
 };
-
-const IMAGE_CACHE = new Map<string, string>();
-const IMAGE_CACHE_LIMIT = 120;
 
 interface FileMetadata {
   path: string;
@@ -96,59 +98,6 @@ function formatDuration(value?: number | null): string {
   if (!value) return "—";
   const seconds = Math.round(value);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-function imageMimeType(bytes: Uint8Array): string {
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-    return "image/jpeg";
-  }
-  if (
-    bytes.length >= 12 &&
-    bytes[0] === 0x52 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x46 &&
-    bytes[8] === 0x57 &&
-    bytes[9] === 0x45 &&
-    bytes[10] === 0x42 &&
-    bytes[11] === 0x50
-  ) {
-    return "image/webp";
-  }
-  if (
-    bytes.length >= 8 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
-  ) {
-    return "image/png";
-  }
-  return "application/octet-stream";
-}
-
-function cacheImageUrl(path: string, url: string): void {
-  const previous = IMAGE_CACHE.get(path);
-  if (previous) URL.revokeObjectURL(previous);
-  IMAGE_CACHE.set(path, url);
-  while (IMAGE_CACHE.size > IMAGE_CACHE_LIMIT) {
-    const oldest = IMAGE_CACHE.keys().next().value;
-    if (!oldest) break;
-    const oldUrl = IMAGE_CACHE.get(oldest);
-    if (oldUrl) URL.revokeObjectURL(oldUrl);
-    IMAGE_CACHE.delete(oldest);
-  }
-}
-
-async function loadImageAsDataUrl(path: string): Promise<string> {
-  const cached = IMAGE_CACHE.get(path);
-  if (cached) return cached;
-  const bytes = await invoke<number[]>("read_image_file", { path });
-  const binary = Uint8Array.from(bytes);
-  const blob = new Blob([binary], { type: imageMimeType(binary) });
-  const url = URL.createObjectURL(blob);
-  cacheImageUrl(path, url);
-  return url;
 }
 
 function extensionOf(path: string): string {
@@ -196,10 +145,10 @@ export default function ClipboardPanel() {
   const [status, setStatus] = useState("");
   const [islandEffectNonce, setIslandEffectNonce] = useState(0);
   const [pasteTargetName, setPasteTargetName] = useState("");
-  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [visibleImagePaths, setVisibleImagePaths] = useState<string[]>([]);
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
-  /** Right-pane file/PDF/video preview — loaded async, independent of list selection. */
+  /** Right-pane image/file/PDF/video preview, always backed by a bounded asset. */
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [filePreviewLoading, setFilePreviewLoading] = useState(false);
   const [filePreviewError, setFilePreviewError] = useState<string | null>(null);
@@ -251,9 +200,9 @@ export default function ClipboardPanel() {
 
   useEffect(() => {
     ensureClipboardRestoreOnHide();
-    // Chunk + history (+ optional live image) are started in parallel by the
-    // host open path; join the same in-flight work if already running.
-    void prefetchClipboardOpen({ captureLiveImage: true }).then(syncSessionFlags);
+    // The host open path starts the hot history fetch; join its in-flight work.
+    // Live capture belongs to the native listener and is never repeated here.
+    void prefetchClipboardOpen().then(syncSessionFlags);
     if (!isTauriRuntime()) return;
     const unlisten = listen("clipboard-updated", () => {
       void refreshClipboardHistory().then(syncSessionFlags);
@@ -409,50 +358,43 @@ export default function ClipboardPanel() {
     if (selected >= filtered.length - 4) void requestColdPage();
   }, [filtered.length, hasMoreCold, requestColdPage, selected]);
 
-  // Load only thumbnails inside the virtual viewport. A small worker pool keeps
-  // image-heavy history from issuing an unbounded burst of IPC/file reads.
-  useEffect(() => {
-    const paths = visibleImagePaths.filter((path) => !imageUrls[path] && !IMAGE_CACHE.has(path));
-    if (paths.length === 0) return;
-    let cancelled = false;
-    const loadVisible = async () => {
-      const results: Record<string, string> = {};
-      let next = 0;
-      const worker = async () => {
-        while (!cancelled) {
-          const path = paths[next++];
-          if (!path) return;
-          try {
-            results[path] = await loadImageAsDataUrl(path);
-          } catch {}
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(4, paths.length) }, worker));
-      if (!cancelled && Object.keys(results).length > 0) {
-        setImageUrls((prev) => ({ ...prev, ...results }));
-      }
-    };
-    void loadVisible();
-    return () => { cancelled = true; };
-  }, [imageUrls, visibleImagePaths]);
-
-  useEffect(() => {
-    const activePaths = new Set([
-      ...clipboardHistory.map((entry) => entry.image_path).filter(Boolean),
-      fileMetadata?.preview_path,
-    ].filter(Boolean));
-    for (const [path, url] of IMAGE_CACHE) {
-      if (!activePaths.has(path)) {
-        URL.revokeObjectURL(url);
-        IMAGE_CACHE.delete(path);
-      }
-    }
-  }, [clipboardHistory, fileMetadata?.preview_path]);
-
   const selectedItem = filtered[selected];
   const selectedFilePaths = selectedItem ? clipboardFilePaths(selectedItem) : [];
   const isEditing = Boolean(selectedItem && editingId === selectedItem.id);
   const hasDraftChanges = isEditing && draftText !== selectedItem?.text;
+
+  // Load only bounded derivatives inside the virtual viewport. The backend
+  // serializes heavy decodes, so one frontend worker avoids queueing stale
+  // full-image jobs while the user scrolls quickly.
+  useEffect(() => {
+    const selectedImagePath = selectedItem?.image_path ?? null;
+    const paths = visibleImagePaths.filter(
+      (path) => path !== selectedImagePath && !thumbnailUrls[path],
+    );
+    if (paths.length === 0) return;
+    let cancelled = false;
+    const loadVisible = async () => {
+      const results: Record<string, string> = {};
+      for (const path of paths) {
+        if (cancelled) break;
+        try {
+          const asset = await resolveClipboardPreviewAsset(
+            path,
+            CLIPBOARD_THUMBNAIL_MAX_EDGE,
+          );
+          if (asset) results[path] = asset.url;
+        } catch {
+          // Keep the row usable with its type icon; a later visibility change
+          // may retry after a transient file/cache failure.
+        }
+      }
+      if (!cancelled && Object.keys(results).length > 0) {
+        setThumbnailUrls((prev) => ({ ...prev, ...results }));
+      }
+    };
+    void loadVisible();
+    return () => { cancelled = true; };
+  }, [selectedItem?.image_path, thumbnailUrls, visibleImagePaths]);
 
   useEffect(() => {
     if (editingId && editingId !== selectedItem?.id) {
@@ -464,7 +406,6 @@ export default function ClipboardPanel() {
   // Information paints immediately from the path; size/dims/preview fill in async.
   useEffect(() => {
     const path = selectedItem?.file_path ?? selectedItem?.image_path;
-    // Captured images already render the real PNG; no generated thumbnail needed.
     const isCapturedImage = !selectedItem?.file_path && Boolean(selectedItem?.image_path);
     const hasCachedCapturedImageMetadata = isCapturedImage
       && (selectedItem?.image_size_bytes ?? 0) > 0
@@ -511,36 +452,30 @@ export default function ClipboardPanel() {
         /* keep optimistic */
       });
 
-    // Delay expensive preview/probe work until keyboard navigation settles. The
-    // Rust side also admits at most one preview/probe worker at a time.
-    if (!isCapturedImage) setFilePreviewLoading(true);
-    let previewRetryTimer: number | null = null;
-    const loadFilePreview = (attempt: number) => {
-      // 2) Preview thumbnail asynchronously (image / video frame / PDF page).
-      void invoke<string | null>("clipboard_file_preview", { path })
-        .then(async (previewPath) => {
+    // Delay expensive preview/probe work until keyboard navigation settles.
+    // Only a cache path crosses IPC; WebView streams the bounded derivative
+    // through Tauri's asset protocol instead of receiving a JSON byte array.
+    setFilePreviewLoading(true);
+    const loadFilePreview = () => {
+      void resolveClipboardPreviewAsset(path, CLIPBOARD_DETAIL_MAX_EDGE)
+        .then((asset) => {
           if (cancelled) return;
-          if (!previewPath) {
+          if (!asset) {
             setFilePreviewLoading(false);
             return;
           }
-          const previewUrl = await loadImageAsDataUrl(previewPath);
-          if (cancelled) return;
-          setFilePreviewUrl(previewUrl);
+          setFilePreviewUrl(asset.url);
+          if (isCapturedImage) {
+            setThumbnailUrls((current) => current[path]
+              ? current
+              : { ...current, [path]: asset.url });
+          }
           setFileMetadata((current) =>
-            current ? { ...current, preview_path: previewPath } : current,
+            current ? { ...current, preview_path: asset.path } : current,
           );
           setFilePreviewLoading(false);
         })
-        .catch((error) => {
-          if (
-            !cancelled &&
-            String(error).includes("preview worker busy") &&
-            attempt < 12
-          ) {
-            previewRetryTimer = window.setTimeout(() => loadFilePreview(attempt + 1), 300);
-            return;
-          }
+        .catch(() => {
           if (!cancelled) {
             setFilePreviewLoading(false);
             setFilePreviewError(t("clipboard.previewFailed", "Preview unavailable"));
@@ -549,7 +484,7 @@ export default function ClipboardPanel() {
     };
 
     const heavyTimer = window.setTimeout(() => {
-      if (!isCapturedImage) loadFilePreview(0);
+      loadFilePreview();
 
       // 3) Dimensions / duration — slow path, never blocks Information.
       // Captured images with stored facts do not need to probe themselves again.
@@ -581,7 +516,6 @@ export default function ClipboardPanel() {
     return () => {
       cancelled = true;
       window.clearTimeout(heavyTimer);
-      if (previewRetryTimer !== null) window.clearTimeout(previewRetryTimer);
     };
   }, [selectedItem?.file_path, selectedItem?.image_path, t]);
 
@@ -1182,7 +1116,7 @@ export default function ClipboardPanel() {
               getItemProps={getItemProps}
               onSelect={selectItem}
               onBeginTextEdit={beginTextEdit}
-              imageUrls={imageUrls}
+              thumbnailUrls={thumbnailUrls}
               onVisibleImagePathsChange={handleVisibleImagePathsChange}
               dateFilter={dateFilter}
               setDateFilter={setDateFilter}
@@ -1219,6 +1153,7 @@ export default function ClipboardPanel() {
                       className="qx-clipboard-image-preview"
                       src={filePreviewUrl}
                       alt={fileMetadata?.name || t("clipboard.filePreview", "File preview")}
+                      decoding="async"
                     />
                   ) : (
                     <div className="qx-clipboard-file-placeholder">
@@ -1252,11 +1187,23 @@ export default function ClipboardPanel() {
                 </div>
               ) : selectedItem.image_path ? (
                 <div className="qx-clipboard-image-wrap">
-                  <img
-                    className="qx-clipboard-image-preview"
-                    src={imageUrls[selectedItem.image_path] || ""}
-                    alt={t("clipboard.imageAlt", "Clipboard image")}
-                  />
+                  {filePreviewUrl || thumbnailUrls[selectedItem.image_path] ? (
+                    <img
+                      className="qx-clipboard-image-preview"
+                      src={filePreviewUrl || thumbnailUrls[selectedItem.image_path]}
+                      alt={t("clipboard.imageAlt", "Clipboard image")}
+                      decoding="async"
+                    />
+                  ) : (
+                    <div className="qx-clipboard-file-placeholder">
+                      <ImageIcon size={42} aria-hidden="true" />
+                      <span className="qx-clipboard-preview-status" aria-live="polite">
+                        {filePreviewError
+                          ? t("clipboard.previewFailed", "Preview unavailable")
+                          : t("clipboard.previewLoading", "Loading preview…")}
+                      </span>
+                    </div>
+                  )}
                 </div>
               ) : isEditing ? (
                 <textarea

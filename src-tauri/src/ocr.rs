@@ -328,7 +328,23 @@ fn ocr_max_edge(quality: OcrQuality) -> u32 {
 }
 
 /// Downscale huge screenshots before OCR. Returns `(path_to_read, optional_temp_to_delete)`.
-fn prepare_ocr_input(path: &Path, max_edge: u32) -> Result<(PathBuf, Option<PathBuf>), String> {
+fn prepare_ocr_input(
+    path: &Path,
+    max_edge: u32,
+    source: &str,
+) -> Result<(PathBuf, Option<PathBuf>), String> {
+    // Clipboard images share the same bounded derivative cache as the panel.
+    // This prevents auto-OCR and the visible preview from decoding a large
+    // source independently at the same time. The history key remains the
+    // original path; only the OCR engine consumes the derived asset.
+    if source == "clipboard" {
+        if let Some(preview) =
+            crate::clipboard::media::prepare_clipboard_ocr_preview(path, max_edge)?
+        {
+            return Ok((preview, None));
+        }
+    }
+
     let (width, height) = match image::image_dimensions(path) {
         Ok(dims) => dims,
         Err(_) => return Ok((path.to_path_buf(), None)),
@@ -601,7 +617,7 @@ pub(crate) fn recognize_image_path(
         return Err("OCR is disabled. Enable it in Settings → OCR.".to_string());
     }
     let quality = ocr_quality_from_model_size(&model_size, &engine_pref);
-    let (work_path, temp) = prepare_ocr_input(path, ocr_max_edge(quality))?;
+    let (work_path, temp) = prepare_ocr_input(path, ocr_max_edge(quality), source)?;
     let recognize_result = recognize_with_engine(&work_path, &engine_pref, quality);
     if let Some(tmp) = temp {
         let _ = std::fs::remove_file(tmp);
