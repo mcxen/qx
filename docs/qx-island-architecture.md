@@ -1,6 +1,6 @@
 # QxIsland 当前架构
 
-> 状态：Current · 适用版本：v0.6.102 · Owner：Core · 最后复核：2026-08-31
+> 状态：Current · 适用版本：v0.6.103 · Owner：Core · 最后复核：2026-08-31
 >
 > 本文只定义已实现的 Island 契约。早期提案、PR 分期和被否决方案见 [`archive/qx-island-design-history.md`](./archive/qx-island-design-history.md)。视觉、响应式与 Esc 规则以 [`UI_SPEC.md`](../UI_SPEC.md) 为准。
 

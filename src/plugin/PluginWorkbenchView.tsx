@@ -17,6 +17,7 @@ import {
   Button,
   Input,
   Select,
+  Textarea,
 } from "../components/ui";
 import type {
   PluginWorkbenchControl,
@@ -453,6 +454,14 @@ function WorkbenchDetail({
             onChange={(value) => onInput(control.id, value)}
           />
         )
+      ) : control.type === "textarea" ? (
+        <Textarea
+          value={control.value}
+          rows={control.rows}
+          placeholder={control.placeholder}
+          disabled={control.disabled}
+          onChange={(event) => onInput(control.id, event.currentTarget.value)}
+        />
       ) : (
         <Input
           type={control.type === "number" ? "number" : "text"}

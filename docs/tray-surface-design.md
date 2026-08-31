@@ -1,6 +1,6 @@
 # Tray Surface Design
 
-> Status: Current · Applies to: v0.6.102 · Owner: Frontend/Core · Last reviewed: 2026-08-31
+> Status: Current · Applies to: v0.6.103 · Owner: Frontend/Core · Last reviewed: 2026-08-31
 
 Qx has two Tray surfaces with different jobs:
 

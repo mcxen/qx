@@ -1,6 +1,6 @@
 # Qx 插件开发手册
 
-> 状态：Current · 适用版本：Qx v0.6.102 / qx-plugins v1.8.6 · 最后复核：2026-08-31
+> 状态：Current · 适用版本：Qx v0.6.103 / qx-plugins v1.8.7 · 最后复核：2026-08-31
 
 这份文档负责把作者从“一个业务能力”带到“可安装、可验证的 Qx 插件”。
 字段全集与底层实现不在这里重复：UI、CLI、Manifest、Tray 和运行时分别由对应协议文档负责。
@@ -388,6 +388,11 @@ Base64/Data URL 缓存应使用 `context.state.createLru({ maxEntries, maxSize, 
 也不要调用内部的 `tryModuleEscapeStep` 或 `tryCloseRecentSwitcher`；它们只属于宿主。
 
 ## 6. Workbench 与动作
+
+结构化详情的 `detail.form.controls` 支持 `text`、`number`、`select` 和 `textarea`。
+长正文使用 `textarea`，`rows` 只提示 3-24 行的可见高度，宿主最多接收 64 KiB 文本；
+值变化仍通过 `onInput` 回到插件状态源。密码和令牌应放在 Manifest 的 `password` 偏好中，
+不得发布到 Workbench state、缓存、URL 或日志。
 
 社区回复统一发布为 `detail.replies.items[]` 纯数据树，插件不得自行绘制 Reddit/Tieba
 评论 DOM：

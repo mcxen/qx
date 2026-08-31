@@ -1,6 +1,6 @@
 # Qx — Technical Architecture Document
 
-> 状态：Current · 适用版本：v0.6.102 · Owner：Core · 最后复核：2026-08-31
+> 状态：Current · 适用版本：v0.6.103 · Owner：Core · 最后复核：2026-08-31
 >
 > 桌面启动器（Raycast 风格）| Tauri v2 + React + TypeScript + Rust
 >
@@ -336,7 +336,7 @@ PluginHost → PluginWorkbenchCollection / View / Primitives → QxShell
 
 ### 5.1 Tauri 命令注册
 
-`lib.rs` 的 `generate_handler!` 注册命令以 [`ipc-catalogue.md`](./ipc-catalogue.md) 文末机器校验基线为准（v0.6.102 为 324 个）。领域分组示例：
+`lib.rs` 的 `generate_handler!` 注册命令以 [`ipc-catalogue.md`](./ipc-catalogue.md) 文末机器校验基线为准（v0.6.103 为 324 个）。领域分组示例：
 
 ```
 apps::* (search_apps)

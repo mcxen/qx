@@ -1,6 +1,6 @@
 # 插件存储当前契约
 
-> 状态：Current · 适用版本：v0.6.102 · Owner：Core · 最后复核：2026-08-31
+> 状态：Current · 适用版本：v0.6.103 · Owner：Core · 最后复核：2026-08-31
 >
 > 本文说明宿主目录、生命周期和清理边界。插件作者的 API 用法以 [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) 为准；迁移方案历史见 [`archive/plugin-storage-design-history.md`](./archive/plugin-storage-design-history.md)。
 

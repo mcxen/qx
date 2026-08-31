@@ -1,6 +1,6 @@
 # Qx 当前任务与验证状态
 
-> 状态：Current · 基线：v0.6.102 · 最后整理：2026-08-31
+> 状态：Current · 基线：v0.6.103 · 最后整理：2026-08-31
 >
 > 本文件只保留正在进行、明确阻塞或下一次必须复核的工作。已完成记录、旧实现计划和未重新确认的历史验收项保存在 [`docs/archive/task-ledger-through-v0.6.101.md`](docs/archive/task-ledger-through-v0.6.101.md)，不会自动作为当前待办继续累积。
 
@@ -12,6 +12,20 @@
 - 当前接口与 UI 规则分别以 [`docs/README.md`](docs/README.md) 和 [`UI_SPEC.md`](UI_SPEC.md) 为准。
 
 ## 当前工作
+
+### Feature — 社区插件 BluePrint 随手记
+
+**状态**：实现、门禁、MCP 契约烟测、打包与本机插件目录安装完成；真实 PAT 桌面运行态待 Qx 0.6.103。
+
+- Qx Workbench 表单补充宿主渲染的 64 KiB 长文本控件，供社区插件编辑正文。
+- BluePrint 插件通过 Bearer PAT + 无状态 Streamable HTTP MCP 读取、创建和完整模型更新随手记，
+  保留 `operationId`、`baseVersion`、附件 ID 与冲突重载边界。
+
+**完成条件**：
+
+- [x] Qx `npm run check` / `npm run build`
+- [x] 插件 MCP mock smoke、打包与本地安装
+- [ ] Qx 0.6.103 安装态使用真实 `content:read` + `content:write` PAT 完成查看、新建、编辑、冲突重载与鉴权图片预览
 
 ### Fix — Clipboard 100MB 图片显示卡死
 

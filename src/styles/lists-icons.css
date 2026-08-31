@@ -1388,6 +1388,7 @@
 }
 
 .qx-host-workbench-form-controls input,
+.qx-host-workbench-form-controls textarea,
 .qx-host-workbench-form-controls select,
 .qx-host-workbench-form-controls .qx-select {
   min-width: 0;
@@ -1403,12 +1404,21 @@
   font-weight: var(--qx-control-font-weight);
 }
 
+.qx-host-workbench-form-controls textarea {
+  min-height: 112px;
+  height: auto;
+  padding-block: 8px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
 .qx-host-workbench-form-controls .qx-select,
 .qx-host-workbench-form-controls .qx-shadcn-select-trigger {
   width: 100%;
 }
 
 .qx-host-workbench-form-controls input:focus,
+.qx-host-workbench-form-controls textarea:focus,
 .qx-host-workbench-form-controls select:focus {
   border-color: var(--qx-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--qx-accent) 18%, transparent);

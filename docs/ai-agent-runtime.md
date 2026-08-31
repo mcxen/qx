@@ -1,6 +1,6 @@
 # QxAI Agent Runtime 当前架构
 
-> 状态：Current · 适用版本：v0.6.102 · Owner：QxAI/Core · 最后复核：2026-08-31
+> 状态：Current · 适用版本：v0.6.103 · Owner：QxAI/Core · 最后复核：2026-08-31
 >
 > 本文只描述当前代码可调用的运行时。早期参考形状和未落地的 live MCP / Soul 设想见 [`archive/ai-agent-runtime-design-history.md`](./archive/ai-agent-runtime-design-history.md)。聊天视觉与交互以 [`UI_SPEC_AI.md`](../UI_SPEC_AI.md) 为准。
 

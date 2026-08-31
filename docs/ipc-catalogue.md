@@ -1,6 +1,6 @@
 # IPC 命令目录
 
-> 状态：Current · 适用版本：v0.6.102 · Owner：Backend · 最后复核：2026-08-31
+> 状态：Current · 适用版本：v0.6.103 · Owner：Backend · 最后复核：2026-08-31
 >
 > 事实来源：`src-tauri/src/lib.rs` 中的 `tauri::generate_handler!`
 

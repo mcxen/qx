@@ -50,6 +50,9 @@ HTML 片段（内置 RSS）与 Workbench 结构化 `image` 走同一 `inlineRemo
 只引用宿主打开/关闭详情动作；旧包遗漏的 `menuKey` 在宿主边界按稳定 action id 补齐，
 不得让本地化 label 成为首要快捷键身份。
 
+Workbench 表单是宿主受控的纯数据端口；长正文通过有界 `textarea` 控件扩展，插件只接收
+`onInput` 值并负责领域校验，不能把自绘 DOM 编辑器或凭据塞进 Workbench state。
+
 新增文件时先问：它的「唯一变化原因」是什么？说不清就拆。
 
 ### O — Open/Closed（对扩展开放，对修改封闭）

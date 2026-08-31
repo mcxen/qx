@@ -1177,6 +1177,9 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
           failed: 1,
         },
         detail: {
+          form: {
+            controls: [{ id: "body", label: "Body", type: "textarea", rows: 99, value: "x".repeat(70_000) }],
+          },
           images: Array.from({ length: 12 }, (_, index) => ({
             url: `https://example.com/${index + 1}.jpg`,
           })),
@@ -1209,6 +1212,10 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
     const status = normalized.items?.[0]?.status;
     if (detail?.imageLayout !== "horizontal" || detail.images?.length !== 12) {
       fail("Workbench host filmstrip must preserve normal complete image collections");
+    }
+    const textarea = detail?.form?.controls?.[0];
+    if (textarea?.type !== "textarea" || textarea.rows !== 24 || textarea.value.length !== 65_536) {
+      fail("Workbench textarea must preserve its type and clamp rows/text at the host boundary");
     }
     if (detail?.replies?.items.length !== 100 || detail.replies.total !== 120) {
       fail("Workbench replies must preserve total and cap rendered items at 100");

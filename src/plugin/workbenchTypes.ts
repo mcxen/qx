@@ -95,9 +95,11 @@ export interface PluginWorkbenchControl {
   id: string;
   label: string;
   value: string;
-  type?: "text" | "number" | "select";
+  type?: "text" | "number" | "select" | "textarea";
   options?: Array<{ label: string; value: string }>;
   placeholder?: string;
+  /** Visible rows for host-rendered long text. Clamped to 3-24. */
+  rows?: number;
   disabled?: boolean;
   /**
    * Consecutive controls with the same group id are rendered in one managed
@@ -303,6 +305,26 @@ function shortText(value: unknown, max: number): string | undefined {
   return String(value).slice(0, max);
 }
 
+function shortUtf8Text(value: unknown, maxBytes: number): string | undefined {
+  if (value == null) return undefined;
+  const text = String(value);
+  const encoder = new TextEncoder();
+  if (encoder.encode(text).byteLength <= maxBytes) return text;
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (encoder.encode(text.slice(0, middle)).byteLength <= maxBytes) low = middle;
+    else high = middle - 1;
+  }
+  let end = low;
+  if (end > 0 && end < text.length) {
+    const previous = text.charCodeAt(end - 1);
+    if (previous >= 0xd800 && previous <= 0xdbff) end -= 1;
+  }
+  return text.slice(0, end);
+}
+
 function normalizeTone(value: unknown): PluginWorkbenchTone | undefined {
   return value === "success" || value === "warning" || value === "danger" || value === "accent"
     ? value
@@ -347,10 +369,17 @@ function normalizeForm(value: unknown): PluginWorkbenchForm | undefined {
         return {
           id,
           label: shortText(control.label, 160) || id,
-          value: shortText(control.value, 2_000) || "",
-          type: control.type === "number" || control.type === "select" ? control.type : "text",
+          value: control.type === "textarea"
+            ? shortUtf8Text(control.value, 65_536) || ""
+            : shortText(control.value, 2_000) || "",
+          type: control.type === "number" || control.type === "select" || control.type === "textarea"
+            ? control.type
+            : "text",
           options,
           placeholder: shortText(control.placeholder, 500),
+          rows: control.type === "textarea"
+            ? Math.max(3, Math.min(24, Math.round(Number(control.rows) || 10)))
+            : undefined,
           disabled: control.disabled === true,
           group: (() => {
             if (!control.group || typeof control.group !== "object") return undefined;

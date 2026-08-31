@@ -13,7 +13,7 @@
 - Enter 执行当前有效操作，Esc 经 `useQxModuleShell` 逐层返回。运行中以 Bottom Island 的真实 indeterminate 状态反馈，不造成布局跳动；错误保留在操作区，选择列表仍可使用。
 - 所有参数输入使用 Qx shadcn 控件和主题变量。写操作不得静默覆盖已有目标；完成后左栏切换为宿主返回的输出项快照。
 
-> 状态：Current · 适用版本：v0.6.102 · Owner：Frontend · 最后复核：2026-08-31
+> 状态：Current · 适用版本：v0.6.103 · Owner：Frontend · 最后复核：2026-08-31
 >
 > 事实来源：`src/components/QxShell.tsx`、`src/hooks/useEscBack.ts`、`src/styles/shell.css`、`src/island/`、`src/home-island/`、`src/modules/settings/plugins/`、`src/i18n.ts`
 >
@@ -139,6 +139,8 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
   返回列表。插件的“在浏览器打开”等业务动作不得占用 Enter，必须作为 Context Action 并使用带修饰键的
   明确快捷键。宿主必须忽略此类旧插件声明的裸 `Enter`，只在没有可导航详情的根视图把 Enter
   交给显式主业务动作。
+- Workbench 受控表单由宿主统一渲染单行文本、数字、选择和长文本控件；长正文使用可纵向调整的
+  `textarea`，最多接收 64 KiB，保留原生编辑快捷键、IME 与多栏编辑焦点，不得由插件自绘编辑器。
 - **Context 侧栏由 QxShell 全局控制**：默认宽度使用 `--qx-context-w`，用户可拖动宿主分隔条调整；拖到右缘阈值后收起，主内容占满，收起后仍保留窄恢复轨。宽度由 Shell 使用同一持久键保存，禁止模块用 inline style / 私有 localStorage 改写；列表内部分栏（如 RSS 文章列表宽）继续使用自己的 token。
 - Bottom Bar 使用 `grid-template-columns: auto 1fr auto`。
 - Bottom Island 必须相对窗口居中：`position: absolute; left: 50%; transform: translateX(-50%)`。
