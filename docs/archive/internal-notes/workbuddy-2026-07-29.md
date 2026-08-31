@@ -1,4 +1,6 @@
-# 2026-07-29
+# 2026-07-29（历史工作记录）
+
+> **内部历史归档。** 记录 v0.6.48 当时的发布过程，不是当前版本或发布规范。当前流程见 [`public/doc/release-workflow.md`](../../../public/doc/release-workflow.md)。
 
 ## Release v0.6.48
 

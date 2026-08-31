@@ -1,14 +1,12 @@
 # 发布 / CI / 版本管理
 
-## 版本单一来源
+> 状态：Current · 适用版本：v0.6.102 · Owner：Release · 最后复核：2026-08-31
 
-版本号在三个文件必须一致：
+## 版本同步边界
 
-- `package.json` `"version"`
-- `src-tauri/tauri.conf.json` `"version"`
-- `src-tauri/Cargo.toml` `[package] version`
-
-`Cargo.lock` 里的 `qx` 条目会自动跟随；改完 `Cargo.toml` 后跑一次 `cargo check` 就会同步。
+发布时同时更新 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、
+`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json` 和 `README.md`。前三个运行时版本源必须一致，
+两个 lockfile 与 README 的人类可读版本也必须跟随；`npm run docs:check` 会校验核心版本源。
 
 规则：使用 SemVer 的 `0.<minor>.<patch>`；feature 批次递增 minor，bugfix / 小 tweak 递增
 patch。目前处于 `0.6.x`。
@@ -18,7 +16,7 @@ patch。目前处于 `0.6.x`。
 1. 完成一批变更 → `npm run build` + `cargo check` + `npx tsc --noEmit` 全绿
 2. bump 上面 3 个文件的版本
 3. `git commit -m "vX.Y.Z: <一句话总结>"`
-4. `git tag -a vX.Y.Z -m "vX.Y.Z: ..."`
+4. `git tag vX.Y.Z`（沿用仓库现有 lightweight tag 约定）
 5. 将主线和精确 Tag 推送到 release remote：
    `git push origin main`、`git push origin vX.Y.Z`
 6. 将同一个精确 Tag 推送到 CNB：`git push cnb vX.Y.Z`
@@ -115,7 +113,7 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
 - **Apple Developer ID / notarization**：故意不接入（不付费）。用 **ad-hoc 签名** 保证本地 helper 与覆盖安装可执行；用户从网上下载的首次打开仍可能要「右键 → 打开」。
 - **Intel Mac + Linux**：暂无 runner，用户需自己 `git clone && npm run tauri build`。
 - **Prerelease channel**：`workflow_dispatch` 支持 `prerelease: true` 输入但流程没差别。
-- **CHANGELOG**：靠 `TASK.md` 追踪，未生成用户面向的 CHANGELOG.md。
+- **CHANGELOG**：仓库尚未生成独立用户向 `CHANGELOG.md`。当前工作记录在 `TASK.md`，发版后进入 `docs/archive/`；实际发布范围以 tag 对应 commit、GitHub Release notes 和资产清单为准。
 
 ## Homebrew Cask
 

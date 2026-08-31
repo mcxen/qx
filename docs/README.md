@@ -1,103 +1,100 @@
-# Qx 开发者文档索引
+# Qx 开发者文档地图
 
-> 状态：Current · 适用版本：v0.6.100 · Owner：Core · 最后复核：2026-08-24
+> 状态：Current · 适用版本：v0.6.102 · Owner：Core · 最后复核：2026-08-31
 
-面向核心贡献者。所有面向用户的说明在 [README.md](../README.md) 和 [`public/doc/`](../public/doc/) 下。
+`docs/` 只承载核心贡献者需要的当前架构和实现边界。面向用户、插件作者、运维和发布维护者的权威文档在 [`public/doc/`](../public/doc/)；历史记录与未落地研究不参与当前契约。
 
-## 从这里开始
+## 先读什么
 
-1. [`AGENTS.md`](../AGENTS.md) — 代码风格、Esc 协议、shadcn/主题规则、发版流程
-2. [`architecture-principles.md`](./architecture-principles.md) — **SOLID、抽象层次、接口契约与文档义务**
-3. [`UI_SPEC.md`](../UI_SPEC.md) — UI 视觉规范、CSS token、shell 三段式布局
-4. [`UI_SPEC_AI.md`](../UI_SPEC_AI.md) — **QxAI 对话工作台**标杆（AI Elements 结构 + Beautiful UI 视觉）
-5. [`landing/UI_SPEC.md`](../landing/UI_SPEC.md) — **官网落地页**视觉与实现约定（与应用壳分离）
-
-## 架构
-
-| 文档 | 覆盖范围 |
+| 工作 | 必读 |
 |---|---|
-| [architecture-principles.md](./architecture-principles.md) | SOLID 落点、抽象分层、接口检查清单、反模式 |
-| [interface-protocols.md](./interface-protocols.md) | **运行时依赖、IPC、事件、启动/重启与 macOS/Windows 通信不变量** |
-| [technical-architecture.md](./technical-architecture.md) | 顶层架构、状态、tab 路由、module 深潜、性能与安全笔记 |
-| [frontend-architecture.md](./frontend-architecture.md) | 前端子系统、状态管理、搜索管线、灵动岛、i18n、样式约定 |
-| [shell-and-shortcuts.md](./shell-and-shortcuts.md) | **浮动面板 / 全局快捷键 toggle / managed State / 搜索重聚焦**（优先查这份） |
-| [module-surfaces.md](./module-surfaces.md) | 主搜索直达模块子界面（Raycast 对照、RSS feed 深链、OPML/文件夹） |
-| [module-port-inventory.md](./module-port-inventory.md) | **内置模块 + 市场插件端口对照**（shell/Esc/列表/缓存/http；写插件/新模块先看） |
-| [tray-surface-design.md](./tray-surface-design.md) | **Tray Surface 设计系统**：尺寸预设、标准行型、轻量 Provider 与测量规则 |
-| [rust-backend.md](./rust-backend.md) | Rust 模块导览、启动顺序、添加新模块流程、常见坑 |
-| [runtime-threading.md](./runtime-threading.md) | **主线程 UI + blocking 多线程**：`runtime::ui` / `blocking`、模块命令模板、SIGTRAP 规避 |
-| [ipc-catalogue.md](./ipc-catalogue.md) | 全部 310+ 个 Tauri 命令 + 事件通道；按模块分组 |
-| [settings-panel.md](./settings-panel.md) | Settings/About 面板结构、Row/Card/SettingsCard 规范 |
-| [macos-onboarding.md](./macos-onboarding.md) | 跨平台首次启动能力介绍与 macOS 权限引导（FDA / 可选 TCC） |
-| [qx-island-architecture.md](./qx-island-architecture.md) | 灵动岛统一抽象层：info channels、size/surface、capabilities/styles |
-| [shortcut-registry.md](./shortcut-registry.md) | 统一快捷键注册表（Global vs In-App）· 状态：Design |
-| [user-guide/README.md](./user-guide/README.md) | 终端用户指南（安装、搜索、模块、插件、设置） |
+| 任意代码或文档修改 | [`AGENTS.md`](../AGENTS.md) → [`architecture-principles.md`](./architecture-principles.md) → 根目录 [`TASK.md`](../TASK.md) |
+| UI、布局、主题、Esc | [`UI_SPEC.md`](../UI_SPEC.md)；QxAI 再读 [`UI_SPEC_AI.md`](../UI_SPEC_AI.md) |
+| 快捷键、窗口显隐、Tauri State | [`shell-and-shortcuts.md`](./shell-and-shortcuts.md) |
+| 新模块、Shell/Esc/List 端口 | [`module-port-inventory.md`](./module-port-inventory.md) |
+| 插件开发 | [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) |
+| IPC 或公共边界 | [`interface-protocols.md`](./interface-protocols.md) + 对应领域文档 |
+| 发布 | [`public/doc/release-workflow.md`](../public/doc/release-workflow.md) |
 
-## 插件
+## 当前架构
 
-| 文档 | 覆盖范围 |
+### 总体与跨层契约
+
+| 文档 | 唯一职责 |
 |---|---|
-| [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) | **作者总手册**：端口抽象、manifest、zip Import、调试、模式（**写插件从这里开始**） |
-| [`public/doc/plugin-cli-protocol.md`](../public/doc/plugin-cli-protocol.md) | **`context.cli` 契约**：argv、超时、安全、版本 |
-| [`public/doc/plugin-tray.md`](../public/doc/plugin-tray.md) | **托盘能力端口**：`context.tray` + 内存/网速指标 |
-| [`public/doc/README.md`](../public/doc/README.md) | `public/doc` 目录索引 |
-| [`skills/qx-plugin-development/SKILL.md`](../skills/qx-plugin-development/SKILL.md) | **Agent 插件开发路由**：创建、迁移、宿主端口、审查、打包与验证模式 |
-| [plugin-architecture.md](./plugin-architecture.md) | 宿主 iframe runtime、RPC、后台 badge 端口（贡献宿主） |
-| [plugin-storage.md](./plugin-storage.md) | **插件存储设计**：包/数据分离、生命周期、管理 API、分期 |
-| [plugin-design-research.md](./plugin-design-research.md) | 设计调研（历史） |
-| [mobile-plugin-portability-research.md](./mobile-plugin-portability-research.md) | **Android/iOS 插件无缝运行**：架构选型、能力矩阵、审核与路线图（Research） |
-| [macos-widget-plugin-research.md](./macos-widget-plugin-research.md) | **macOS WidgetKit 桌面小组件插件**：Apple 协议、快照契约、App Group、Widget Extension 与分阶段路线图（Research） |
-| [ai-agent-runtime.md](./ai-agent-runtime.md) | QxAI 各层 |
-| [`public/doc/plugin-system.md`](../public/doc/plugin-system.md) | 方案 + API/权限全表（参考） |
-| [`public/doc/plugin-marketplace.md`](../public/doc/plugin-marketplace.md) | 市场打包与安装 |
-| [`public/doc/raycast-plugin-conversion.md`](../public/doc/raycast-plugin-conversion.md) | Raycast → Qx |
+| [`architecture-principles.md`](./architecture-principles.md) | SOLID、分层、端口设计、模块拆分与文档义务 |
+| [`technical-architecture.md`](./technical-architecture.md) | 仓库边界、顶层代码地图、依赖方向和变更落点 |
+| [`interface-protocols.md`](./interface-protocols.md) | 前后端运行时、IPC、事件、启动和平台通信不变量 |
+| [`frontend-architecture.md`](./frontend-architecture.md) | React 子系统、状态、搜索、i18n 和样式所有权 |
+| [`rust-backend.md`](./rust-backend.md) | Rust 模块、composition root 与新增命令路径 |
+| [`runtime-threading.md`](./runtime-threading.md) | UI 主线程、async 协调、blocking worker 与锁边界 |
+| [`ipc-catalogue.md`](./ipc-catalogue.md) | `generate_handler!` 的完整命令基线和事件目录 |
 
-常用检索：
+### Shell、模块与系统表面
 
-- **写业务插件** → `public/doc/plugin-development-guide.md`
-- **让 Codex/Agent 写或审插件** → `skills/qx-plugin-development/SKILL.md`
-- **跑本机 CLI** → `public/doc/plugin-cli-protocol.md`
-- **改宿主 RPC** → `plugin-architecture.md` + `src/plugin/rpcMethods.ts`
-
-## 发布与运维
-
-| 文档 | 覆盖范围 |
+| 文档 | 唯一职责 |
 |---|---|
-| [release-and-versioning.md](./release-and-versioning.md) | 版本一致性、GitHub Actions release、Homebrew tap、pre-flight |
-| [`public/doc/release-workflow.md`](../public/doc/release-workflow.md) | commit、tag、发布和推送时使用的完整维护者流程 |
+| [`shell-and-shortcuts.md`](./shell-and-shortcuts.md) | 浮动面板、全局快捷键、route toggle、窗口焦点和 State |
+| [`module-port-inventory.md`](./module-port-inventory.md) | 内置模块与插件的 Shell、Esc、列表、缓存、HTTP 端口对照 |
+| [`module-surfaces.md`](./module-surfaces.md) | 主搜索到模块内部对象或动作的深链协议 |
+| [`qx-island-architecture.md`](./qx-island-architecture.md) | 当前 Island session、优先级、docked/floating 与插件 caps |
+| [`tray-surface-design.md`](./tray-surface-design.md) | Tray Surface 尺寸、行型、provider 与测量规则 |
+| [`settings-panel.md`](./settings-panel.md) | Settings/About 信息结构、Row/Card 和响应式规则 |
+| [`macos-onboarding.md`](./macos-onboarding.md) | 首启能力介绍与 macOS 权限向导 |
 
-## 常用检索路径
+### 插件宿主与 AI
 
-- 想定抽象 / 审接口 → **`architecture-principles.md`（SOLID）** + 对应领域文档
-- 想改 UI → `UI_SPEC.md` + `frontend-architecture.md` + `settings-panel.md`
-- 想改灵动岛 / 最近浏览 / 岛动作进出 → **`qx-island-architecture.md` 文首 Current facts** + `src/island/recents/recentMotion.ts`
-- **想改全局快捷键 / 显示隐藏 / 缺 .manage()** → **`shell-and-shortcuts.md`**
-- 想加 Rust 命令 → `rust-backend.md` + `ipc-catalogue.md`
-- 想写/审插件或复用模块端口 → **`module-port-inventory.md`** + **`public/doc/plugin-development-guide.md`** + `plugin-cli-protocol.md`
-- 想评估插件上 Android/iOS → **`mobile-plugin-portability-research.md`**
-- 想规划 macOS 桌面小组件 → **`macos-widget-plugin-research.md`**
-- 想改插件宿主 API → `plugin-architecture.md` + `rpcMethods.ts` + `plugin_api.rs`
-- 想改 AI → `ai-agent-runtime.md`
-- 想发版 → `release-and-versioning.md` + `public/doc/release-workflow.md` + `AGENTS.md` 的 Release 一节
+| 文档 | 唯一职责 |
+|---|---|
+| [`plugin-architecture.md`](./plugin-architecture.md) | iframe/direct runtime、RPC、Workbench 与宿主内部 |
+| [`plugin-storage.md`](./plugin-storage.md) | 包/数据目录、迁移、持久化、缓存登记和卸载语义 |
+| [`ai-agent-runtime.md`](./ai-agent-runtime.md) | 当前 QxAI runtime 层次、工具和持久状态边界 |
 
-## 维护规则
+公开协议不要在 `docs/` 重抄：
 
-- **接口与抽象先契约、后实现**；公共 surface 变更必须同步文档（见 [architecture-principles.md](./architecture-principles.md)）。
-- **禁止逐文件打补丁式修复**：能力问题修 host/converter/注册表/i18n 字典一次；然后 `npm run check`。
-- 文档写**意图、边界、不变量**，避免只贴大段实现代码。
-- 统一闸门：`npm run check`（含 architecture / interface protocols / docs / i18n / shell / island）。
-- 修改 `src-tauri/src/lib.rs` 的 `generate_handler!` 后，同步 `ipc-catalogue.md` 并运行 `npm run docs:check`。
-- 修改依赖主版本、应用版本或平台支持范围后，同步顶层架构和 README。
-- 新增跨前后端功能时，至少更新前端/后端导览、IPC、权限与验证方式。
-- 当前实现、研究提案和未来规划必须在文档页头明确标记；不要把计划描述成已交付能力。
-- 每次 release 前复核本索引和所有标记为 Current 的文档。
+- 插件作者总入口：[`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md)
+- UI / Workbench：[`public/doc/plugin-ui-guidelines.md`](../public/doc/plugin-ui-guidelines.md)
+- CLI：[`public/doc/plugin-cli-protocol.md`](../public/doc/plugin-cli-protocol.md)
+- manifest、打包和市场：[`public/doc/plugin-marketplace.md`](../public/doc/plugin-marketplace.md)
+- release：[`public/doc/release-workflow.md`](../public/doc/release-workflow.md)
 
-## 计划中未写的
+## 用户、研究与历史
 
-- CONTRIBUTING.md（外部贡献流程、PR 模板）
-- 测试指南（`cargo test --lib` 135+ tests、`npm run test:shell-navigation`、`npm run test:island` 已有，但缺统一文档）
-- macOS 签名 / notarization 手册
-- Tauri v2 capability / ACL 说明
-- vendored `cardinal/` 三个 crate 的来龙去脉
+| 区域 | 性质 | 使用方式 |
+|---|---|---|
+| [`user-guide/README.md`](./user-guide/README.md) | Current 用户指南 | 描述已交付界面与操作；不放作者字段表 |
+| [`research/`](./research/) | Research | 决策输入，不得当成已发布能力 |
+| [`archive/`](./archive/) | Historical | 追溯旧方案、任务和版本；不得作为实现契约 |
 
-如你补写了，请顺手把本索引加一行。
+当前任务只写在根目录 [`TASK.md`](../TASK.md)。历史台账中的未勾选项只有在按当前代码复现并重新建项后，才成为有效待办。
+
+## 文档所有权
+
+```text
+docs/                 current contributor architecture
+docs/research/        unshipped studies and proposals
+docs/archive/         superseded historical material
+public/doc/           canonical user/author/operator Markdown
+dist/doc/             generated copy of public/doc; never edit or commit
+```
+
+根级 `doc/` 不是合法来源。`docs/README.md` 与 `public/doc/README.md` 名称相同但读者和职责不同，不是重复文件。
+
+## 写作与同步规则
+
+- Current 文档只写当前接口、边界和不变量；路线图进入 `TASK.md`，未决方案进入 `research/`。
+- 被替代但仍有决策价值的长文移入 `archive/`，并从当前路径提供短而权威的替代页。
+- 公共接口、Tauri command/event、权限、目录和分层变化必须在同一 change 更新对应文档。
+- 能力错误修正端口一次并迁移所有第一方 consumer；不要在多个调用点各写一份兼容说明。
+- 文档引用实现文件作为事实来源，但不复制容易漂移的源码清单或行数。
+- 修改 `src-tauri/src/lib.rs` 的 `generate_handler!` 时同步 [`ipc-catalogue.md`](./ipc-catalogue.md)。
+
+## 门禁
+
+```sh
+npm run docs:check  # 版本、IPC 基线、递归 Markdown 链接、公开文档去重
+npm run check       # architecture + interfaces + docs + i18n + shell + island + ports
+npm run build       # Vite 产物与 public/doc 复制链
+```
+
+文档链接门禁覆盖仓库根 Markdown、`docs/`（排除 `archive/`）和 `public/doc/` 的所有层级。归档链接允许保留历史状态；Current 与 Research 文档不允许断链。

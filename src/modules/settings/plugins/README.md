@@ -5,7 +5,7 @@ Functional split of the Extensions settings tab.
 ```
 plugins/
   PluginManager.tsx        # tabs: Installed / Plugin Store
-  InstalledModuleCard.tsx  # rounded module card
+  InstalledModuleCard.tsx  # compact continuous-list row
   PluginAssetImage.tsx     # shared icon renderer
   helpers.ts               # small shared helpers
 ```
@@ -13,7 +13,7 @@ plugins/
 ## Installed UX
 
 - Modules render as **list rows** (`InstalledModuleCard`).
-- **Click a card** → floating `Dialog` (shadowed popover surface) with full module config:
+- **Click a row** → floating `Dialog` (shadowed popover surface) with full module config:
   enable toggle, commands, shortcuts, aliases/tags, preferences, uninstall.
 - Marketplace catalog is fetched in the background (`src/plugin/marketplaceCatalog.ts`).
   Compatible updates appear as an accent chip plus a compact Update action on the row

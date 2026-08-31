@@ -2,7 +2,7 @@
 
 > 面向核心贡献者的内部文档。描述前端插件运行时、RPC 分发、AI 任务、权限模型和面板生命周期。
 >
-> 状态：Current · 适用版本：v0.6.100 · Owner：Plugin Host · 最后复核：2026-08-24
+> 状态：Current · 适用版本：v0.6.102 · Owner：Plugin Host · 最后复核：2026-08-31
 
 > 当前开发阶段兼容策略：Qx 尚无外部用户，插件均由 mcxen 维护。Workbench / plugin port 演进优先采用清晰的强契约，并在同一变更中迁移全部第一方插件；不要为尚不存在的第三方存量增加旧协议兼容层、别名或双实现。进入有外部用户阶段后必须显式重审本策略。
 
@@ -11,7 +11,7 @@
 | 文件 | 职责 |
 |---|---|
 | `src/plugin/types.ts` | 插件 manifest、运行时、AI 相关 TypeScript 类型 |
-| `src/plugin/builtin.ts` | 内置模块注册（RSS、V2EX、Clipboard 等） |
+| `src/plugin/builtin.ts` | 内置模块注册（Clipboard、RSS、QxAI、File Actions 等） |
 | `src/plugin/registry.ts` | Zustand store：加载/卸载/启用/禁用/搜索/快捷键 |
 | `src/plugin/backgroundActivity.ts` | **后台 interval 端口**：job 快照、last/next run、running；UI 标签唯一数据源 |
 | `src/plugin/runtime.ts` | iframe 沙箱生命周期（load/unload）、命令注册、面板 session 挂载 |
@@ -231,7 +231,7 @@ Workbench 呈现缓存当作可供系统壁纸等业务操作使用的文件仓�
 渲染 `#floor`、作者、作者右侧的可选 `likeCount`、时间、楼主标记和正文。正文默认使用
 纯文本 `body`；需要小图原位混排时，正文与回复共用 `content[]` 行内协议，接受 text、远程
 `image` 与插件包内 `asset-image`，相对路径仍经 `plugin_resolve_asset` 约束，失败回落到可读文本。
-插件不得再把回复压成普通 `sections`，也不得自绘回复 DOM。内置 V2EX 使用同一组件作为视觉与交互基准。
+插件不得再把回复压成普通 `sections`，也不得自绘回复 DOM。RSS 中 V2EX 文章的回复视图使用同一组件作为视觉与交互基准；V2EX 完整浏览能力属于市场插件，不是内置模块。
 
 ## 4. 权限模型
 

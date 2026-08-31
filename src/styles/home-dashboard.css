@@ -34,9 +34,13 @@
 .qx-home-dashboard-grid {
   flex: 1;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(180px, 1fr) minmax(140px, 1fr);
   gap: 10px;
   min-height: 0;
+}
+
+.qx-home-dashboard-grid:has(.qx-home-rss, .qx-home-agent-usage) {
+  grid-template-rows: max-content minmax(140px, 1fr);
 }
 
 .qx-home-primary {
@@ -93,7 +97,7 @@ button.qx-home-widget:focus-visible,
 .qx-home-pinned {
   display: flex;
   flex-direction: column;
-  min-height: 220px;
+  min-height: 0;
   padding: 12px;
 }
 
@@ -182,9 +186,12 @@ button.qx-home-widget:focus-visible,
 }
 
 .qx-home-app-grid {
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
   align-content: start;
+  min-height: 0;
+  overflow: auto;
   gap: 6px;
 }
 
@@ -252,6 +259,8 @@ button.qx-home-widget:focus-visible,
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 10px;
+  min-height: 0;
+  overflow: auto;
 }
 
 .qx-home-rss {
@@ -463,7 +472,12 @@ button.qx-home-widget:focus-visible,
 }
 
 @container qx-home-dashboard (max-width: 640px) {
-  .qx-home-primary {
+  .qx-home-dashboard-grid {
+    grid-template-rows: max-content minmax(140px, 1fr);
+  }
+
+  .qx-home-primary,
+  .qx-home-primary.has-pinned {
     grid-template-columns: minmax(0, 1fr);
   }
 

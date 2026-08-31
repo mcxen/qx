@@ -1,6 +1,6 @@
 # 架构与接口原则（SOLID）
 
-> 状态：Current · 适用版本：v0.6.97+ · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.97+ · Owner：Core · 最后复核：2026-08-31
 
 本文约定 Qx 在**抽象边界、接口形状、模块依赖**上的长期标准。  
 实现功能时优先满足这些原则；文档与代码同级演进——改边界时同步改文档，禁止文档落后成「历史实现说明」。
@@ -10,7 +10,7 @@
 | 变更类型 | 必须更新 |
 |---|---|
 | 新增/调整公共接口（TS type、Rust command、RPC method、plugin context） | 对应架构文档 + `ipc-catalogue` / plugin doc |
-| 新增抽象层（session store、host API、converter shim） | 本文件相关条目 + 领域文档（island / plugin / shell…） |
+| 新增抽象层（session store、host API、platform/plugin adapter） | 本文件相关条目 + 领域文档（island / plugin / shell…） |
 | 权限、manifest、市场契约 | `public/doc/plugin-development-guide.md`（作者）+ `plugin-cli-protocol.md` + `plugin-architecture` |
 | 仅内部重构且接口不变 | 可不改文档；但不得悄悄扩大 public surface |
 
@@ -66,7 +66,7 @@ HTML 片段（内置 RSS）与 Workbench 结构化 `image` 走同一 `inlineRemo
 - Raycast 转换器处于 Frozen 状态，仅保留历史入口；正式插件从上游源代码出发，直接依赖 Qx host ports，不继续扩展 converter shim。
 - 设置页：tab 导航 + 独立 `*Settings.tsx`，不要把所有表单塞进一个文件。
 
-允许在 composition root（`lib.rs`、`App.tsx`、converter entry）做有限组装；禁止在领域深处为「再加一个 case」无限膨胀。
+允许在 composition root（`lib.rs`、`App.tsx`、注册/迁移工具入口）做有限组装；禁止在领域深处为「再加一个 case」无限膨胀。
 
 模块拆分以领域边界和变更原因优先，不为压缩行数制造碎片文件。单个源文件不得超过 1000 行；被多个功能消费或属于 Qx 产品基础设施的能力应提升为根级核心服务，功能模块只保留自身工作流与呈现语义。
 
@@ -167,7 +167,7 @@ blocking HTTP · filesystem · native APIs
 1. **契约层**：manifest schema、RPC method 名、command 入参/出参、权限字符串  
 2. **领域层**：session、插件生命周期、搜索结果模型、设置 store 形状  
 3. **应用层**：各 Settings 页、Launcher orchestration、Agent 任务编排  
-4. **适配层**：platform `#[cfg]`、Raycast shim、asset URL、path rewrite  
+4. **适配层**：platform `#[cfg]`、冻结的 legacy compatibility、asset URL、path rewrite
 5. **呈现层**：React 组件、CSS token、动画  
 
 文档描述优先写 1–2 层的**意图与不变量**；5 层细节留给 UI_SPEC / 组件注释。
@@ -187,9 +187,9 @@ blocking HTTP · filesystem · native APIs
 
 | 子系统 | 文档 | SOLID 要点 |
 |---|---|---|
-| Shell / 快捷键 | `shell-and-shortcuts.md`, `shortcut-registry.md` | S：键盘策略集中；O：注册表扩展动作 |
+| Shell / 快捷键 | `shell-and-shortcuts.md` | S：键盘策略集中；O：统一注册生命周期扩展动作 |
 | Island | `qx-island-architecture.md` | D：session 倒置；I：slot/action 窄接口 |
-| 插件 | `plugin-architecture.md`, `public/doc/raycast-plugin-conversion.md` | O：host+converter 扩展；L：跨端 command 同形 |
+| 插件 | `plugin-architecture.md`, `public/doc/raycast-plugin-conversion.md` | O：host registrations/adapters 扩展；L：跨端 command 同形 |
 | 设置 / i18n | `settings-panel.md`, `src/i18n.ts` | I：按页拆分；D：文案依赖 key 而非组件内写死语言 |
 | IPC | `ipc-catalogue.md` | 契约单一事实来源 |
 | **系统能力** | `display.rs` · `desktop_windows.rs` · `media/` · `clipboard` · `runtime/` · FE `src/system/*` | S：发现/媒体/剪贴板/线程调度各管一责；D：feature 只依赖端口；禁止在 screencap/OCR 内复制 xcap 枚举 |
@@ -263,7 +263,7 @@ Esc / 外部点击恢复正常。macOS 未获 Full Disk Access 时文件索引�
 
 ## 7. 变更系统（禁止「一个一个单独改」）
 
-问题要在**端口 / 注册表 / 字典 / 转换器**上一次性解决，再让消费者受益。
+问题要在**端口 / 注册表 / 字典 / 适配器**上一次性解决，再让消费者受益。
 
 | 错误做法 | 正确做法 |
 |---|---|
@@ -275,7 +275,7 @@ Esc / 外部点击恢复正常。macOS 未获 Full Disk Access 时文件索引�
 ### 标准流水线
 
 ```text
-1. 定位端口（host command / context / session / i18n key 前缀 / converter shim）
+1. 定位端口（host command / context / session / i18n key 前缀 / platform/plugin adapter）
 2. 更新契约文档（本文件 + 领域 doc）
 3. 在端口实现一次
 4. npm run check          # architecture + docs + i18n + shell + island

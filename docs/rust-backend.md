@@ -1,6 +1,6 @@
 # Rust 后端模块导览
 
-> 状态：Current · 适用版本：v0.6.97 · Owner：Backend · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.102 · Owner：Backend · 最后复核：2026-08-31
 
 `src-tauri/src/` 下每个模块的职责和依赖点。核心入口是 `lib.rs` 的 `run()`（`main.rs` 只转调）。启动顺序、模块初始化、Tauri 命令注册全部在 `lib.rs` 的 `setup(|app| { ... })` 里。
 
@@ -68,7 +68,7 @@
 
 | 文件 | 说明 |
 |---|---|
-| `marketplace/mod.rs` | `.qx-plugin` 安装、签名（ed25519）、`~/.qx/plugins/<id>/` 落盘、**多源** `plugin_registries` 索引合并与来源归属、按当前 Qx/平台筛选最高兼容版本的后台插件自动升级、Raycast extension 转换、开发脚手架 |
+| `marketplace/mod.rs` | `.qx-plugin` 安装、签名（ed25519）、`~/.qx/plugins/<id>/` 落盘、**多源** `plugin_registries` 索引合并与来源归属、按当前 Qx/平台筛选最高兼容版本的后台插件自动升级、冻结的 Raycast 实验导入、开发脚手架 |
 | `permissions.rs` | macOS TCC：屏幕录制 / 辅助功能 / 输入监控 状态与请求 |
 | `storage.rs` | 统一缓存目标注册表驱动存储统计与精确清理；逐模块 `clear_cache_target` 只接受注册目标并保护 state/data/cache 根目录；通过 marketplace manifest 登记的插件 cache key 作为动态目标接入，其余插件持久数据仍受保护 |
 | `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated`。托盘菜单结构仅在设置或插件贡献变化时重建；实时状态行保留原生 `MenuItem` 句柄并原位更新文本，禁止定时替换整棵菜单以免耗尽 Windows USER 对象。 |

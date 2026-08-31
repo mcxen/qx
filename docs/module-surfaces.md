@@ -1,6 +1,6 @@
 # Module Surfaces — 主搜索直达模块子界面
 
-> 状态：Current · 适用版本：v0.6.97 · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.102 · Owner：Core · 最后复核：2026-08-31
 > 事实来源：`src/search/moduleSurfaces.ts`、`src/components/QxShell.tsx`、`src/App.tsx`、`src/modules/settings/store.ts`、`src/modules/*`
 
 ## 1. 目标
@@ -89,14 +89,14 @@ QxShell **不负责** 主搜索引，只负责模块打开后的：
 
 | 模块 | 动态 surface | 静态 / 命令 surface | Pending 落地 |
 |---|---|---|---|
-| **RSS** | 订阅源 title/url/folder | Open / Add Feed / Import OPML | `openFeed`；add/import 打开对话框 |
-| **Clipboard** | Launcher 专用慢 Provider：历史项文本/文件名 | Open Clipboard | 选中对应项 |
-| **QxAI** | `QxAiSession` 持久化会话名 | Open / New Chat / Settings | `selectConversation` / `createConversation` / settings；活动会话可并发后台运行 |
-| **Macros** | 已保存宏 | Open Macro Recorder | `playMacro(id)` |
-| **Screencap** | GIF 历史文件名 | Open / Start Recording | `setPreview` / `startRecording` |
-| **Documents** | — | Open / Clean / Markdown / JSON | 切换 mode |
-| **Weather** | 设置中的地点 | Open Weather | 打开模块 |
-| **V2EX** | — | Open / Hot / Latest | `setMode` + 拉列表 |
+| **RSS** | 订阅源 title/url/folder | Add Feed / Import OPML | `openFeed`；add/import 打开对话框 |
+| **Clipboard** | Launcher 专用慢 Provider：历史项文本/文件名 | — | 选中对应项 |
+| **QxAI** | `QxAiSession` 持久化会话名 | New Chat / Settings | `selectConversation` / `createConversation` / settings；活动会话可并发后台运行 |
+| **Macros** | 已保存宏 | — | `playMacro(id)` |
+| **Screencap** | 截图/录屏历史文件名 | Start Recording / Take Screenshot | `setPreview` / 启动捕获 |
+| **Documents** | — | Clean / Markdown / JSON | 切换 mode |
+| **Weather** | 设置中的地点 | — | 打开指定地点 |
+| **QxTTY** | — | — | 仅 panel 根入口，不贡献重复 surface |
 
 ### 并发 / 禁止阻塞（硬性）
 
@@ -183,12 +183,5 @@ Rust：`ModuleSearchSettings`（`settings/mod.rs`），`enabled` 的 serde 缺�
 - [ ] Settings 关闭 Clipboard Module Search → All / Clipboard scope、旧异步请求、
       sticky pin 和常用召回均不出现剪贴板历史；Quick Entry 与剪贴板模块仍可打开
 - [ ] 总开关关闭 → 全部内置模块搜索结果消失
-- [ ] 剪贴板 / AI 会话 / 宏 / GIF 历史 / Documents 模式 / V2EX Hot 可搜
+- [ ] 剪贴板 / AI 会话 / 宏 / 捕获历史 / Documents 模式 / Weather 地点可搜
 - [ ] Esc 从深链落地后仍符合模块 `useEscBack` 级联
-
-## 10. 后续
-
-- QxAI surface 从 `~/.qx/QxAiSession/index.json` 与各 session 文件夹恢复，跨重启可用；附件由同一会话协议托管。
-- 插件 API：`context.search.contribute(hits)`
-- 文章级 RSS surface（注意噪声与上限）
-- 文件夹拖拽管理 UI

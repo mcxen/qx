@@ -1,4 +1,6 @@
-# 快捷键统一注册表（Global vs In-App）
+# 快捷键统一注册表（历史设计）
+
+> **历史归档，不是当前快捷键契约。** 当前实现规则以 [`docs/shell-and-shortcuts.md`](../shell-and-shortcuts.md) 和 [`UI_SPEC.md`](../../UI_SPEC.md) 为准。
 
 | 字段 | 值 |
 |---|---|
@@ -46,7 +48,7 @@ scope: "in_app"     → 仅主窗 key window 且匹配上下文时；WebView key
 | 冲突池 | 所有 global 键 **全集互斥** | 同 context 内互斥；可与 global 同物理键（不推荐但允许不同 scope） |
 | 外接模组 | 需 permission `shortcut.global`；default deny | 需 `shortcut.in_app` 或随 action 声明；仅当前插件视图/命令 |
 
-> **冲突池原则**：`global` 与 `in_app` **不共用同一冲突集合**。  
+> **冲突池原则**：`global` 与 `in_app` **不共用同一冲突集合**。
 > UI 可提示「此键已用作全局热键」，但不自动判 invalid（用户可能故意 overlay）。
 
 ---
@@ -307,7 +309,7 @@ Settings 页 `useSyncExternalStore(shortcutRegistry.subscribe)` 动态刷新，*
 |---|---|---|
 | `shell.action_menu` | `CmdOrCtrl+K` | 各模块 secondary Actions；**真正可配置的应用内壳层键** |
 
-v1 **不**把每个模块的 `Cmd+C`/`Cmd+P` 全暴露到设置（数量爆炸、上下文强绑定）。  
+v1 **不**把每个模块的 `Cmd+C`/`Cmd+P` 全暴露到设置（数量爆炸、上下文强绑定）。
 v1.1 可选：模块通过 `registerModuleActions()` 声明「可重绑」的 subset。
 
 模块内写死的导航键（↑↓、Enter 打开、Esc）保持协议，**不可配置**（与 UI_SPEC Esc 协议一致）。
@@ -329,11 +331,11 @@ v1.1 可选：模块通过 `registerModuleActions()` 声明「可重绑」的 su
 
 ## 8. 外接模组兼容清单
 
-1. **声明式贡献**：manifest / runtime `contributeShortcuts(defs)`，禁止模组自己 `register` OS 热键。  
-2. **scope 必填或可推断**；错误 scope（如 in_app 却要求隐藏时触发）在加载时 dev warn 并降级。  
-3. **用户覆盖优先于 manifest**；卸载插件不删用户绑定（或设置「清理已卸载扩展的快捷键」）。  
-4. **权限**：`shortcut.global` default deny；`shortcut.in_app` 可随插件 UI 默认允许。  
-5. **Settings 单页发现**：安装新扩展后无需改 Qx 源码，列表自动多一组。  
+1. **声明式贡献**：manifest / runtime `contributeShortcuts(defs)`，禁止模组自己 `register` OS 热键。
+2. **scope 必填或可推断**；错误 scope（如 in_app 却要求隐藏时触发）在加载时 dev warn 并降级。
+3. **用户覆盖优先于 manifest**；卸载插件不删用户绑定（或设置「清理已卸载扩展的快捷键」）。
+4. **权限**：`shortcut.global` default deny；`shortcut.in_app` 可随插件 UI 默认允许。
+5. **Settings 单页发现**：安装新扩展后无需改 Qx 源码，列表自动多一组。
 6. **禁用模块 / 禁用扩展**：对应条目灰显 + 不注册。
 
 ---
@@ -351,18 +353,18 @@ v1.1 可选：模块通过 `registerModuleActions()` 声明「可重绑」的 su
 
 ## 10. 明确非目标
 
-- 不把 Esc / 列表方向键做成可配置全局或应用内快捷键。  
-- 不让 in_app 绑定在 Qx 隐藏时生效。  
-- 不让插件在无 `shortcut.global` 时静默注册 OS 热键。  
+- 不把 Esc / 列表方向键做成可配置全局或应用内快捷键。
+- 不让 in_app 绑定在 Qx 隐藏时生效。
+- 不让插件在无 `shortcut.global` 时静默注册 OS 热键。
 - v1 不做「一条绑定同时 global+in_app」。
 
 ---
 
 ## 11. Key Decisions
 
-1. **一页设置，两套 scope** — 同一导航入口，模型与冲突池分离。  
-2. **Global 默认 opt-in**（除 Launcher 召唤）— 与现行为一致。  
-3. **Global 注册单一所有者（Rust）** — 消灭 unregister_all 清掉插件键的问题。  
-4. **In-app 走 Shell 匹配，不注册 OS 热键** — 保护编辑与系统快捷键。  
-5. **外接模组只贡献定义，不自管注册** — 可发现、可覆盖、可回收。  
-6. **徽章与筛选** — 用户永远看得见「全局 / 应用内」。  
+1. **一页设置，两套 scope** — 同一导航入口，模型与冲突池分离。
+2. **Global 默认 opt-in**（除 Launcher 召唤）— 与现行为一致。
+3. **Global 注册单一所有者（Rust）** — 消灭 unregister_all 清掉插件键的问题。
+4. **In-app 走 Shell 匹配，不注册 OS 热键** — 保护编辑与系统快捷键。
+5. **外接模组只贡献定义，不自管注册** — 可发现、可覆盖、可回收。
+6. **徽章与筛选** — 用户永远看得见「全局 / 应用内」。

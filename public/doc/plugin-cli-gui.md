@@ -41,8 +41,8 @@ const result = await context.cli.run({
   timeoutMs: 20_000,
 });
 
-if (!result.ok) {
-  throw new Error(result.stderr || `tool exited ${result.code}`);
+if (result.timedOut || result.status !== 0) {
+  throw new Error(result.stderr || (result.timedOut ? "tool timed out" : `tool exited ${result.status}`));
 }
 
 const rows = context.cli.parseJson(result.stdout);
@@ -76,6 +76,7 @@ function render(context) {
 
 async function refresh(context) {
   const task = await context.cli.start({
+    kind: "run",
     program: "tool",
     args: ["list", "--json"],
   });
@@ -85,7 +86,9 @@ async function refresh(context) {
     indeterminate: true,
   });
   const result = await context.cli.wait(task.id);
-  if (!result.ok) throw new Error(result.stderr);
+  if (result.timedOut || result.status !== 0) {
+    throw new Error(result.stderr || (result.timedOut ? "tool timed out" : `tool exited ${result.status}`));
+  }
   const items = toItems(context.cli.parseJson(result.stdout));
   workbench.updateItems({ revision: ++revision, upsert: items, order: items.map((item) => item.id) });
   workbench.update({ loading: false, error: null });

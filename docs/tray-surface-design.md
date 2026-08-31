@@ -1,5 +1,7 @@
 # Tray Surface Design
 
+> Status: Current · Applies to: v0.6.102 · Owner: Frontend/Core · Last reviewed: 2026-08-31
+
 Qx has two Tray surfaces with different jobs:
 
 - The right-click native menu is for conventional commands, keyboard equivalents, and short live status rows.

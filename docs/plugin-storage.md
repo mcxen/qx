@@ -1,252 +1,94 @@
-# 插件存储系统设计
+# 插件存储当前契约
 
-> 状态：Current · 适用：Qx ≥ 0.6.97 · Owner：Core · 最后复核：2026-08-19
-> 作者侧端口摘要见 [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) §存储。  
-> 本文定义**宿主如何存放、升级、清理**插件数据，便于长期维护。
+> 状态：Current · 适用版本：v0.6.102 · Owner：Core · 最后复核：2026-08-31
+>
+> 本文说明宿主目录、生命周期和清理边界。插件作者的 API 用法以 [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) 为准；迁移方案历史见 [`archive/plugin-storage-design-history.md`](./archive/plugin-storage-design-history.md)。
 
----
+## 1. 物理目录
 
-## 1. 目标
-
-| 目标 | 说明 |
-|------|------|
-| **代码与数据分离** | 重装 / 升级包**不丢** preferences 与 KV / 文件缓存 |
-| **端口清晰** | 插件只见 `context.storage.*` / `getPreference` / 虚拟文件路径，不见盘符细节 |
-| **可管理** | 宿主能列出占用、按插件清空、卸载时策略明确 |
-| **可维护** | 单写路径、原子写、按插件加锁；禁止散落 localStorage 当持久库 |
-
-### 非目标
-
-- 跨设备同步  
-- 加密保险箱（密钥由插件自行决定是否放 preferences）  
-- 无限大 blob 对象存储（大文件用 `files/` 目录，不进 JSON KV）
-
----
-
-## 2. 现状与问题
-
-| 层 | 现状 | 问题 |
-|----|------|------|
-| 包目录 | `~/.qx/plugins/<id>/` 含 `manifest` + `index.js` + **`data/`** | 安装 `remove_dir_all` 整目录 → **升级抹掉用户数据** |
-| Persist KV | `data/storage.json` 整文件读写 | 全局一把锁，插件互堵；无 list/clear |
-| Preferences | `data/preferences.json` 整表覆盖 | 升级同样被删 |
-| Session | 前端进程内 `Map` | 卸载插件未清 session 桶（泄漏可忽略） |
-| 虚拟文件 | `plugin_file_*` → `…/data/files`（及 `/qx-home`） | 与 package 同树，升级风险同上 |
-| Raycast Cache / background | iframe `localStorage` | 与插件 id 弱关联；难管理、难清 |
-
----
-
-## 3. 目标布局（逻辑）
+插件的可执行包与可持久数据必须分开：
 
 ```text
 ~/.qx/
-├── plugins/                      # 包（Package）— 可随时被 zip 覆盖
-│   └── <plugin-id>/
-│       ├── manifest.json
-│       ├── index.js
-│       ├── icon.png / assets…
-│       └── .enabled
-│
-└── plugin-data/                  # 数据（Durable）— 升级保留
-    └── <plugin-id>/
-        ├── preferences.json      # 用户设置（schema 由 manifest.preferences 定义）
-        ├── storage.json          # 插件 persist KV（JSON object）
-        ├── meta.json             # 可选：schemaVersion、lastAccess、quota 提示
-        └── files/                # 二进制 / 缓存文件（context 虚拟路径）
+├── plugins/<id>/              # 安装包：manifest、入口和静态资源
+└── plugin-data/<id>/          # 用户/插件持久数据
+    ├── preferences.json       # 宿主管理的插件偏好
+    ├── storage.json           # context.storage.persist + 宿主 Workbench 快照
+    └── files/                 # 插件受控文件区
 ```
 
-**兼容期**：若 `plugin-data/<id>` 不存在，继续读 `plugins/<id>/data/`；写入时优先写 **`plugin-data/<id>`**，并在升级路径迁移旧目录。
+`~/.qx/plugins/<id>/data/` 是旧版位置，只用于兼容读取和一次性迁移。新写入始终选择 `plugin-data/<id>`；代码不得重新把数据库或缓存放回包目录。
 
-虚拟路径（插件侧不变）：
+## 2. 逻辑表面
 
-| 虚拟前缀 | 物理根 |
-|----------|--------|
-| `/qx-plugin-files/<id>/…` | `plugin-data/<id>/files/…` |
-| `/qx-home/…`、`~/…` | 用户主目录（已有） |
+| 数据 | 当前端口 | 生命周期 |
+|---|---|---|
+| 用户偏好 | manifest preferences + 宿主 Settings | 跨升级保存，可在 Storage 中单独清理 |
+| 业务持久状态 | `context.storage.persist` | 跨进程、跨升级保存，JSON key/value |
+| 临时进程缓存 | `context.storage.session` | 只在当前 runtime 存活，不落盘 |
+| Workbench 呈现快照 | 宿主自动管理 | 按插件与 cache scope 持久化，可重建 |
+| 插件文件 | 受限 files 端口 | 位于 `plugin-data/<id>/files/`，不等于任意文件系统权限 |
 
----
+插件不得直接写安装目录、猜测 `~/.qx` 路径或使用浏览器 localStorage 代替宿主端口。沙箱、直接 runtime 和 unavailable context 必须暴露相同的逻辑 API 形状。
 
-## 4. 存储命名空间（端口）
+## 3. 持久键与并发
 
-插件作者只认 **四个命名空间**，不要混用：
+持久值集中保存在 `storage.json`。宿主按插件 id 使用短时互斥锁，并以原子写替换文件；文件 I/O 在 blocking worker 中执行，不占用 React 或 Tokio 核心线程。
 
-```text
-┌──────────────────────────────────────────────────────────┐
-│ context.getPreference / Settings UI                      │  preferences
-│  → 用户显式配置（token、路径、开关）                         │
-├──────────────────────────────────────────────────────────┤
-│ context.storage.persist                                  │  persist KV
-│  → 业务状态、列表缓存元数据、跨重启标记                       │
-├──────────────────────────────────────────────────────────┤
-│ context.storage.session                                  │  session KV
-│  → 进程内内存：首屏缓存、分页游标（重启即失）                  │
-├──────────────────────────────────────────────────────────┤
-│ plugin_file_* / 虚拟路径                                 │  files
-│  → 图片、下载、墙纸缓存等大对象                              │
-└──────────────────────────────────────────────────────────┘
-```
+插件仍需保证业务顺序：
 
-| 命名空间 | 生命周期 | 建议用途 | 不建议 |
-|----------|----------|----------|--------|
-| **preferences** | 用户控制；卸载默认删 | API key、目录、开关 | 高频写计数器 |
-| **persist** | 跨重启；卸载默认删 | 同步游标、小 JSON 状态 | 数 MB 的 base64 图 |
-| **session** | 进程内 | UI 临时态 | 当持久库 |
-| **files** | 跨重启；卸载默认删 | 二进制 | 密钥明文无加密 |
+- 用稳定、带领域前缀的 key；不要把整个上游响应无限追加到一个对象。
+- “最新快照”使用 `context.state.createLatestWriter` 串行落盘，防止慢旧请求覆盖新结果。
+- 页面缓存使用 stale-while-revalidate、TTL 和明确上限；持久状态不能伪装成可随意清理的 cache。
+- Workbench 自动快照只负责呈现恢复，业务原始响应、游标、已读状态和可操作文件仍由插件定义。
 
-**Raycast shim**：`LocalStorage` / `Cache` 应映射到 **persist**（或 files），禁止依赖浏览器 `localStorage` 作为唯一持久层（宿主升级清站数据会丢）。
+## 4. 可重建缓存登记
 
----
+插件只可在 manifest 的 `storage.cacheTargets[]` 登记能安全重建的 `persist` key：
 
-## 5. 生命周期
+- `id`、`label` 标识设置页中的目标；
+- `keys[]` 精确匹配固定键；
+- `keyPrefixes[]` 覆盖按主题、帖子等生成的有界动态键；
+- `retentionDays` 声明插件自己的自动淘汰窗口。
 
-| 事件 | Package (`plugins/`) | Data (`plugin-data/`) |
-|------|----------------------|------------------------|
-| **首次安装** | 解压 zip | 创建空目录 |
-| **升级 / 重装同 id** | 整包替换 | **保留**；可选 `meta.schemaVersion` 迁移 |
-| **禁用** | 保留 | 保留 |
-| **卸载** | 删除 | **默认删除**；高级选项「保留数据」可后续做 |
-| **清除数据** | 不动 | 按 scope 清空（UI / API） |
+宿主校验声明、统计匹配值的 JSON 字节数和记录数，并只删除被登记的键。宿主管理的 Workbench 快照作为独立目标显示。未知 target、未声明 key、插件整个数据根和符号链接穿透必须被拒绝。
 
-Settings → System → Storage Management 只展示 manifest 登记的可重建模块存储；
-未登记的 `plugin-data/` 继续作为**受保护的持久数据**保留，不进入管理列表或清理总量。
-默认情况下，“清理全部缓存”和逐模块缓存清理不会删除 preferences、persist KV 或
-files。唯一例外是插件通过 `manifest.storage.cacheTargets[]` 明确登记的
-**可重建 persist key 或 key 前缀**：宿主只统计和删除匹配项，其余业务状态仍受保护。
-需要清除整个插件数据时必须走 `plugin_data_clear` 的显式 scope 与独立确认。
+Settings → System → Storage Management 的“清理缓存”只遍历这些可重建目标，不删除 preferences、未登记的 persist、files 或其它插件数据。
 
-### 5.1 可重建缓存声明
+## 5. 安装、升级与卸载
 
-```json
-{
-  "storage": {
-    "cacheTargets": [{
-      "id": "feed",
-      "label": "Community Feed",
-      "description": "Rebuildable list and detail responses.",
-      "keys": ["cache.feed.v2"],
-      "keyPrefixes": ["cache.thread.v2."],
-      "retentionDays": 7
-    }]
-  }
-}
-```
+| 操作 | 包目录 | `plugin-data/<id>` |
+|---|---|---|
+| 首次安装 | 原子展开并校验包 | 创建独立数据目录 |
+| 升级 / 重装 | 替换包 | 先迁移/暂存，再原样恢复 |
+| 禁用 | 保留 | 保留 |
+| 清理已登记缓存 | 保留 | 只删命中的可重建键 |
+| Storage 中清理 scope | 保留 | 按 `preferences` / `persist` / `files` / `all` 明确执行 |
+| 卸载 | 删除 | 当前默认一并删除，恢复为干净状态 |
 
-- `id` 在插件内唯一；宿主目标 id 为 `plugin:<plugin-id>:<id>`。
-- `keys` 是精确 persist key 白名单；`keyPrefixes` 用于逐主题评论等有界动态 key。
-  两者至少声明一个，总数不超过 64；不支持 glob 或目录。
-- target 之间的精确 key / 前缀不得重叠。宿主保留的 Workbench 缓存 key 不能登记。
-- 统计、按 target 清理和 `retentionDays` 懒淘汰使用同一套 key 解析，动态评论缓存不会
-  出现“插件能写、设置页看不见或清不掉”的分叉。
-- `retentionDays` 为 1–365 天。缓存值应使用 `{ savedAt, ... }` envelope，其中
-  `savedAt` 是 Unix 毫秒；宿主在统计存储时会懒清理整个过期 key。
-- 插件仍应按业务粒度主动淘汰记录。例如已读文章可按各自 `readAt` 删除，而宿主的
-  `retentionDays` 是整个 key 的最终安全上限。
+安装路径会调用 `ensure_plugin_data_migrated`：若现代目录不存在而旧 `plugins/<id>/data` 存在，则整体移动到 `plugin-data/<id>`。升级包时使用临时 staging 保护数据；任何失败都不能把数据落在半覆盖的包目录里。
 
-### 升级算法（必须）
+卸载会删除持久数据，因此 UI 必须把它作为明确的用户操作，不得把普通 Rescan、禁用或升级错误走成卸载。
 
-```text
-1. validate id, parse manifest
-2. backup = move plugin-data/<id> OR plugins/<id>/data  aside (if any)
-3. remove plugins/<id>  package tree only
-4. extract zip → plugins/<id>
-5. restore backup → plugin-data/<id>  (never extract zip over data)
-6. write .enabled
-```
+## 6. 宿主管理接口
 
----
+当前 Rust 边界位于 `src-tauri/src/marketplace/mod.rs`：
 
-## 6. 宿主 API（管理与插件）
+- `plugin_storage_get/set/delete/list/clear`：persist map；
+- `plugin_preferences_get/set`：偏好；
+- `plugin_data_usage`：preferences / storage / files / total 统计；
+- `plugin_data_clear`：按明确 scope 清理；
+- `registered_plugin_cache_targets` 与 `clear_registered_plugin_cache_target`：设置页缓存注册表；
+- `install_plugin_*` / `uninstall_plugin`：包与数据生命周期。
 
-### 6.1 插件端口（作者）
+前端和插件不要直接 invoke 这些内部命令绕过 `context.storage`、Settings 或权限适配；稳定公共表面是 `context.*`。
 
-```ts
-context.storage.persist.get/set/delete(key)
-context.storage.persist.keys?()          // 可选：列举
-context.storage.persist.clear?()         // 可选：清空本插件 persist
-context.storage.session.get/set/delete
-context.getPreference(id)                // 单键；宿主从 preferences.json
-// 批量写 preferences 仅 Settings UI / plugin_preferences_set
-```
+## 7. 变更检查
 
-### 6.2 管理端口（设置页 / 诊断）
+修改存储契约时必须同时核对：
 
-| Command | 作用 |
-|---------|------|
-| `plugin_storage_get/set/delete` | 已有 KV |
-| `plugin_storage_list` | 列出 key + 近似字节 |
-| `plugin_storage_clear` | 清空 persist KV |
-| `plugin_preferences_get/set` | 已有 |
-| `plugin_data_usage` | preferences + storage + files 占用 |
-| `plugin_data_clear` | `scopes: ["preferences"\|"persist"\|"files"\|"all"]` |
-| `qx_storage_overview` | 合并宿主缓存与 manifest 登记的插件缓存 key |
-| `qx_storage_clear_cache_target` | 精确清除宿主目标或 `plugin:<id>:<cache-id>` |
-
-前端 Settings → 插件详情可展示 **占用** 与 **清除数据**（后续 UI）。
-上述持久化、偏好、占用统计与清理命令保持原 IPC 形状，但均在宿主 blocking pool 执行；
-调用方必须 `await` 结果，不得依赖同步磁盘完成时序。
-
-### 6.3 并发
-
-- **按 plugin id 加锁**（不要全局一把锁堵所有插件）。同一插件的 read-modify-write 串行，
-  不同插件可在 blocking pool 并发。
-- 写 `storage.json` / `preferences.json` 使用 **atomic_write**（先写临时文件再 rename）。
-
-### 6.4 配额（软限制，可演进）
-
-| 项 | 建议默认 |
-|----|----------|
-| persist JSON 总大小 | 2–8 MB 警告 |
-| 单 key 值 | ≤ 512 KB（更大走 files） |
-| files 目录 | 按插件声明或全局 soft cap |
-
-超限：写失败返回明确错误字符串，不静默截断。
-
----
-
-## 7. 键名约定（插件侧）
-
-```text
-<domain>.<name>           例：sync.cursor、ui.selectedTab
-cache.<resource>.v1       可整体 clear 的缓存前缀
-raycast-cache:<ns>:<key>  转换 shim 专用前缀（若落 persist）
-```
-
-避免无前缀的 `a`/`tmp`；便于 `keys().filter(k => k.startsWith("cache."))` 局部清理。
-
----
-
-## 8. 实现分期
-
-| 阶段 | 内容 | 状态 |
-|------|------|------|
-| **P0** | 重装/升级**保留** `data/`（及将来的 `plugin-data/`） | **本变更实现** |
-| **P0** | 设计文档 + 作者手册存储章节 | **本变更** |
-| **P1** | `plugin_storage_list/clear`、`plugin_data_usage/clear` | **本变更 API** |
-| **P1** | 数据根迁移到 `~/.qx/plugin-data/<id>`，读路径双查 | 后续 |
-| **P2** | Settings UI 展示占用 / manifest 缓存逐项清除 | **已完成** |
-| **P2** | Raycast Cache → persist 映射，去掉 iframe localStorage 依赖 | 后续 |
-| **P3** | 配额强制、export/import 用户数据 zip | 可选 |
-
----
-
-## 9. 测试清单
-
-- [ ] 安装插件 → 写 preference + storage key → 再装同 id 新 zip → 数据仍在  
-- [ ] 卸载 → package 与 data 均删除（默认）  
-- [ ] 两插件并发 `storage.set` 不互相丢键  
-- [ ] `plugin_data_usage` 数字合理  
-- [ ] `plugin_data_clear({ scopes: ["persist"] })` 不动 preferences  
-- [ ] manifest cache target 只清登记 key，不动同插件其它 persist key
-- [ ] 带 `savedAt` 的过期 cache key 在 Storage 概览时自动删除
-
----
-
-## 10. 相关代码
-
-| 区域 | 路径 |
-|------|------|
-| 安装 / 存储命令 | `src-tauri/src/marketplace/mod.rs` |
-| 虚拟文件 | `src-tauri/src/plugin_api.rs`（`plugin_file_*`） |
-| RPC | `src/plugin/rpcMethods.ts` |
-| Context | `src/plugin/context.ts` / `runtime.ts` / `types.ts` |
-| 作者文档 | `public/doc/plugin-development-guide.md` |
+- 安装、升级失败回滚、旧目录迁移、禁用与卸载；
+- sandboxed/direct/unavailable plugin context 的替代一致性；
+- Storage Management 的统计与清理使用同一 target 注册表；
+- 并发 set、旧请求晚到、超大 JSON 与损坏文件的失败边界；
+- `public/doc/` 的作者协议、IPC 基线以及 `npm run check` / `npm run build`。

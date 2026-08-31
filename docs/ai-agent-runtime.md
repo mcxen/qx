@@ -1,428 +1,172 @@
-# Qx AI Agent Runtime
+# QxAI Agent Runtime 当前架构
 
-## Goal
+> 状态：Current · 适用版本：v0.6.102 · Owner：QxAI/Core · 最后复核：2026-08-31
+>
+> 本文只描述当前代码可调用的运行时。早期参考形状和未落地的 live MCP / Soul 设想见 [`archive/ai-agent-runtime-design-history.md`](./archive/ai-agent-runtime-design-history.md)。聊天视觉与交互以 [`UI_SPEC_AI.md`](../UI_SPEC_AI.md) 为准。
 
-QxAI is the shared AI substrate for built-in modules and plugins. It should not be a single chat panel API. It should expose a permissioned runtime that can choose models, call tools, use memory, stream output, and run background tasks.
+## 1. 角色与隔离
 
-## Agent Hooks (pre / post / error / tool)
+QxAI 是内置聊天、P仔和受权限约束插件共用的异步 AI substrate，不是 Launcher 的启动依赖。
 
-Host port: `src/modules/qx-ai/agent/hooks.ts` (+ `tool-runner.ts`).
-
-| Phase | When | Typical use |
-|---|---|---|
-| `before_turn` | Start of ReAct / function-calling turn | Inject host context, cancel, rewrite base prompt |
-| `after_turn` | After final answer | Post-process answer text (best-effort) |
-| `on_error` | Stream/tool/iteration failure | Friendly recovery text |
-| `before_tool` | Before each tool `run` | Normalize args, block unsafe calls |
-| `after_tool` | After tool observation | Enrich / redact observation |
-
-- Registry: `registerQxAiHooks` / `unregisterQxAiHooksByOwner` / `listQxAiHooks` / `runQxAiHooks`.
-- Built-ins (auto-seeded): `builtin:host-context`, `builtin:dangerous-tools-guard`, `builtin:tool-input-normalize`, `builtin:error-friendly`.
-
-### Dangerous tools + SOLO mode
-
-Settings → AI Agent → **Safety & SOLO** (persisted on `agent`):
-
-| Setting | Default | Effect |
-|---|---|---|
-| `dangerous_tools_guard_enabled` | **on** | Classify high-impact tools; content-aware bash gate + confirm |
-| `solo_mode` | **off** | Skip confirm prompts (autonomous SOLO) |
-
-Implementation: `src/modules/qx-ai/agent/dangerous-tools.ts` (`evaluateSafetyGate`, `classifyBashScript`, `BASH_COMMAND_BLACKLIST`, `BASH_SAFE_COMMANDS`, catalogue for writes / MCP / plugins / schedules / open_path / clipboard / brightness / recapture, …). Nested ids on `run_qx_capability` / `run_module_action` / `run_plugin_command` are also resolved.
-
-**Bash is not blanket-blocked.** With the guard on and SOLO off:
-
-| Script class | Gate |
-|---|---|
-| Blacklist (`rm -rf`, `mkfs`, `dd if=`, fork bomb, pipe-to-shell, force-push, …) | **deny** |
-| Safe / read-only (`ps`, `ls`, `git status`, `rg`, …) | **allow** |
-| Write / install / unknown / complex shell | **ask** once (`window.confirm`) |
-
-Other catalogue tools (writes, schedules, plugin runners, …) **ask** once rather than hard-deny. Headless contexts without `window.confirm` treat **ask** as deny.
-
-Policy:
-
-1. Guard **off** → no classification / prompts (user fully disabled).
-2. Guard **on** + SOLO **on** → tools run without prompts; system prompt notes SOLO.
-3. Guard **on** + SOLO **off** → blacklist deny; safe bash allow; else confirm once.
-
-UI shows live status; SOLO toggle is disabled when the guard is off (gate already open).
-- Single-hook failures are logged and skipped; only `before_turn.cancel` aborts the turn.
-- Agent tool `list_agent_hooks` is read-only discovery.
-- Plugin SDK (`ai-tools`): `context.ai.hooks.list/register/unregister` — plugin hooks dispatch a plugin **command** (no iframe JS callbacks). Cleared on plugin disable/unload.
-- First-party modules may `registerQxAiHooks` with full `run` functions (same process).
-
-```ts
-import { registerQxAiHooks } from "./agent";
-
-registerQxAiHooks([{
-  id: "my-module:enrich",
-  phase: "before_turn",
-  priority: 40,
-  owner: "builtin:my-module",
-  run: (ctx) => ({
-    systemAppend: `User locale notes: …`,
-  }),
-}]);
+```text
+QxAI / P仔 / plugin context.ai
+              |
+  provider catalogue + normalized transport
+              |
+ agent harness (hooks, tools, safety, actions)
+       |               |                |
+ sessions/files   SQLite memory   schedules/tasks
+       \_______________|________________/
+                 Rust worker I/O
 ```
 
-## Isolation (must not affect main features)
+硬边界：
 
-QxAI is an **optional async substrate**. Launcher, clipboard, shell, plugins UI, and other modules must keep working when AI is slow, disabled, or failing.
+- `App.tsx` 首阶段不静态加载 Agent graph；聊天 turn、P仔或 schedule 需要时再动态 import。
+- 网络、SQLite、文件、provider 阻塞调用和 schedule 执行在 Rust blocking/worker 边界运行。
+- AI 慢、关闭、配置错误或 provider 失败时，Launcher、Clipboard、Shell 和普通插件仍可使用。
+- 一个会话的失败只结束该 run；标题、memory extraction、schedule 和 telemetry 都是可失败旁路。
 
-| Rule | Implementation |
-|---|---|
-| No AI graph on App import | `App.tsx` does not statically import store/agent; schedule bridge is `import()` + idle deferred start |
-| Agent harness on demand | `store.sendMessage` / P仔 run dynamically `import("./agent")` only for a turn |
-| Schedule off UI thread | Rust `qx_ai_schedule::start` seeds files and ticks on a worker thread with panic isolation; each due job spawns its own worker |
-| Frontend schedule bridge | Listens after idle; `agent_prompt` opens a **background** conversation (no focus steal) and fire-and-forgets `sendMessage`; never awaits the full agent turn on the event path |
-| Module preload | Non-AI modules first wave; `qx-ai` / `p-zai` second idle wave |
-| Failure isolation | `loadSessions` / `loadProviders` / dream / schedule never throw into shell; turn-local errors stay on the conversation run |
+## 2. Provider 与消息传输
 
-Do **not** add synchronous AI init to `App` phase-1 load, clipboard capture, or global shortcut registration.
+Provider catalogue 统一内置 provider 和 OpenAI-compatible 自定义 provider。API key 由 Rust 后端保管，不暴露给插件 iframe。模型能力区分 `reasoning`、`vision` 与 `vision_known`；未知能力不能直接当作“不支持”。
 
-## 异步解耦、高可用与 SOLID 约束
+当前传输：
 
-QxAI 的开发规范以异步运行时为核心：UI、编排、传输、统计和 provider 适配必须是可
-替换的窄接口，不能把某个 provider 的字段或 React 状态写成全局协议。
+- 同步结果：`context.ai.chat`；
+- 文本增量：`context.ai.stream`；
+- 结构化增量：`context.ai.streamEvents`，当前公开 `text_delta`、`reasoning_delta`，并以 `done` / `error` 收敛；
+- 内置 Agent：native function-calling 或 ReAct 共享同一权限化 tool implementation。
 
-| 边界 | 唯一职责 | 不允许承担 |
-|---|---|---|
-| `agent/stream.ts` / Tauri stream event | 监听、取消、超时、归一化 `delta/done/error` | 直接修改会话或计算 UI 布局 |
-| `stream-metrics.ts` | 消费归一化输出快照，关闭生成计时窗口 | 读取 provider、React、Tauri |
-| `store.ts` | 会话队列、运行状态、结果持久化编排 | 在 UI 回调中执行同步网络/磁盘 |
-| provider / Rust adapter | 请求、SSE、usage 与 request duration | 泄漏 OS 分支或依赖 React |
-| title / dream / schedule | 可失败的旁路后台任务 | 阻塞主对话或改变主 turn 成功态 |
+每个 stream 必须有独立 request id 和单一终态：
 
-### Stream contract
+```text
+started -> delta* -> done | error | timeout | cancelled
+```
 
-每次流必须具备独立 request id 和明确终态：`started → delta* → done | error | timeout`。
-监听器、timer、队列占位和 Island session 在所有终态收敛；旧请求的事件不能覆盖新请求
-或另一个会话。UI 更新使用一个原子 `(content, reasoning)` 快照，避免两个回调重复推进
-计时或产生中间不一致状态。
+旧请求不能覆盖新请求或另一个会话。listener、timer、队列占位和 Island session 在所有终态清理。token speed 优先使用 provider 的真实 usage 与 request duration；fallback 必须标明估算，不能用 0/1ms 或工具总耗时伪造速率。
 
-后端 `qxai-stream` 的 `done` 事件可扩展携带 `tokenCount`、`durationMs`、`tokenSpeed`：
-provider 有真实 usage 时优先使用；没有 usage 时，前端仅用本次 provider 请求耗时和明确标记
-为估算的 token 数计算 fallback。`durationMs` 包含 TTFT，但不包含工具轮次、标题生成或
-其它旁路任务；不得用首 token 时间差的 0/1ms 作为分母。
+图片进入 provider 前被规范为 OpenAI-compatible content parts。会话管理的本地图片转为有界 `data:` URL；前端预览使用 `convertFileSrc()`，不发布原始 `file://`。
 
-### Failure isolation
+## 3. 会话与并发
 
-网络/provider 超时只失败当前 run；会话加载失败以空工作区启动并保留 Shell；标题、记忆
-dream、schedule 和 telemetry 均为 best-effort。阻塞 HTTP、数据库、文件和媒体操作必须
-进入 Rust blocking pool 或有界 worker；不能因为一个慢 provider 占满 UI/Tokio 核心线程。
-
-## QxAiSession persistence and concurrency
-
-Built-in chat history is durable data under `~/.qx/QxAiSession` (folder layout,
-RLM-style modular units), not browser localStorage:
+聊天是持久数据，不存 browser localStorage：
 
 ```text
 ~/.qx/QxAiSession/
-  index.json                      # lightweight catalog
-  sessions/<conversation-id>/
-    session.json                  # full conversation document
-    files/*                       # managed attachment copies
+├── index.json
+└── sessions/<conversation-id>/
+    ├── session.json
+    └── files/
 ```
 
-Legacy `sessions.json` / `files/` are **not** migrated — missing layout marker or
-legacy paths trigger a one-time wipe; the user starts with an empty session tree.
-Each frontend mutation debounces into a single-session save command; it does not
-serialize every other conversation. The backend atomically replaces only that
-session's `session.json` and updates the small `index.json` catalog under a
-blocking worker. The legacy bulk save command remains for compatibility and
-recovery tooling. Deleting a conversation removes its entire folder. Settings →
-Storage Management reports this directory as a protected durable bucket; users
-may open it or explicitly clear all QxAI sessions, but general cache cleanup must
-never remove it.
+每次变更只 debounce 保存当前 session，Rust 原子替换对应 `session.json` 并更新轻量 index。删除会话时删除该会话目录。旧 bulk save command 只用于兼容/恢复。
 
-Each conversation owns an independent run state and FIFO input queue. Starting
-a request in one conversation must not serialize, replace, or hide streaming
-state from another conversation. Active runs publish separate
-`qxai.run.<conversation-id>` Island task sessions so work remains visible after
-the user switches chats or modules.
+每个 conversation 拥有独立 run state 和 FIFO 输入队列；不同会话可并发。活动 run 发布独立的 `qxai.run.<conversation-id>` Island task，因此切换聊天或模块不会隐藏后台生成状态。
 
-Contextual assistants (for example P仔 inside RSS) use the same session store.
-They create a background conversation with a caller-supplied system prompt, so
-opening the assistant does not steal the active QxAI chat. The system message
-contains the current content snapshot; visible turns, streaming state, queueing,
-errors, and persistence remain owned by `useG4fStore`. Closing a contextual
-projection never deletes its conversation. Content-specific writes use narrow
-domain tools (P仔 summary/draft) instead of mutating the source document.
+P仔创建带当前内容快照的后台 conversation，并复用同一 store、stream、queue 和 persistence。关闭 P仔投影不会删除对话；写回 RSS 等领域数据必须调用窄 domain tool，不能直接修改源正文。
 
-User attachments are copied into that session's `files/` directory before they
-enter chat history. The provider adapter converts supported images to
-OpenAI-compatible data URL content parts and bounded UTF-8 text files to inline
-file context. Other managed files retain a real local path for QxAI's
-permissioned file and bash tools. UI previews always use `convertFileSrc`; raw
-`file://` URLs are not part of the frontend protocol.
+## 4. Agent harness
 
-## QxAI long-term memory (SQLite + FTS)
+当前实现位于 `src/modules/qx-ai/agent/`：
 
-Long-term notes live under `~/.qx/memories/memory.db` (SQLite + FTS5), with an
-RLM-style retrieval split:
-
-| Layer | Role |
+| 组件 | 职责 |
 |---|---|
-| **Cold archive** | Every original and derived `memory` / `user` record is retained in SQLite |
-| **FTS search** | Core, episodic, active, and superseded records remain available on demand |
-| **Core snapshot** | Only active `core` records are packed into the char-capped system prompt |
+| `stream.ts` | 事件监听、超时、取消和增量 flush |
+| `function-loop.ts` / `react-loop.ts` | 两种 tool-calling transport 的 turn 编排 |
+| `tools.ts` / `tools-modules.ts` | 权限化工具目录与模块适配 |
+| `module-actions.ts` | 模块/插件注册的稳定意图动作 |
+| `capabilities.ts` | skill 绑定的 module action、plugin command、agent tool 目录 |
+| `hooks.ts` | `before_turn`、`after_turn`、`on_error`、`before_tool`、`after_tool` |
+| `dangerous-tools.ts` | 写入、bash、schedule、插件命令等风险分类与确认 |
+| `memory.ts` | turn 前冻结的 memory snapshot 与工具适配 |
 
-`MEMORY.md` / `USER.md` are best-effort mirrors of the hot window after migration.
-Extraction never deletes or rewrites its source rows. A summary is a derived
-record carrying `source`, `type`, `importance`, and `supersedes` lineage;
-superseded sources leave the resident projection but remain searchable.
-`episodic` records are never injected automatically. Settings exposes `Manual`
-(explicit writes only), `Smart` (selective extraction, where zero candidates is
-valid), and `Off` (preserve the database while pausing recall and capture).
-Tool/step count is not an extraction trigger. All
-memory commands, including the snapshot used before a turn, run through the
-blocking worker. The snapshot command must take the memory lock exactly once;
-it must never call a lock-taking wrapper while already holding that lock.
-`qxai_memory_clear` drops the database (explicit user action only).
+模块通过注册表扩展动作，不在 Agent core 增长每功能 `switch`。插件用 `context.ai.actions.register()` 注册 namespaced action；disable/unload 时宿主清理。插件 hook 只能 dispatch 已声明的插件 command，不接受 iframe JS 回调。
 
-## Reference Shape
+### Safety 与 SOLO
 
-- Provider abstraction follows the same boundary used by Rust AI SDKs such as Rig and genai: callers select `provider + model`, while the runtime normalizes request/response formats.
-- Tool execution follows a ReAct-style loop: observe context, think in model tokens, call a declared tool, feed the result back to the model, then continue until final output.
-- MCP support is treated as another tool backend. Qx should act as an MCP host/client that lists tools, invokes tools, and stores per-server permissions.
+Settings → AI Agent 的 dangerous-tools guard 默认开启，SOLO 默认关闭：
 
-## Runtime Layers
+| 状态 | 行为 |
+|---|---|
+| guard off | 用户显式关闭分类与确认 |
+| guard on + SOLO off | blacklist deny；只读安全 bash allow；写入/未知/复杂操作 ask |
+| guard on + SOLO on | 跳过确认，但仍记录 SOLO 运行语义 |
 
-1. **Provider Catalog**
-   - Built-in providers expose static model metadata.
-   - OpenAI-compatible custom providers fetch model metadata from `GET /models`.
-   - API keys stay in the Rust backend and are never exposed to plugin iframes.
-   - Model entries expose `reasoning`, `vision` (multimodal image input), and
-     `vision_known`. Detection order: Settings `agent.model_capabilities`
-     override (`provider|model`) → provider `/models` input-modality metadata →
-     conservative id heuristics. A missing catalog field is `unknown`, not
-     evidence that the model is text-only.
-   - Image attachments are blocked only for explicitly unsupported models.
-     Unknown OpenAI-compatible models are verified by the user's real image
-     request, avoiding paid/background synthetic probes and false-negative
-     client-side rejection.
+无 `window.confirm` 的 headless context 把 ask 当 deny。安全判断必须解析嵌套 capability/action id，不能只看外层 `run_qx_capability` 名称。
 
-2. **Message Transport**
-   - Text messages use plain string content.
-   - Multimodal messages use OpenAI-compatible content parts:
-     - `{ type: "text", text }`
-     - `{ type: "image_url", image_url: { url, detail } }`
-   - The provider boundary normalizes `image_url` strings, Responses-style
-     `input_image`, and Anthropic-style base64 parts into that Chat Completions
-     shape. Durable local attachments become bounded `data:` URLs; local paths
-     are never sent as image content.
-   - Providers without image support must fail with a clear unsupported-capability error.
+## 5. Skills、Actions 与工具可见性
 
-3. **Streaming**
-   - Current APIs:
-     - `context.ai.stream(input, onChunk, options?)`
-     - `context.ai.streamEvents(input, onEvent, options?)`
-   - The host starts `plugin_ai_stream_chat_events` and forwards provider SSE deltas
-     to the requesting iframe while the request is still active. `stream()` is the
-     compatibility text-only projection; it must never buffer an entire response
-     and replay it with timers.
-   - Structured events currently include `text_delta` and `reasoning_delta`; the
-     host lifecycle also carries `error` and `done`. Future additions may include
-     `toolCall`, `toolResult`, and `memory`.
-   - Built-in function calling uses the same event transport. Tool call argument
-     deltas are reconstructed in Rust, while text and reasoning remain live.
-   - Function-call streaming retains the complete-response command as a
-     compatibility fallback for OpenAI-compatible providers that accept tools
-     but do not stream tool-call deltas reliably.
-   - Current synchronous chat remains available as `context.ai.chat`.
-   - The legacy host `g4f_chat` compatibility command is exposed as an async
-     Tauri command and runs blocking provider I/O behind `spawn_blocking`; QxAI
-     background title generation must never occupy the UI/runtime thread.
+Skills 位于 `~/.qx/skills`，frontmatter mode 为 `fixed | smart | disabled`。Skill 可声明稳定 capability id；宿主在 turn 前注入当前 available/missing 绑定，模型通过统一 capability tool 执行，而不是猜 API。
 
-4. **Module ports exposed to the agent**
-   - Screencap headless: `qx_screenshot` → `qxai_capture_desktop` (full display PNG + optional copy into Downloads/QxLogs).
-   - Clipboard: `qx_clipboard_history` → recent history for digests.
-   - Schedules: `list_schedules` / `upsert_schedule` / `delete_schedule` / `run_schedule_now` backed by `~/.qx/qxai-schedules.json`.
-   - Kinds: `morning_desk_log` (Rust pipeline: screenshot + clipboard + default model → Markdown under `Downloads/QxLogs`) and `agent_prompt` (frontend chat turn with optional skill).
-   - Bundled skill `morning-desk-log` is seeded on first launch; example schedule is disabled until the user enables it in Settings → AI Agent → Schedules.
+工具只有同时满足以下条件才进入 schema / ReAct prompt：
 
-4a. **Module Action catalogue (pluginized)**
-   - Host port: `src/modules/qx-ai/agent/module-actions.ts`.
-   - Modules and plugins register **stable intentional actions** (refresh, mark read, open workbench) separately from fine-grained data tools.
-   - Agent tools: `list_module_actions` (discover) and `run_module_action` (execute by id). Example: `rss.refresh_all` refreshes every subscription; P仔 and QxAI share the same catalogue.
-   - Builtin seeds include `rss.refresh_all` / `rss.refresh_feed` / `rss.mark_read`, `pzai.*`, `docs.write`, `weather.refresh`, `screencap.recapture`.
-   - Visibility: required builtin modules must be enabled; disabled modules never appear in the list.
-   - Plugin SDK (`permission: ai-tools`):
-     - `context.ai.actions.list({ moduleId?, query? })`
-     - `context.ai.actions.run(id, input?)`
-     - `context.ai.actions.register([{ id, title, description, risk?, parameters?, invokeCommand?, command? }])` → ids become `plugin:<pluginId>:<id>`
-     - `context.ai.actions.unregister()` — also auto-cleared on plugin disable/unload
-   - Plugin-owned actions may back onto a permitted `invokeCommand` and/or a plugin `command` name. Do not hardcode per-plugin tools into the agent harness; register actions instead.
+1. Settings 中 Agent、tool group 与对应危险能力开关允许；
+2. 依赖的 built-in module 已启用；
+3. 工具自己的 `isAvailable(settings)` 通过；
+4. 插件拥有对应 manifest permission。
 
-4a′. **Skill-driven Qx capabilities (modules + plugins)**
-   - Host port: `src/modules/qx-ai/agent/capabilities.ts`.
-   - Unified catalogue kinds:
-     - `module_action` — same ids as §4a (`rss.refresh_all`, `plugin:<id>:<action>`)
-     - `plugin_command` — launcher commands as `command:<pluginId>:<name>`
-     - `agent_tool` — live tool names as `tool:<name>`
-   - Agent tools: `list_qx_capabilities`, `run_qx_capability`, `list_plugins`, `run_plugin_command`.
-   - **Skills are the workflow layer.** Frontmatter may declare:
+`Model Tool Calling` 只选择 native schema 或 ReAct transport，不绕过权限。保存后即将开始的 turn 必须先 flush debounced settings，避免 Rust gate 读取旧配置。
 
-     ```yaml
-     capabilities:
-       - rss.refresh_all
-       - tool:rss_list_articles
-       - command:v2ex:latest
-       - plugin:my-plugin:sync
-     ```
+## 6. Memory
 
-     When a skill is fixed/smart/selected, the host injects a **live binding block** (available vs missing) into the system prompt so the model executes via capability tools instead of inventing APIs.
-   - Bundled skills: `morning-desk-log` (fixed), `rss-brief` (smart), `qx-plugin-capabilities` (smart). Seeded once into `~/.qx/skills` without overwriting user edits.
-   - Plugin authors: register AI actions (`context.ai.actions.register`) **and/or** document launcher commands; optionally ship a skill that lists those capability ids.
+长期记忆使用 `~/.qx/memories/memory.db`（SQLite + FTS5）：
 
-4b. **Agent harness layout (speed + modularity)**
-   - Source: `src/modules/qx-ai/agent/` — `tools`, `prompts`, `stream`, `react-loop`, `function-loop`, `memory`, `parse`, `types`, `module-actions`.
-   - `react-agent.ts` re-exports the harness for existing imports.
-   - Speed: context compaction (`MAX_CONTEXT_MESSAGES`), parallel multi-tool execution, throttled stream UI (~48 ms), compact tool catalog in the function-calling system prompt, frozen memory snapshot for prefix cache.
-   - **Capability visibility**: each tool may declare `requiresModules` (e.g. `screencap`, `clipboard`, `rss`, `documents`, `weather`) and optional `isAvailable(settings)` (e.g. OCR master switch). `getEnabledTools` only exposes tools when Agent settings switches are on **and** every required builtin module is enabled **and** `isAvailable` passes. Disabled modules never appear in OpenAI tool schemas or ReAct prompts.
-   - **Module tools** (when module/settings allow): system storage/network/power/brightness; OCR recognize/list; Text Toolbox docs list/read/write; RSS dashboard/feeds/articles/`rss_refresh_all`; weather current/location; screencap history/recapture; clipboard entry by id; P仔 workbench tools; module-action list/run.
+- cold archive 保留原始与派生记录；
+- active core records 进入有字符预算的 prompt snapshot；
+- episodic 与 superseded records 不自动注入，但可搜索；
+- derived record 保存 source/type/importance/supersedes lineage，提取不删除源记录；
+- Manual / Smart / Off 分别表示显式写入、选择性提取、保留数据库但停止 recall/capture；Smart 返回零候选是有效结果。
 
-5. **Native reasoning**
-   - Reasoning is opt-in per conversation/request and is enabled only when the
-     selected model advertises the capability.
-   - Provider-native `reasoning_content` / `reasoning` text is rendered in a
-     separate collapsible surface; it is never mixed into the final answer.
-   - Opaque `reasoning_details` are preserved on assistant tool-call messages for
-     provider continuity, but are not presented as readable chain-of-thought.
-   - OpenRouter receives `reasoning.enabled`; DeepSeek receives its native
-     `thinking.type` request shape. Other compatible providers receive
-     `reasoning_effort` only after the caller explicitly opts in.
+所有命令走 blocking worker。snapshot 只获取一次 memory lock，不能在持锁时调用另一个加锁 wrapper。Settings 的明确清理操作才可删除数据库；普通 cache cleanup 不得触碰会话或 memory。
 
-5. **Tools**
-   - Built-in safe tools: provider/model list, memory read/write, search apps/files, HTTP fetch, notifications.
-   - Dangerous tools: bash, process kill, permissions request, file write/delete. These require dedicated permissions such as `ai-bash` or exact `invoke:<cmd>`.
-   - Bash execution must always use a timeout and return structured `{ status, stdout, stderr, timedOut }`.
-   - Current global switches live in Settings -> AI Agent. Agent mode, tools,
-     host/system tools, and native model tool-calling default **on** so chat can
-     use Qx capabilities without flipping every switch.
-   - Built-in tool groups also cover Qx system ports (`qx_system_info`,
-     `qx_system_stats`, `qx_displays`, `qx_desktop_windows`, `qx_processes`),
-     skill file CRUD (`list_skills` / `read_skill` / `write_skill`), and MCP
-     config I/O (`read_mcp_config` / `write_mcp_config` on `~/.qx/mcp.json`).
-   - Skills under `~/.qx/skills` declare `mode: fixed|smart|disabled` in
-     frontmatter; Settings can override per skill. Fixed skills always inject;
-     smart skills auto-match the user message; disabled skills only load via `/`.
-   - `Model Tool Calling` selects the transport rather than the permission:
-     enabled uses native tool schemas; disabled uses the portable ReAct prompt
-     protocol. Both execute the same permissioned local tool implementations.
-   - Before a built-in Agent starts, pending debounced settings are flushed so
-     the Rust permission gate observes newly enabled Agent / Tools / Bash state.
-   - Bash working directories expand `~`, `~/...`, and `~\...` at the shared CLI
-     boundary before spawning. The shell is still executed with a bounded timeout.
-   - Grep search is exposed as a real `rg`/`grep` subprocess through `context.ai.search.grep(query, opts?)`, capped by the user-configured result limit.
+## 7. 任务、Schedule 与 MCP 边界
 
-6. **MCP**
-   - Config is user-managed JSON at `~/.qx/mcp.json` (`qxai_read_mcp_config` /
-     `qxai_write_mcp_config`). Settings shows an editor; the agent can edit the
-     same file when MCP tools are enabled.
-   - Planned Rust host layer uses the official Rust MCP SDK shape: one configured server becomes a live tool namespace for stdio calls.
-   - MCP tools should be discoverable through `context.ai.tools.list()` and callable through `context.ai.tools.call(name, input)`.
+插件 `context.ai.tasks` 当前提供 `submit/list/get/cancel`，状态为 `queued/running/succeeded/failed/cancelled`。任务只保证 Qx 进程存活期间运行；完全退出后继续执行所需的 helper 尚不是当前能力。
 
-7. **Memory (RLM archive + Hermes hot window)**
-   - **Cold store**: SQLite + FTS5 at `~/.qx/memories/memory.db`; original and derived
-     records carry source/type/importance/supersedes metadata.
-   - **Core snapshot**: `qxai_memory_snapshot` packs active core records into char-capped
-     windows (~2200 memory / ~1375 user) for the system prompt.
-   - **Episodic recall**: episodic and superseded records stay out of the prompt and
-     remain available through `memory action=search`.
-   - Agent tools: unified `memory` (`add|replace|remove|status|search`), plus legacy aliases.
-   - **Selective extraction**: Manual / Smart / Off policy. The model may return no
-     candidates; accepted candidates append derived rows and a diary under
-     `~/.qx/memories/dreams/`. Source rows are never deleted.
-   - Embeddings remain an optional future retrieval adapter. A graph database is not
-     part of the current memory contract.
-   - **Session search**: `qxai_session_search` walks `QxAiSession/sessions/*/session.json`.
-   - No legacy import: layout reset deletes old MEMORY.md / USER.md / qxai-memory.json.
-   - Explicit wipe: `qxai_memory_clear` (Settings → Storage).
+定时任务单独持久化在 `~/.qx/qxai-schedules.json`，由 Rust worker 检查到期项。当前 kind：
 
-8. **Background Tasks**
-   - Current in-process task API:
-     - `submit`, `list`, `get`, `cancel`
-     - states: `queued`, `running`, `succeeded`, `failed`, `cancelled`
-   - While Qx is hidden in the tray, tasks can keep running inside the app process and notify on completion.
-   - Running after the app process fully exits requires a LaunchAgent/helper process; do not claim this until that helper is implemented.
-   - Future persistent tasks should move the task ledger into SQLite and add `waitingForTool`.
+- `morning_desk_log`：截图、剪贴板和默认模型生成 `Downloads/QxLogs` Markdown；
+- `agent_prompt`：经延迟加载的前端 bridge 建立后台 conversation 并发起 turn。
 
-9. **Soul / Persona**
-   - `soul` is the persistent persona layer above memory:
-     - default system prompt
-     - tone and boundaries
-     - preferred tools
-     - memory access policy
-   - Soul must be user-editable. Plugins may request a soul but cannot silently overwrite the global one.
+MCP 当前只实现 `~/.qx/mcp.json` 的有界 JSON 读取、校验、写入和 Settings 编辑。仓库没有把 stdio server 变成 live tool namespace，也没有公开 `context.ai.tools.list/call`；文档和 UI 不得把“已保存 MCP 配置”等同于“已连接 MCP server”。
 
-## Plugin SDK Surface
+Soul/persona API 也不在当前 `PluginContext.ai` 中。若未来实现，必须先定义持久化、用户编辑权与插件不可覆盖的边界。
 
-Implemented now:
+## 8. 插件公共表面
 
-```ts
-await context.ai.providers()
-await context.ai.models(providerId)
-await context.ai.defaultModel()
-await context.ai.agentSettings()
-await context.ai.chat("prompt", { provider, model, system })
-await context.ai.chat({ prompt, images: ["data:image/png;base64,..."] })
-await context.ai.stream("prompt", (chunk) => append(chunk), { provider, model })
-await context.ai.streamEvents(
-  "prompt",
-  (event) => {
-    if (event.type === "text_delta") append(event.delta)
-    if (event.type === "reasoning_delta") updateReasoning(event.delta)
-  },
-  { provider, model, reasoning: true },
-)
-await context.ai.runBash("pwd && ls", { cwd, timeoutMs })
-await context.ai.search.grep("TODO", { root: "/path/to/project", maxResults: 50 })
-await context.ai.memory.list()
-await context.ai.memory.add("User prefers concise answers", ["preference"])
-await context.ai.memory.delete(id)
-await context.ai.tasks.submit({ title: "Research", prompt: "...", notify: true })
-await context.ai.tasks.list()
-await context.ai.actions.list({ query: "refresh" })
-await context.ai.actions.run("rss.refresh_all")
-await context.ai.actions.register([
-  {
-    id: "sync",
-    title: "Sync remote data",
-    description: "Pull the latest remote catalogue",
-    risk: "network",
-    command: "sync",
-  },
-])
-await context.ai.actions.unregister()
-```
+`src/plugin/types.ts` 是当前类型事实来源。已实现：
 
-Planned:
+- catalogue：`providers`、`models`、`defaultModel`、`agentSettings`；
+- transport：`chat`、`stream`、`streamEvents`；
+- gated tools：`runBash`、`search.grep`；
+- memory：`list/add/delete`；
+- tasks：`submit/list/get/cancel`；
+- actions：`list/run/register/unregister`；
+- hooks：`list/register/unregister`。
 
-```ts
-await context.ai.tools.list()
-await context.ai.tools.call(name, input)
-await context.ai.soul.get()
-await context.ai.soul.update(patch)
-```
+权限边界：
 
-## Permissions
+| 权限 | 能力 |
+|---|---|
+| `ai` | provider、model、chat/stream |
+| `ai-memory` | memory list/add/delete |
+| `ai-bash` | bash 执行；仍受 Agent 设置和 safety gate |
+| `ai-tools` | grep、actions、hooks 等非 bash 工具 |
+| `ai-background` | 进程内 background tasks |
+| `invoke:<cmd>` | 直接 Rust command 的精确额外授权 |
 
-- `ai`: provider catalog and chat.
-- `ai-memory`: memory list/add/delete.
-- `ai-bash`: bash tool execution.
-- `ai-tools`: non-dangerous tool calling, including configured grep search.
-- `ai-mcp`: MCP server tool discovery and calls.
-- `ai-background`: submit background agent tasks.
-- Dangerous direct Rust commands still require exact `invoke:<cmd>`.
+配置中存在 `ai-mcp` 名称不代表 live MCP 工具已实现；在真实 host 和插件适配同时落地前，不应发布依赖它的插件。
 
-## UI Requirements
+## 9. 验证
 
-- Streaming output should render incrementally in the module or plugin panel.
-- Background task progress should use QxShell island state while visible.
-- Completion/failure should use system notification when the user is outside Qx.
-- **Simple chat defaults** (default provider/model, system prompt) live in the AI module Chat Settings view.
-- **Complex AI configuration** belongs in Settings -> AI Agent: built-in API keys, custom providers (BYOK), memory, agent mode, tools, bash, grep, and background tasks.
-- Agent runtime switches use Qx custom controls, not native selects or checkboxes.
-- AI list/chat operations go through QxShell `actions` + `Cmd+K` / `Ctrl+K` (Raycast-style Action Panel). Do not bind bare letter keys that steal search/input typing.
+修改 Agent runtime 时至少验证：
+
+- 多会话并发、FIFO、取消、timeout 与 stream 终态清理；
+- provider 真实文本/图片请求和明确 unsupported 错误；
+- native tools 与 ReAct 使用同一权限和 safety 结果；
+- disabled module/tool/plugin 不进入目录；plugin unload 清理 actions/hooks；
+- memory snapshot 锁、Smart 零候选与普通 cache cleanup 保护；
+- schedule 不阻塞 UI、后台 conversation 不抢焦点；
+- MCP 只声明配置 I/O，不出现虚假的 live connection；
+- `npm run check`、`npm run build`，以及风险相称的 Rust 检查。

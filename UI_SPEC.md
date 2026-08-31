@@ -13,7 +13,7 @@
 - Enter 执行当前有效操作，Esc 经 `useQxModuleShell` 逐层返回。运行中以 Bottom Island 的真实 indeterminate 状态反馈，不造成布局跳动；错误保留在操作区，选择列表仍可使用。
 - 所有参数输入使用 Qx shadcn 控件和主题变量。写操作不得静默覆盖已有目标；完成后左栏切换为宿主返回的输出项快照。
 
-> 状态：Current · 适用版本：v0.6.97 · Owner：Frontend · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.102 · Owner：Frontend · 最后复核：2026-08-31
 >
 > 事实来源：`src/components/QxShell.tsx`、`src/hooks/useEscBack.ts`、`src/styles/shell.css`、`src/island/`、`src/home-island/`、`src/modules/settings/plugins/`、`src/i18n.ts`
 >
@@ -56,8 +56,9 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - 截图与录屏历史项在列表和图库布局中均提供重命名操作；仅编辑文件主名并保留原扩展名，
   后端必须同步移动成品、录屏封面与历史记录。录屏预览默认自动播放一次，抵达结尾即停止；
   再次点击播放时从头开始，不得自动循环。
-- RSS 阅读器的正文与封面图片只经 Rust 图片缓存加载；列表选中项、相邻文章与当前文章的
-  首批图片必须提前预热并在 WebView 解码完成后才显示，禁止透明占位图直接切换为本地路径而闪烁。
+- RSS 阅读器的正文与封面图片按平台加载：macOS WebView 直接使用原始 HTTP(S) 地址；
+  Windows 经 Rust 有界磁盘缓存，并预热列表选中项、相邻文章与当前文章的首批图片。
+  任一平台都不得让加载失败的透明占位长期留在正文；Feed 图标仍优先使用 Qx 的小尺寸本地缓存。
 - 截图/录屏圈选控制栏的全部图标始终保持单排，不因窗口或选区宽度拆成多行；全屏模式下
   初始悬浮于当前显示器屏内中下侧，可从控制栏空白处拖动并始终夹紧在屏幕内，且继续受
   内容保护与捕获排除约束，不得进入截图或录屏成品。
@@ -117,7 +118,7 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
   中间详情后，即使搜索框仍保留 DOM 光标，垂直阅读键也必须滚动详情。搜索非空时
   ←/→、Home/End、文字输入及带修饰键选择仍归原生搜索编辑。
 - **主搜索可直达模块子界面**（Module Surfaces：订阅源、会话、宏等）。协议见 `docs/module-surfaces.md`；用户可在 Settings → Search Settings → Launcher Search Sources 按模块关闭接入。
-- Screen Recording、Weather、V2EX、Macro Recorder 标记为 **Beta**：模块名后使用浅色虚线 `Beta` 标识，并通过 tooltip/模块设置说明其可能不稳定。Beta 标识只表达成熟度，不用整卡警告色。内置模块专属配置统一进入 Settings → Extensions → Installed → 对应模块；模块主界面只保留直接跳转链接。
+- Screen Recording、Weather、Macro Recorder 标记为 **Beta**：模块名后使用浅色虚线 `Beta` 标识，并通过 tooltip/模块设置说明其可能不稳定。Beta 标识只表达成熟度，不用整卡警告色。内置模块专属配置统一进入 Settings → Extensions → Installed → 对应模块；模块主界面只保留直接跳转链接。V2EX 是市场插件，不进入内置 Beta 列表。
 - 可关闭的 Beta 内置模块在 Settings → Extensions → Installed 的模块配置 Dialog 中启停。关闭后必须同时从 Quick Entries、Launcher 静态命令、Module Surfaces 和直接导航中移除；对应 lazy view 不得挂载，模块 effect / IPC 数据请求不得启动。Settings 中的模块卡仍保留，作为重新启用的唯一管理入口。
 - **返回走 Bottom Bar 最右侧 Esc**（`escapeAction` + `useEscBack`，文案 Back/Hide）；非主搜索左侧另有小房子一键回主界面。Top Bar 默认不渲染返回箭头；禁止模块在 Top Bar 再做一套返回。
 - 右侧 Context Panel 只放导航、辅助信息和当前对象操作入口，不放第二套主布局。
@@ -1066,11 +1067,11 @@ Plugin Store 详情必须展示插件库提供的版本说明与历史版本（�
 
 - Installed / Browse 用 `Tabs`（不是顶栏 `SegmentedControl` 代替主切换）
 - 首行保持单层紧凑工具条：Tabs 在左；Raycast Actions 开关、Import、Rescan 在右；窄宽度可换行但不得扩成说明卡片。已安装插件列表使用内存缓存，禁止定时扫描插件目录；Rescan 是用户触发完整异步扫描的唯一常规入口。执行插件命令或打开面板时若注册项缺失，宿主可通过统一注册表解析端口异步补刷一次并重试，不得在渲染或输入线程同步遍历插件文件。
-- Import 打开独立 `Dialog`，集中承载本地压缩包、GitHub archive 与 Raycast extension URL 三种入口
+- Import 打开独立 `Dialog`，集中承载本地压缩包、GitHub archive 与冻结的 Raycast 历史实验入口；后者不得作为维护插件的生产路径
 - 搜索已安装 + 过滤（All / Built-in / External / Enabled / Disabled）紧随首行，模块网格无需经过大段说明内容即可到达
 - Raycast Actions 的完整说明使用 tooltip / accessible description，页面上只保留短标签和开关
 
-**成熟度原则（写给后续设计）：**
+**成熟度原则：**
 
 1. **封面极简，详情完整** — tile 只负责识别与入口；配置密度放在二级浮层。  
 2. **桌面工具，不是运营后台** — 避免徽章墙、彩色状态条、大按钮 CTA。  
@@ -1107,7 +1108,7 @@ Bottom Island，不在 `detail.replies.status` 重复显示 loading。刷新失�
 
 Workbench 与内置阅读模块的图片统一进入共享 `QxMediaViewer`；社区详情的多图动态使用宿主 `detail.images` 胶片/网格和全尺寸预览；
 插件不得自绘轮播。详情回复统一使用底部 `detail.replies` → `QxReplyList`，每行按
-`#楼号 / 作者 / 回复对象 / 可选点赞数 / 楼主标记 / 时间 / 正文` 排列，点赞数紧跟作者右侧且不重复出现在正文；`parentId / depth / replyToAuthor` 是统一回复树端口，宿主按父级稳定排序、最多显示 8 层缩进并提供分支折叠，自引用、循环或缺失父项安全降级；内置 V2EX 与插件 Workbench 共用同一
+`#楼号 / 作者 / 回复对象 / 可选点赞数 / 楼主标记 / 时间 / 正文` 排列，点赞数紧跟作者右侧且不重复出现在正文；`parentId / depth / replyToAuthor` 是统一回复树端口，宿主按父级稳定排序、最多显示 8 层缩进并提供分支折叠，自引用、循环或缺失父项安全降级；RSS 的 V2EX 文章回复与插件 Workbench 共用同一
 组件和样式，插件不得自绘评论树。回复中的包内行内图片按约 1.45em 紧凑显示、随文字基线对齐，不进入全尺寸媒体预览；资源不可用时保留可读替代文本。全尺寸预览的左右边缘提供固定感应区：鼠标接近对应边缘或键盘聚焦时才
 显示切换按钮，按下时不得位移；无 hover 设备保持按钮可见。预览舞台内无修饰键滚轮
 直接缩放并阻止背景滚动，缩放尺寸必须使用 WebView 支持的标准 CSS 百分比，放大后
@@ -1148,8 +1149,10 @@ useEscBack({
 
 **B. 可见按钮 · `escapeAction`**
 
-- 最右侧 Esc 按钮的 `onClick` 等于当前级联的**最终一级**（与 `launcher` / 上一级 `goBack` 相同）。
-- 级联的中间层（关详情、清搜索）只由键盘 `useEscBack` 处理；不要把中间层绑到最右侧按钮，以免单击 Esc 胶囊跳过中间层语义混乱。若模块需要「按钮也关闭详情」，应把当前视图的返回目标设为「关详情后的父级」，而不是跳过父级直接 launcher。
+- 最右侧 Esc 按钮的 `onClick` 必须等于当前级联的 `stepBack`，与键盘 Esc 每次执行同一层。
+- inner、query、launcher 任一层激活时，可见按钮只处理该层；不得把按钮硬绑到最终
+  `goBack`，否则会跳过详情、查询或父视图。`useQxModuleShell` 应同时生成
+  `onKeyDown`、`stepBack` 与 `escapeAction`，避免两套返回语义。
 
 **C. Shell 兜底**
 
@@ -1240,7 +1243,7 @@ search={
 6. 主内容宽度降到单栏断点（当前 `760px`）后，master–detail 不再压缩成破碎双栏：
    未打开详情时只显示列表；点击条目、Enter 或 `navigation.onOpen` 后只显示详情；
    Esc / `navigation.onClose` 只退回列表，不直接离开模块。Clipboard、RSS、Documents、
-   V2EX、Screen Capture 与 Workbench 都复用 `.qx-content-split` /
+   Screen Capture 与 Workbench 都复用 `.qx-content-split` /
    `.qx-content-list` / `.qx-content-detail` / `.has-detail`，不得各自硬隐藏详情。
 
 左右内容分区如果需要调整宽度，统一使用 `QxResizableSplit`（`src/components/QxResizableSplit.tsx`）：
@@ -1257,7 +1260,7 @@ search={
 
 | 输出 | 用途 |
 |------|------|
-| `escapeAction` | 最右侧 Esc（`label/kbd: Esc`，`onClick: leave`） |
+| `escapeAction` | 最右侧 Esc（`label/kbd: Esc`，`onClick: stepBack`） |
 | `onKeyDown` | Esc 级联 + 模块附加键 |
 | `island` | 来自 `island` 或 `islandState`（loading → error → idle） |
 | `actions` / `primaryActionId` | 右下主动作与 Actions 菜单；Shell 拥有菜单触发器 |
@@ -1299,7 +1302,10 @@ search={
 - 宽屏可以使用两栏或三栏。
 - Home Dashboard 使用 Main Area 容器宽度而非窗口物理宽度断点：宽时为置顶应用 + 指标列，
   中等宽度时指标改为双列，窄时改为单列。卡片字号和控件尺寸不做连续缩放；Main Area
-  高度不足时独立纵向滚动。普通点击态只改变语义背景/边框，不做 translate、scale 或抖动反馈。
+  高度不足时独立纵向滚动。`640px` 容器断点必须覆盖置顶态的宽屏双栏规则，按“置顶入口 →
+  指标”切为单列；含 RSS / Agent Usage 等整行卡片时主区按内容增高。宽屏紧凑等分时，置顶网格
+  与指标列在各自边界内滚动，任何内容都不得跨入相邻组件。普通点击态只改变语义背景/边框，
+  不做 translate、scale 或抖动反馈。
 - `max-width: 860px` 时通用 QxShell 隐藏 Context Panel；模块若需要保留详情，必须提供进入详情页、Dialog 或 Drawer 的明确入口，不使用未实现的“自动下移”假设。
 - `max-width: 760px` 时主从内容切换为单页模式：列表与详情任一时刻只显示一个，
   详情页必须保留底部 Esc 返回，并保持当前选择、列表滚动与详情阅读位置。

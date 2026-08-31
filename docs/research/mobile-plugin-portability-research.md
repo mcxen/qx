@@ -1,6 +1,6 @@
 # Qx 插件无缝运行于 Android / iOS — 架构调研
 
-> 状态：**Research** · 适用版本：v0.6.54+ · Owner：Core · 日期：2026-08-03  
+> 状态：**Research** · 适用版本：v0.6.54+ · Owner：Core · 日期：2026-08-03
 > 性质：决策前调研，**不是**实现规格。落地时再拆 PR 计划与契约冻结。
 
 ## 0. 问题定义
@@ -71,13 +71,13 @@ QxShell + Rust 领域服务 + 平台适配
 
 ## 2. 核心结论（先看）
 
-1. **插件无缝复用的关键不是 UI 框架选型，而是「移动端 Plugin Host 实现同一 `context.*` + Workbench 契约」。**  
+1. **插件无缝复用的关键不是 UI 框架选型，而是「移动端 Plugin Host 实现同一 `context.*` + Workbench 契约」。**
    业务插件已经朝这个方向收敛；继续禁止插件画第二套 chrome。
 
-2. **推荐中长期架构：  
+2. **推荐中长期架构：
    「共享 Rust 内核（领域 + 插件运行时） + 共享 TS 插件包 + 分平台 Shell（桌面 Tauri WebView / 移动原生壳或 Tauri Mobile）」。**
 
-3. **短期最省事、且与现状同构的路径：Tauri 2 Mobile（Android/iOS WebView 壳）+ 同一套 React Shell 子集。**  
+3. **短期最省事、且与现状同构的路径：Tauri 2 Mobile（Android/iOS WebView 壳）+ 同一套 React Shell 子集。**
    中长期若商店体验 / 性能 / 审核吃紧，再把 **Shell 换成 SwiftUI / Compose**，但 **Workbench 渲染与 `context` 实现保留**。
 
 4. **不要** 让每个插件写 Flutter / RN / KMP UI；那样会失去「一个 `.qx-plugin` 多端」的产品定义。
@@ -144,7 +144,7 @@ Tauri 2 WebView（Android / iOS）
 
 ### 3.4 方案 D — Kotlin Multiplatform + Compose / SwiftUI（双 UI）
 
-共享：KMP 或 Rust（via FFI）业务 + 插件协议。  
+共享：KMP 或 Rust（via FFI）业务 + 插件协议。
 UI：Android Compose / iOS SwiftUI 各自实现 Workbench。
 
 | 维度 | 评价 |
@@ -210,11 +210,11 @@ UI：Android Compose / iOS SwiftUI 各自实现 Workbench。
 
 必须保持 **版本化** 的公共契约（建议 `plugin_protocol_version`）：
 
-1. **Manifest**（platforms 含 `android` / `ios`，capabilities 分级）  
-2. **Workbench JSON**（现有 `workbenchTypes` 为真源）  
-3. **context RPC 方法表**（成功/错误形状一致）  
-4. **权限枚举** 与「不可用」错误码  
-5. **包格式** `.qx-plugin` zip + checksum  
+1. **Manifest**（platforms 含 `android` / `ios`，capabilities 分级）
+2. **Workbench JSON**（现有 `workbenchTypes` 为真源）
+3. **context RPC 方法表**（成功/错误形状一致）
+4. **权限枚举** 与「不可用」错误码
+5. **包格式** `.qx-plugin` zip + checksum
 
 桌面已有实现即规范；移动只做 **实现**，不发明第二套字段名。
 
@@ -242,7 +242,7 @@ UI：Android Compose / iOS SwiftUI 各自实现 Workbench。
 
 ### 5.1 iOS — 可下载插件与审核
 
-- **Guideline 2.5.2 / 解释权**：从服务器下载并执行代码常被拒，尤其「插件商店内动态下发任意逻辑」。  
+- **Guideline 2.5.2 / 解释权**：从服务器下载并执行代码常被拒，尤其「插件商店内动态下发任意逻辑」。
 - 可行合规策略（需法务/审核经验复核，按严格度递增）：
 
 | 策略 | 含义 | 对 Qx 的影响 |
@@ -254,20 +254,20 @@ UI：Android Compose / iOS SwiftUI 各自实现 Workbench。
 
 **务实建议**：
 
-- App Store 版：**内置 + 自有 CDN 下发「已审核插件清单」**，运行 **解释型 JS 业务** 时准备审核材料（用途、权限、不执行任意原生代码）。  
-- 同步提供 **侧载 / 国际版** 完整市场（若产品策略允许）。  
+- App Store 版：**内置 + 自有 CDN 下发「已审核插件清单」**，运行 **解释型 JS 业务** 时准备审核材料（用途、权限、不执行任意原生代码）。
+- 同步提供 **侧载 / 国际版** 完整市场（若产品策略允许）。
 - 技术上保持「可动态装包」，产品上可按渠道关闭市场安装。
 
 ### 5.2 Android
 
-- 动态加载 JS/WebView 相对宽松，但仍需隐私政策、后台限制（Android 12+）、前台服务类型。  
-- Play 对「其他应用安装器」类敏感；Qx 插件不是 APK 即可降低风险。  
+- 动态加载 JS/WebView 相对宽松，但仍需隐私政策、后台限制（Android 12+）、前台服务类型。
+- Play 对「其他应用安装器」类敏感；Qx 插件不是 APK 即可降低风险。
 - 文件访问用 SAF；后台刷新用 WorkManager，对齐桌面 RSS 后台调度语义。
 
 ### 5.3 安全共同项
 
-- 插件仍在沙箱：无通用 FS、无任意 deep link 到私有 API。  
-- 权限最小化；`http` 可演进为域名 allowlist（参见既有 plugin-design-research）。  
+- 插件仍在沙箱：无通用 FS、无任意 deep link 到私有 API。
+- 权限最小化；`http` 可演进为域名 allowlist（参见既有 plugin-design-research）。
 - 包校验：checksum + 签名链与桌面市场一致。
 
 ---
@@ -298,7 +298,7 @@ Esc 阶梯                →       系统返回手势 / 导航返回（同阶�
 Cmd/Ctrl+K              →       长按 / ⋯ 菜单
 ```
 
-**原则**：语义端口不变（open detail / back / primary action），**控件换皮**。  
+**原则**：语义端口不变（open detail / back / primary action），**控件换皮**。
 这与当前「插件不画 chrome」完全一致。
 
 密度：移动列表用触控行高；Workbench 字段无需插件改代码。
@@ -319,7 +319,7 @@ Qx/
   docs/
 ```
 
-- **共享**：`workbenchTypes`、权限枚举、RPC schema、Rust 领域 crate。  
+- **共享**：`workbenchTypes`、权限枚举、RPC schema、Rust 领域 crate。
 - **不共享**：窗口管理、全局快捷键、托盘。
 
 ### 8.2 开发体验
@@ -348,28 +348,28 @@ Qx/
 
 ### Phase 0 — 契约与插件卫生（现在就能做，桌面收益）
 
-- 清单化第一方插件：P0 / P1 / P2。  
-- Manifest 增加 `platforms: ["macos","windows","android","ios"]` 与可选 `mobile.unsupportedPermissions`。  
-- 禁止新插件 Custom DOM；存量迁 Workbench（V2EX 已示范）。  
+- 清单化第一方插件：P0 / P1 / P2。
+- Manifest 增加 `platforms: ["macos","windows","android","ios"]` 与可选 `mobile.unsupportedPermissions`。
+- 禁止新插件 Custom DOM；存量迁 Workbench（V2EX 已示范）。
 - 文档：作者指南增加「移动可移植性检查表」。
 
 ### Phase 1 — Tauri Mobile MVP（3–6 个月量级，视人力）
 
-- Android 优先（审核与 WebView 调试更简单）→ 再 iOS。  
-- 实现：安装插件、Workbench 列表详情、http/storage、1–2 个第一方插件（V2EX / weather）。  
-- 启动器子集：搜索已装插件 + 打开 panel。  
+- Android 优先（审核与 WebView 调试更简单）→ 再 iOS。
+- 实现：安装插件、Workbench 列表详情、http/storage、1–2 个第一方插件（V2EX / weather）。
+- 启动器子集：搜索已装插件 + 打开 panel。
 - 明确 cli/tray 不可用。
 
 ### Phase 2 — 体验与系统整合
 
-- 通知、分享表、深链 `qx://plugin/...`。  
-- 后台刷新（RSS 类）用系统调度器。  
-- Island 语义降级。  
+- 通知、分享表、深链 `qx://plugin/...`。
+- 后台刷新（RSS 类）用系统调度器。
+- Island 语义降级。
 - 性能：长列表虚拟化、图片缓存对齐桌面。
 
 ### Phase 3 — 可选原生 Shell
 
-- 若 WebView 体验不够：SwiftUI/Compose 重画 Shell + Workbench，**RPC/插件包不动**。  
+- 若 WebView 体验不够：SwiftUI/Compose 重画 Shell + Workbench，**RPC/插件包不动**。
 - 插件作者无感。
 
 ---
@@ -387,10 +387,10 @@ Qx/
 
 ### 10.1 方法论文（团队怎么干）
 
-1. **契约驱动**：先冻 Workbench/RPC，再写移动 Host。  
-2. **能力降级合法化**：不可用端口稳定错误，插件 `if (!available)` 或 manifest 过滤。  
-3. **第一方插件当样板**：每个插件 README 标注 Portable 级别。  
-4. **桌面继续是能力超集**；移动是子集，而不是分叉协议。  
+1. **契约驱动**：先冻 Workbench/RPC，再写移动 Host。
+2. **能力降级合法化**：不可用端口稳定错误，插件 `if (!available)` 或 manifest 过滤。
+3. **第一方插件当样板**：每个插件 README 标注 Portable 级别。
+4. **桌面继续是能力超集**；移动是子集，而不是分叉协议。
 5. **商店包与「完整市场包」可双轨**，代码一套，feature flag 控制动态安装。
 
 ---
@@ -438,27 +438,27 @@ Qx 的正确类比不是「再做一个 RN 社区 App」，而是 **「移动端
 
 ## 14. 参考文档（仓库内）
 
-- [`public/doc/plugin-system.md`](../public/doc/plugin-system.md) — 端口与依赖方向  
-- [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) — 作者模型  
-- [`public/doc/plugin-ui-guidelines.md`](../public/doc/plugin-ui-guidelines.md) — Workbench / Actions  
-- [`docs/plugin-architecture.md`](./plugin-architecture.md) — 桌面 Host 实现  
-- [`docs/architecture-principles.md`](./architecture-principles.md) — SOLID / 端口  
-- [`docs/plugin-design-research.md`](./plugin-design-research.md) — 桌面插件生态横向调研（历史）  
-- [`docs/module-port-inventory.md`](./module-port-inventory.md) — 第一方能力与缺口  
+- [`public/doc/plugin-system.md`](../../public/doc/plugin-system.md) — 端口与依赖方向
+- [`public/doc/plugin-development-guide.md`](../../public/doc/plugin-development-guide.md) — 作者模型
+- [`public/doc/plugin-ui-guidelines.md`](../../public/doc/plugin-ui-guidelines.md) — Workbench / Actions
+- [`docs/plugin-architecture.md`](../plugin-architecture.md) — 桌面 Host 实现
+- [`docs/architecture-principles.md`](../architecture-principles.md) — SOLID / 端口
+- [`docs/research/plugin-design-research.md`](./plugin-design-research.md) — 桌面插件生态横向调研（历史）
+- [`docs/module-port-inventory.md`](../module-port-inventory.md) — 第一方能力与缺口
 
 ---
 
 ## 15. 开放问题（需产品拍板）
 
-1. 移动端 Qx 是 **完整启动器** 还是 **插件运行器 + 少量内置**？  
-2. App Store 是否接受 **动态插件市场**，还是仅 **内置扩展包**？  
-3. 与桌面是否 **同一账号/同一市场源/同一设置同步**？  
-4. 第一优先平台：**Android 还是 iOS**？  
+1. 移动端 Qx 是 **完整启动器** 还是 **插件运行器 + 少量内置**？
+2. App Store 是否接受 **动态插件市场**，还是仅 **内置扩展包**？
+3. 与桌面是否 **同一账号/同一市场源/同一设置同步**？
+4. 第一优先平台：**Android 还是 iOS**？
 5. 是否要做 **平板分栏**（更接近桌面 master-detail）？
 
 ---
 
 ## 16. 一句话
 
-> **把 Qx 插件当成「声明式小程序」：业务 JS + Workbench 数据契约；桌面与移动都只是 Host。**  
+> **把 Qx 插件当成「声明式小程序」：业务 JS + Workbench 数据契约；桌面与移动都只是 Host。**
 > 移动端优先用 **Tauri Mobile 复用 Host**，用 **能力矩阵** 砍桌面专属，用 **商店合规策略** 约束动态加载——而不是让每个插件重写成原生 App。

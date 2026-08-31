@@ -1,6 +1,6 @@
 # Built-in modules & marketplace plugins — port inventory
 
-> 状态：Current · 适用版本：v0.6.97+ · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.97+ · Owner：Core · 最后复核：2026-08-31
 > 目的：一次看清**可复用抽象**落在哪些模块、还有哪些缝。写新插件/新内置时先读这份 + 作者手册。
 
 相关：
@@ -24,7 +24,7 @@
 | Context 分区宽度 / 收起 | **`QxContextSplit`（QxShell 内部）** | 无；插件只发布 Workbench Actions | 宿主统一拖动、键盘调整、双击复位和全局持久化；拖到右缘折叠后保留恢复轨，模块不得自存宽度 |
 | Esc 阶梯（inner → query → leave） | `useEscBack` / `shell.stepBack` | 插件 iframe 内自理；宿主 window Esc → `tryModuleEscapeStep` 再 leave 模块 | 见 UI_SPEC Esc |
 | Host Esc 跨焦点 | **`moduleEscapeHost`** + `App.performHostEscape` | 同左（打开的是插件 tab 时，PluginHost 的 shell 注册 stepBack） | 禁止非 launcher 直接 `setTab` 跳过模块阶梯 |
-| 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；Workbench List/Gallery 统一按视口虚拟化并保留完整键盘索引，只挂载可见条目与小幅 overscan，远程缩略图解析上限 4 路并发；List 的 `item.image` 为行缩略图，`item.images[]` 为社区动态紧凑卡片，`detail.image(s)` 为自适应右侧媒体且可用 `mediaPlacement="after-body"` 跟随文章正文；详情图片集合按插件发布数量完整呈现，不人为截断；需要原位图文顺序的长文使用纯数据 `detail.content[]` text/image/asset-image 块，正文与 `detail.replies.items[].content[]` 共用 Workbench 行内内容协议；趋势/时间序列使用结构化 `detail.chart`，宿主以 Qx shadcn/Radix token 绘制折线图，插件不得注入 SVG/Canvas 或业务颜色；`points` 只允许真实源数据或持久化真实采样，少于两个点时不绘制曲线；Workbench 与内置 RSS 共用 `QxMediaViewer`，全尺寸预览统一横图按宽、竖图按高、超长截图按宽滚动，放大后支持拖拽平移；宿主预解码相邻图片并按最后访问时间保留 15 分钟/24 张（缓存是性能策略，不是集合上限）；预览左下角提供下载原图；`detail.replies` 由共享 `QxReplyList` 在底部显示 `#楼号`、作者、作者右侧点赞数、时间与 OP，正文可用纯文本或受限的 text/image/包内 asset-image 行内片段，内置 V2EX 同样复用；宿主提供失败态/放大预览，`item/detail.status` 通过共用 activity 字段表达真实百分比或 completed/total/failed；社区内容的 indeterminate 正文、评论与图片加载统一投影到 Workbench `island.activity`，不在 `detail.status` / `detail.replies.status` 重复显示，内联 status 仅保留错误或确属内容区域的可量化进度；`detail.form` 为宿主渲染的 text/number/select 受控参数表单；`mountWorkbench()` controller 的 `updateItems` 按稳定 id 增量/批量合并并仍发布完整快照；浏览态全宽集合，激活带详情条目后由宿主挂载左集合 + 右详情；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell；详情打开后 region 键驱动当前集合或阅读区 |
+| 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；Workbench List/Gallery 统一按视口虚拟化并保留完整键盘索引，只挂载可见条目与小幅 overscan，远程缩略图解析上限 4 路并发；List 的 `item.image` 为行缩略图，`item.images[]` 为社区动态紧凑卡片，`detail.image(s)` 为自适应右侧媒体且可用 `mediaPlacement="after-body"` 跟随文章正文；详情图片集合按插件发布数量完整呈现，不人为截断；需要原位图文顺序的长文使用纯数据 `detail.content[]` text/image/asset-image 块，正文与 `detail.replies.items[].content[]` 共用 Workbench 行内内容协议；趋势/时间序列使用结构化 `detail.chart`，宿主以 Qx shadcn/Radix token 绘制折线图，插件不得注入 SVG/Canvas 或业务颜色；`points` 只允许真实源数据或持久化真实采样，少于两个点时不绘制曲线；Workbench 与内置 RSS 共用 `QxMediaViewer`，全尺寸预览统一横图按宽、竖图按高、超长截图按宽滚动，放大后支持拖拽平移；宿主预解码相邻图片并按最后访问时间保留 15 分钟/24 张（缓存是性能策略，不是集合上限）；预览左下角提供下载原图；`detail.replies` 由共享 `QxReplyList` 在底部显示 `#楼号`、作者、作者右侧点赞数、时间与 OP，正文可用纯文本或受限的 text/image/包内 asset-image 行内片段，RSS 的 V2EX 文章回复同样复用；宿主提供失败态/放大预览，`item/detail.status` 通过共用 activity 字段表达真实百分比或 completed/total/failed；社区内容的 indeterminate 正文、评论与图片加载统一投影到 Workbench `island.activity`，不在 `detail.status` / `detail.replies.status` 重复显示，内联 status 仅保留错误或确属内容区域的可量化进度；`detail.form` 为宿主渲染的 text/number/select 受控参数表单；`mountWorkbench()` controller 的 `updateItems` 按稳定 id 增量/批量合并并仍发布完整快照；浏览态全宽集合，激活带详情条目后由宿主挂载左集合 + 右详情；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell；详情打开后 region 键驱动当前集合或阅读区 |
 | 主从键盘区域 | **`useQxMasterDetail`** | 插件可选自实现 region | 与 QxShell.navigation 配合 |
 | 二维网格索引 | **`qxGridNavigation`** | Workbench Gallery 由宿主处理 | 通用纯函数；不得放回 PluginHost 专用算法 |
 | Actions 数据 / 右栏渲染 | **`QxShellAction[]` + `primaryActionId` + `QxActionList` / `QxActionSections`** | Workbench 发布 action descriptor；自定义 HTML panel 用 **`context.ui.mountActions`** | 稳定动作 ID 驱动 Bottom Bar 与 Enter；`primary:false` 的自定义 panel 动作只进入 Context / Actions 菜单。完整 Context 型页面只投影非 primary 业务动作，多个领域组统一交给 `QxActionSections` 跳过空组，并关闭重复 Actions 菜单。manifest 启动/后台命令及宿主 reload 不混入插件业务 Action；宿主以保留 `__qx:*` id 追加打开/关闭详情、当前插件配置 Dialog 和通用能力，列表/详情 Enter 始终只做导航；插件配置动作不复用 Qx 通用设置快捷键，旧包缺失 `menuKey` 时按稳定 action id 补齐唯一字母。资讯详情自动提供离线 HTML 快照保存，序列化当前 `body/content/fields/sections/replies`，以 4 路有界并发把 HTTP(S)（带 Referer）和包内 asset 图片转成 Data URL 后写入 Downloads；内置 RSS 下载文章复用同一 `inlineRemoteImagesInHtml` 端口改写正文 HTML，任一图片失败则不落盘且不回传插件 handler；Shell 通过 `data-qx-list-index` + `navigation.onChange` 统一处理条目右键，模块不得复制菜单 |
@@ -113,7 +113,7 @@
 | **unsplash** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist last search | 全宽 Gallery → 宿主左图库/右详情；item/panel Actions；与 Bing 复用宿主壁纸端口 |
 | **external-display-control** | ✅ | ✅ | `context.system.displayBrightness()` / `setDisplayBrightness()`；macOS 使用 DisplayServices + DDC/CI，Windows 使用 WMI + Win32 Monitor Configuration | — | 无 |
 | **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench List（缩略图）** + http/system wallpaper/file ports | persist SWR + 宿主 Workbench 图片磁盘缓存 + 20 槽壁纸文件环 | 宿主左侧缩略图列表/右侧稳定 landscape 高清详情；重复设置同一张壁纸复用本地文件；每日任务声明 `backgroundCategory: wallpaper`，由宿主统一暂停/恢复；item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
-| **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
+| **raycast-calendar** | ✅ | ✅ | 冻结的 Raycast compatibility shim | — | 仅保留历史兼容，不是新插件样板；新增功能前应按 Qx 原生 Workbench/Actions/ports 重实现 |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island + tray | persist SWR | 不用 api.github.com；解析 actions/releases 网页；活跃部署以原生托盘子菜单显示预计百分比与用时 |
 | **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports + `homeWidgets` | — | CPU/Memory/Power/Network 通过 Manifest 与宿主 Home 组件关联，卡片仍由 Qx 共享采样总线绘制；Hardware 面板同轮 5 秒刷新且整轮 single-flight，静态规格与 Storage 保持 runtime cache；Windows 端口直接使用 Win32，不启动 PowerShell/WMI 采样进程；Processes 可操作且结束需 `YES` 确认；无 shell、自绘 Home DOM 或 CSS |
 
@@ -157,7 +157,7 @@
 
 - 不要在插件里依赖 React `useQxModuleShell`（沙箱无 React 壳）
 - 不要为每个插件复制一套全局 Esc 监听
-- 不要把 Raycast shim 当成通用列表端口（仅转换插件）
+- 不要把冻结的 Raycast shim 当成通用列表端口；它只服务历史兼容包，新功能使用 Qx 原生 Workbench/Actions/ports
 
 ---
 

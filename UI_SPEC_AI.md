@@ -1,6 +1,6 @@
 # QxAI Chat UI Spec
 
-> 状态：Current · 适用版本：v0.6.83+ · Owner：Frontend · 最后复核：2026-08-12
+> 状态：Current · 适用版本：v0.6.83+ · Owner：Frontend · 最后复核：2026-08-31
 > **结构标杆**：[AI Elements](https://elements.ai-sdk.dev/)（Conversation / Message / Reasoning / Tool / PromptInput / Queue）  
 > **视觉标杆**：[Beautiful UI](https://www.beautifului.dev/)（field 气泡、Thinking 时间线、stream caret、ink 发送方钮）  
 > 实现落点：`src/modules/qx-ai/**`、`src/styles/qx-ai.css`  

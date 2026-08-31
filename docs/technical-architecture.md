@@ -1,6 +1,6 @@
 # Qx — Technical Architecture Document
 
-> 状态：Current · 适用版本：v0.6.100 · Owner：Core · 最后复核：2026-08-24
+> 状态：Current · 适用版本：v0.6.102 · Owner：Core · 最后复核：2026-08-31
 >
 > 桌面启动器（Raycast 风格）| Tauri v2 + React + TypeScript + Rust
 >
@@ -22,7 +22,7 @@ Qx 是跨平台桌面启动器，定位为 Raycast / Alfred 的开源替代。�
 - 插件宿主内部以 [`plugin-architecture.md`](./plugin-architecture.md) 为准，插件作者从
   [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) 开始；
 - Tauri 命令清单以 [`ipc-catalogue.md`](./ipc-catalogue.md) 为准；
-- 当前任务、未完成验证和路线图只记录在 [`TASK.md`](../TASK.md)，不在架构文档维护第二份清单。
+- 当前正在执行和明确阻塞的验证只记录在 [`TASK.md`](../TASK.md)；旧任务与未重新确认的验收项进入 `docs/archive/`，不在架构文档维护路线图。
 
 ### 文件管理器选择端口
 
@@ -38,7 +38,7 @@ Qx 是跨平台桌面启动器，定位为 Raycast / Alfred 的开源替代。�
 | 状态管理 | Zustand | 5.x |
 | CSS | 自定义 CSS Variables (Geist 风格) | — |
 | 后端 | Rust | — |
-| 音频/视频 | scrap (录屏) + gifski (GIF编码) | 最新 |
+| 音频/视频 | xcap（跨平台捕获）+ openh264/mp4（视频）+ gifski（GIF） | 当前依赖 |
 | 宏录制 | rdev (捕捉) + enigo (回放) | 最新 |
 | RSS | feed-rs + reqwest + rusqlite | 最新 |
 | DB | SQLite via rusqlite | — |
@@ -328,8 +328,7 @@ PluginHost → PluginWorkbenchCollection / View / Primitives → QxShell
 - 前端插件库：`PluginManager.tsx`
   - `Installed`：本地插件/内置模块搜索，`All / Built-in / External / Enabled / Disabled` 筛选，启用/禁用、卸载、preferences、权限详情。
   - `Browse`：远程市场搜索，左侧列表 + 右侧详情，展示版本说明、历史版本、作者、大小、权限、最低 Qx 版本、更新时间、SHA256，并提供安装状态反馈。最低版本不满足时 UI 禁用所有安装来源并引导到 About；Rust 安装边界再次拒绝不兼容包。
-  - 导入入口：本地 `.zip` / `.qx-plugin`、GitHub repo/release/archive URL、Raycast extension tree URL。
-  - 后续优化：组件拆分、键盘列表导航、大列表虚拟化。
+  - 导入入口：本地 `.zip` / `.qx-plugin` 与 GitHub repo/release/archive URL；Raycast tree 入口只保留为冻结的兼容实验，不是维护插件的生产路径。
 
 ---
 
@@ -337,7 +336,7 @@ PluginHost → PluginWorkbenchCollection / View / Primitives → QxShell
 
 ### 5.1 Tauri 命令注册
 
-`lib.rs` 的 `generate_handler!` 注册命令以 [`ipc-catalogue.md`](./ipc-catalogue.md) 文末基线为准（当前约 196 个）。领域分组示例:
+`lib.rs` 的 `generate_handler!` 注册命令以 [`ipc-catalogue.md`](./ipc-catalogue.md) 文末机器校验基线为准（v0.6.102 为 324 个）。领域分组示例：
 
 ```
 apps::* (search_apps)
@@ -398,12 +397,12 @@ Esc 先关岛最近浏览，再 inner → query → leave。Actions 菜单是 `�
 
 架构文档不维护会迅速失真的“待办路线图”和源文件行数。超过 1000 行的 legacy composition
 root/feature 文件按 [`AGENTS.md`](../AGENTS.md) 的 Module Decomposition 规则处理：修改某个
-新 concern 时提取该 concern，不为行数制造一层一次性 wrapper。具体未完成项、桌面验证与
-发布状态只写入 [`TASK.md`](../TASK.md)；完成后从待办语气改为可验证的不变量。
+新 concern 时提取该 concern，不为行数制造一层一次性 wrapper。当前工作与仍被明确要求的
+桌面验证写入 [`TASK.md`](../TASK.md)；完成记录在发版后归档，不能让旧复选框长期伪装成路线图。
 
 ### 7.3 安全
 
-- CSP: `null`（无限制 — 需配置）
+- CSP：当前 Tauri 配置为 `null`，用于插件远程资源与多来源内容；安全边界由 iframe sandbox、窗口 capability、RPC allowlist、manifest 权限与宿主网络/文件端口共同承担。修改 CSP 必须先验证真实内容路径，不能只改配置字符串。
 - 插件沙箱: iframe sandbox (`allow-scripts`)
 - 插件签名: ed25519 签名验证
 - 权限声明: 插件 manifest 声明所需权限

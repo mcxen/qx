@@ -44,11 +44,33 @@ if (handlerStart < 0) {
   }
 }
 
-// Verify local Markdown links across maintained documentation.
+// Verify local Markdown links across every maintained documentation level.
+// Historical archives intentionally preserve old paths and are not current contracts.
+function collectMarkdown(directory, { exclude = [] } = {}) {
+  const files = [];
+  const visit = (relativeDirectory) => {
+    const normalized = relativeDirectory.replaceAll(path.sep, "/");
+    if (exclude.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`))) return;
+    for (const entry of fs.readdirSync(path.join(root, relativeDirectory), { withFileTypes: true })) {
+      const relative = path.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) visit(relative);
+      else if (entry.name.endsWith(".md")) files.push(relative.replaceAll(path.sep, "/"));
+    }
+  };
+  visit(directory);
+  return files;
+}
+
 const markdownFiles = [
-  ...fs.readdirSync(root).filter((name) => name.endsWith(".md")),
-  ...fs.readdirSync(path.join(root, "docs")).filter((name) => name.endsWith(".md")).map((name) => `docs/${name}`),
-  ...fs.readdirSync(path.join(root, "public/doc")).filter((name) => name.endsWith(".md")).map((name) => `public/doc/${name}`),
+  ...fs.readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => entry.name),
+  ...collectMarkdown("docs", { exclude: ["docs/archive"] }),
+  ...collectMarkdown("public/doc"),
+  ...collectMarkdown("landing"),
+  ...collectMarkdown("skills"),
+  ...collectMarkdown("src"),
+  ...collectMarkdown("src-tauri/resources/skills"),
 ];
 for (const file of markdownFiles) {
   const content = read(file);

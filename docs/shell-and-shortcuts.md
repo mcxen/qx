@@ -1,6 +1,6 @@
 # Shell、全局快捷键与托管 State
 
-> 状态：Current · 适用版本：v0.6.97 · Owner：Core · 最后复核：2026-08-19
+> 状态：Current · 适用版本：v0.6.102 · Owner：Core · 最后复核：2026-08-31
 
 本文记录 **浮动主窗口 / 全局快捷键切换 / RSS·Clipboard 托管 State / 搜索框重聚焦** 的约定与坑。改这些行为前先读这里，避免全库搜一遍。
 
@@ -412,12 +412,3 @@ Launcher 结果右键通过 `QxShell.actionMenuRequest` 发布 viewport 坐标�
    `Ctrl+Alt+Space` 可召唤窗口。
 9. Windows 打开快捷键录制器，分别录入 `Alt+G`、`Alt+Shift+S` → 按下 Alt 时录制器
    不取消，完整组合键可保存；保存后从其他应用触发应进入录屏/截图圈选。
-
----
-
-## 9. 版本笔记
-
-| 版本/提交 | 内容 |
-|-----------|------|
-| v0.5.13 | 模块快捷键同 route 再按 dismiss；`ACTIVE_ROUTE` + `set_active_route` |
-| 后续 fix | `PANEL_OPEN` / `LAST_HIDE_AT` 防 blur 竞态；隐藏走 Rust；RSS 始终 manage + lazy open；SearchBar 重聚焦 |

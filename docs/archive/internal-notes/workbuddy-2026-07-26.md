@@ -1,4 +1,6 @@
-# 2026-07-26
+# 2026-07-26（历史工作记录）
+
+> **内部历史归档。** 记录当时的故障排查与发布环境，不是当前构建或发布规范。当前流程见 [`public/doc/release-workflow.md`](../../../public/doc/release-workflow.md)。
 
 ## Fixed: windows-ci.yml missing prepare:capture-assets step
 
@@ -50,15 +52,15 @@ pane of the Screenshot & Recording module:
 
 User asked to compile, sign, install, and launch Qx locally.
 
-**Steps that worked:**
-- `npm run tauri build` with `APPLE_SIGNING_IDENTITY=BE64DA067F08C1450AA646E5E78476418A0538E6`
-  (the local "Apple Development: imsalt@163.com (3FMAXLTFP7)" cert). Notarization
-  is skipped (no APPLE_ID/APPLE_PASSWORD) — fine for local-only use.
-- Signing succeeded on qx, qx-ffmpeg, and the .app bundle; `codesign --verify`
-  reports `valid on disk` + satisfies Designated Requirement. Identifier
-  `com.mcx.qx`, Team `GHV8SD398Q`.
-- Install: quit old PID → `/bin/rm -rf /Applications/Qx.app` → `cp -R` new app →
-  `xattr -dr com.apple.quarantine`. Launch via `open /Applications/Qx.app`.
+**Steps that worked (machine-specific identity details redacted):**
+- `npm run tauri build` followed by signing the nested executable and app bundle
+  with the machine's stable Apple Development identity. Notarization was skipped
+  for this local-only build.
+- `codesign --verify` succeeded for the installed bundle with the expected Qx
+  bundle identifier and one consistent development Team ID.
+- The previous Qx process was stopped, the verified bundle was installed, and
+  `/Applications/Qx.app` was launched. Use the current `AGENTS.md` flow instead
+  of copying these historical commands.
 
 **Pitfall #1 — safe-delete shim blocks vite emptyOutDir:**
 WorkBuddy injects `--require=.../genie-safe-delete.cjs` into `NODE_OPTIONS`, which
@@ -113,7 +115,6 @@ doesn't exist` error. Restored the step (kept the tsc change) in commit
 generated at build time; the Tauri build-script validates those paths at
 compile time. When committing "all diffs", never let a workflow edit silently
 drop this step.
-is not available here.
 
 ## Fixed: Windows sysinfo plugin failed to load when any system API rejected
 

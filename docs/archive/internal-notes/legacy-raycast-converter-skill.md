@@ -1,3 +1,7 @@
+# 旧 Raycast 转换 Skill（历史归档）
+
+> **已停用。** 该 Skill 曾指导自动转换 Raycast 扩展，与当前“读取上游业务意图并用 Qx 原生端口重实现”的维护策略冲突，因此不再作为 Agent 指令加载。
+
 ---
 name: port-raycast-plugin
 description: >

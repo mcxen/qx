@@ -1,6 +1,6 @@
 # 运行时接口与通信协议
 
-> 状态：Current · Owner：Core · 最后复核：2026-08-23
+> 状态：Current · Owner：Core · 最后复核：2026-08-31
 
 本文是 Qx 进程内依赖、Tauri IPC、事件流与跨平台生命周期的底层协议总图。
 命令逐项清单仍以 [`ipc-catalogue.md`](./ipc-catalogue.md) 为准。

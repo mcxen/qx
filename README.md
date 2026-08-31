@@ -1,6 +1,6 @@
 <!-- language: en -->
 
-> **Version**: v0.6.101 — current development version
+> **Version**: v0.6.102 — current development version
 
 <a id="readme-en"></a>
 
@@ -173,7 +173,7 @@ floating island · themes & shortcuts.
 | `qx-plugins/` | First-party marketplace plugins (Brew, Unsplash, Sysinfo, …)           |
 | `public/doc/` | User- and author-facing guides                                          |
 | `docs/`       | Internal architecture for contributors                                  |
-| `scripts/`    | Checks, Raycast converter, packaging helpers                            |
+| `scripts/`    | Checks, packaging helpers, and frozen migration tooling                 |
 | `AGENTS.md`   | Agent / contributor working rules                                       |
 
 ***
@@ -186,14 +186,14 @@ Install from **Settings → Extensions** (browse the marketplace, or **Import** 
 Author a plugin under `~/.qx/plugins/<id>/` (`manifest.json` + `index.js`), or
 publish to [`mcxen/qx-plugins`](https://github.com/mcxen/qx-plugins).
 
-```sh
-# Convert a Raycast extension tree (optional)
-node scripts/convert-raycast-extension.mjs /path/to/extension --out /tmp/qx-out --package
-```
-
 Prefer host **ports** over OS details: `context.cli`, `context.http`,
 `context.storage`, with permissions declared in the manifest. See the
 [plugin development guide](./public/doc/plugin-development-guide.md).
+
+The old Raycast converter is frozen for historical experiments. Maintained
+plugins should reimplement the upstream business intent against Qx Workbench,
+Actions, Island and `context.*` ports; see the
+[migration note](./public/doc/raycast-plugin-conversion.md).
 
 Marketplace examples: **Brew** (macOS CLI), **Unsplash**, **Qx Bing Wallpaper**,
 **QxHeihe**, **QxCoolapk**, **QxWeibo**, **Sysinfo**, **QxGH**, Calendar, V2EX.
@@ -370,7 +370,7 @@ npm run tauri build -- --target aarch64-apple-darwin --bundles app
 | `qx-plugins/` | 第一方市场插件（Brew、Unsplash、Sysinfo 等）    |
 | `public/doc/` | 面向用户 / 插件作者的文档                      |
 | `docs/`       | 贡献者架构文档                             |
-| `scripts/`    | 检查脚本、Raycast 转换器等                   |
+| `scripts/`    | 检查、打包与冻结的历史迁移工具                    |
 | `AGENTS.md`   | Agent / 贡献者工作规范                     |
 
 ***
@@ -382,14 +382,13 @@ npm run tauri build -- --target aarch64-apple-darwin --bundles app
 开发目录：`~/.qx/plugins/<id>/`（`manifest.json` + `index.js`）；也可发布到
 [`mcxen/qx-plugins`](https://github.com/mcxen/qx-plugins)。
 
-```sh
-# 可选：转换 Raycast 扩展
-node scripts/convert-raycast-extension.mjs /path/to/extension --out /tmp/qx-out --package
-```
-
 业务只依赖宿主**端口**（`context.cli` / `http` / `storage` 等）与 manifest
 权限，不要直接绑 OS 细节。详见
 [插件开发手册](./public/doc/plugin-development-guide.md)。
+
+旧 Raycast 转换器只保留给历史实验，不再作为维护路径。持续维护的插件应读取上游业务意图，
+再用 Qx Workbench、Actions、Island 和 `context.*` 端口原生重实现；边界见
+[迁移说明](./public/doc/raycast-plugin-conversion.md)。
 
 市场示例：**Brew**（macOS）、**Unsplash**、Bing 壁纸、**QxHeihe 小黑盒**、
 **QxCoolapk 酷安**、**QxWeibo 微博**、**Sysinfo**、**QxGH**、日历、V2EX 等。

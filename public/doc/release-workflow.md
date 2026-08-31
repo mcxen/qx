@@ -31,9 +31,8 @@ git tag --list 'v*' --sort=-version:refname
 git ls-remote --tags origin 'v*'
 ```
 
-If local and remote differ, choose the next version above both. In the v0.4.48
-release, local had `v0.4.47` while remote only showed through `v0.4.46`, so the
-safe next version was `v0.4.48`.
+If local and remote differ, choose an unused version above both; never infer
+availability from only the local tag list.
 
 ## Version Sync
 
@@ -80,9 +79,9 @@ A hit in Markdown-rendered content, such as `.qx-md-body li input[type="checkbox
 is not a product control violation by itself. Report it as a non-blocking scan
 result.
 
-Known release warnings are acceptable if they are pre-existing and not related
-to the change. For v0.4.48, `cargo check` passed with existing warnings in
-`rss/fetcher.rs`, `system_stats.rs`, and `v2ex.rs`.
+Pre-existing warnings may be reported separately only after confirming they are
+unchanged and unrelated to the release. A warning is not evidence that the
+requested build or platform validation passed.
 
 ## Commit And Tag
 
@@ -318,7 +317,7 @@ does not alter the Qx binary release asset or require a manual plugin update.
 The installed list can still check the marketplace catalog and offer a manual
 upgrade when automatic installation is off.
 
-## Dirty Files After Push
+## Post-push Worktree Drift
 
 After pushing, run:
 
@@ -330,7 +329,3 @@ If new local changes appear after the tag has already been pushed, do not amend
 the release commit and do not move the tag. Inspect the diff, mention the dirty
 files in the final report, and leave them for a later commit unless the user
 explicitly asks to publish a follow-up release or rewrite history.
-
-This happened after v0.4.48: `README.md` had new uncommitted documentation edits
-after `main` and `v0.4.48` were already pushed. The correct behavior was to leave
-the pushed release intact.
