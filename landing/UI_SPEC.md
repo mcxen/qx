@@ -4,7 +4,7 @@
 
 > **范围**：对外营销 / 下载落地页（Cloudflare Pages 等静态托管）。
 > **不在此范围**：桌面应用壳与模块 UI → 根目录 [`UI_SPEC.md`](../UI_SPEC.md)。
-> **近亲参考**：插件商店 [`qx-plugins-clone/store/src`](../../qx-plugins-clone/store/src) 的克制表面；Vercel design / Geist 的层次与克制原则。
+> **近亲参考**：插件商店 [`qx-plugins/store/src`](../qx-plugins/store/src) 的克制表面；Vercel design / Geist 的层次与克制原则。
 
 ---
 
