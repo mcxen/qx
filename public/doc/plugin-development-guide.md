@@ -407,6 +407,9 @@ Base64/Data URL 缓存应使用 `context.state.createLru({ maxEntries, maxSize, 
 ## 6. Workbench 与动作
 
 内容型笔记优先使用宿主 Cards 与原位编辑会话，不要复制自绘卡片或编辑器。
+Cards 是自然高度的 Masonry 瀑布流，而非等高网格；无偏好时可将其作为默认入口，
+但升级不得覆盖用户已明确选择的 List。验收需分别核对源码、生成入口、已安装插件包
+和正在运行的宿主，不能以本机宿主版本号代替插件更新证据。
 字段、`onEdit` 回执、草稿保护和输入预算只在
 [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md#22-内容卡片与原位编辑) 维护；旧表单 `onInput` 不变。
 连接设置的分组和显式保存见 [`plugin-marketplace.md`](./plugin-marketplace.md#preferences)。

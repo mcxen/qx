@@ -34,7 +34,7 @@
 | `src/plugin/PluginWorkbenchCards.tsx`、`workbenchEditSession.ts` | 保序自适应卡片与宿主本地草稿会话 |
 | `src/plugin/pluginCommandDispatch.ts` | 宿主命令执行与真实完成结果；设置检查与旧调度共用 |
 | `src/plugin/workbenchCache.ts` | 呈现快照的 scope key、内存热副本、single-flight 读取与有界持久化 |
-| `src/plugin/workbenchKeyboard.ts` | 隐藏 iframe 键盘转交策略 |
+| `src/plugin/workbenchKeyboard.ts` | 隐藏 iframe 键盘转交策略与宿主已渲染集合的导航适配 |
 | `src/hooks/qxGridNavigation.ts` | Workbench 与内置网格共用的二维索引纯函数 |
 | `src/plugin/PluginWorkbenchCollection.tsx` | List/Gallery 虚拟化、完整集合索引与视口滚入 |
 | `src/plugin/PluginWorkbenchView.tsx` | Qx 原生 Detail/Form/Chart/Replies 呈现；不含插件业务逻辑 |
@@ -108,6 +108,9 @@ bridge 先核对当前 panel 的 `pluginId + runtimeId + contentWindow` 和消�
 request/session/item，任何旧 iframe、后台 worker 或已替换请求的回包都不能结束当前编辑。
 编辑状态和草稿不进入 Workbench 持久快照。插件必须从完整源正文建立领域编辑会话，自己维护
 CAS / idempotency；Qx 不解释 BluePrint `baseVersion`，也不为未来 memos 硬编码服务行为。
+宿主编辑回执默认等待 30 秒；当前 BluePrint 单次请求预算为 25 秒。超时不等于上游回滚，
+插件必须按自身幂等契约处理不确定结果；已确认成功的 BluePrint 保存提供短期有界会话回放，
+相同正文重试不再次写入。冲突保持草稿，不隐式重试覆盖新版本。
 公开字段及交互见 [`plugin-ui-guidelines.md`](../public/doc/plugin-ui-guidelines.md)。
 
 设置连接检查沿既有受限命令路径运行。`runCommand` 保留旧的 `Promise<void>` 契约；宿主设置使用
@@ -149,7 +152,7 @@ Workbench `tabs[]` 与 `filters[]` 统一投影到 QxShell 固定的 Top Bar Sel
 ```text
 pointer click / host keydown / hidden iframe forwarded key
   → PluginHost responder
-  → List: linear navigation | Gallery: rendered-column 2D navigation
+  → List: linear navigation | Gallery: rendered-column 2D navigation | Cards: Masonry neighbors
   → optimistic selectedId + scrollIntoView
   → qx:workbench:event/select
   → plugin handler updates business state and republishes
@@ -158,6 +161,7 @@ pointer click / host keydown / hidden iframe forwarded key
 - Workbench 可见时，业务 iframe 保留运行但使用 `display:none` 退出布局与 pointer hit-testing；鼠标只能命中宿主 List/Gallery。
 - iframe 若在首次发布前暂时持有焦点，集合键通过 `qx:host-keydown` 重新派发到所属 iframe 元素，只进入当前 QxShell；后台 worker 无法劫持可见面板按键。
 - List 使用上下/Page/Home/End；Gallery 使用实际 CSS 网格列数做左右/上下二维移动。搜索框有文字时左右保留 caret，空查询时左右浏览 Gallery；IME 与带修饰键事件始终让给编辑器/系统。
+- Cards 按源顺序向最短列放置自然高度卡片，使用完整集合几何计算邻居：上下走同列相邻项，左右走相邻列顶部位置最近的项；无候选保持选择。宿主渲染器在保留挂载的选中卡片上发布内部邻居索引，Shell 适配读取后沿原选择端口派发；插件不提供坐标、邻居索引或 DOM。未完成测量时保持选择，不回退为等高行索引。
 - List / Gallery 浏览态占满 Main Area；pointer 激活或 Enter 打开带详情条目后，宿主挂载左集合 + 右详情并把焦点交给 detail region。Esc 卸载详情并恢复集合焦点；query/tab 变化也关闭旧详情。无条目但存在面板级 detail 时直接使用全宽详情。
 - Enter 对带详情条目优先打开详情，无详情时使用同一 primary action；Cmd/Ctrl+K 使用同一 QxShell Actions；自定义 panel 仍自管其 DOM 内交互，但不得注册进程级集合键或 Esc。
 

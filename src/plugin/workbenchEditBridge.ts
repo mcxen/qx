@@ -11,6 +11,11 @@ type PendingEdit = {
   resolve: (result: PluginWorkbenchEditResult) => void;
 };
 
+// BluePrint's start/save handlers each perform one MCP request with a 25 s
+// transport deadline. Keep a small response margin so the host does not
+// report a timeout while the plugin is still delivering that response.
+export const WORKBENCH_EDIT_TIMEOUT_MS = 30_000;
+
 export function workbenchEditError(
   event: PluginWorkbenchEditEvent,
   message: string,
@@ -29,7 +34,7 @@ export function workbenchEditError(
 export class WorkbenchEditBridge {
   private readonly pending = new Map<string, PendingEdit>();
 
-  constructor(private readonly timeoutMs = 15_000) {}
+  constructor(private readonly timeoutMs = WORKBENCH_EDIT_TIMEOUT_MS) {}
 
   request(
     pluginId: string,

@@ -22,15 +22,40 @@ const { outputFiles } = await build({
     },
   }],
 });
+const { outputFiles: editBridgeOutputFiles } = await build({
+  entryPoints: ["src/plugin/workbenchEditBridge.ts"],
+  bundle: true,
+  write: false,
+  format: "esm",
+  platform: "node",
+});
 
 const listeners = new Map();
 globalThis.window = {
   location: { origin: "tauri://localhost" },
   addEventListener(type, callback) { listeners.set(type, callback); },
+  setTimeout,
+  clearTimeout,
 };
 globalThis.document = { documentElement: {} };
 globalThis.MutationObserver = class { observe() {} };
 const bridge = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`);
+const editBridgeModule = await import(`data:text/javascript;base64,${Buffer.from(editBridgeOutputFiles[0].text).toString("base64")}`);
+assert.equal(editBridgeModule.WORKBENCH_EDIT_TIMEOUT_MS, 30_000, "the host deadline covers BluePrint's 25 s transport timeout");
+const delayedBridge = new editBridgeModule.WorkbenchEditBridge(5);
+const delayedEvent = {
+  phase: "save", itemId: "note-1", sessionId: "edit-timeout", requestId: "request-timeout", value: "body",
+};
+const delayedRequest = delayedBridge.request("notes", delayedEvent, () => {});
+await new Promise((resolve) => setTimeout(resolve, 20));
+const delayedResult = await delayedRequest;
+assert.equal(delayedResult.status, "error", "an unanswered request eventually returns a bounded error");
+assert.equal(delayedResult.message, "The plugin did not respond in time.");
+assert.equal(delayedBridge.resolve({
+  pluginId: "notes",
+  runtimeId: "runtime-a",
+  result: { ...delayedEvent, status: "saved" },
+}), false, "a response arriving after timeout cannot be replayed into a closed request");
 const received = [];
 const stop = bridge.subscribePluginWorkbenchEdit((payload) => received.push(payload));
 const posted = [];

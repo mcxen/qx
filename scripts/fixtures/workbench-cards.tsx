@@ -25,10 +25,14 @@ function Fixture() {
   const [selected, setSelected] = useState(0);
   const [compact, setCompact] = useState(false);
   const [event, setEvent] = useState("No interaction");
+  const [editing, setEditing] = useState<string>();
+  const [draft, setDraft] = useState("");
   return <main style={{ padding: 16, height: "100vh", overflow: "auto", background: "var(--qx-bg-100)" }}>
     <nav style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
       {[320, 640, 980].map((size) => <Button key={size} onClick={() => setWidth(size)}>{size}px</Button>)}
       <Button onClick={() => setCompact(!compact)}>Density</Button>
+      <Button onClick={() => setSelected(notes.length - 1)}>Last card</Button>
+      <Button onClick={() => setSelected(0)}>First card</Button>
       <Button onClick={() => {
         const dark = document.documentElement.dataset.theme !== "dark";
         document.documentElement.dataset.theme = dark ? "dark" : "light";
@@ -40,7 +44,13 @@ function Fixture() {
       <PluginWorkbenchCards pluginId="fixture" state={normalizePluginWorkbenchState({ items: notes, layout: { kind: "cards", density: compact ? "compact" : "comfortable" } })}
         selectedIndex={selected} listTitle="Development cards" loadingText="Loading" emptyText="No cards" regionId="fixture-cards"
         onSelect={(id) => { setSelected(notes.findIndex((note) => note.id === id)); setEvent(`Selected ${id}`); }}
-        onEdit={(item) => setEvent(`Edit requested for ${item.id}`)}
+        editingItemId={editing}
+        renderEditor={(item) => editing === item.id ? <section>
+          <textarea aria-label="Fixture draft" value={draft} rows={Math.min(24, Math.max(4, draft.split("\n").length))}
+            style={{ width: "100%", resize: "vertical" }} onChange={(e) => setDraft(e.target.value)} />
+          <Button onClick={() => setEditing(undefined)}>Cancel fixture edit</Button>
+        </section> : null}
+        onEdit={(item) => { setEditing(item.id); setDraft(item.card?.body || ""); setEvent(`Edit requested for ${item.id}`); }}
         onOpenLink={(url) => setEvent(`Link activated: ${url}`)} />
     </div>
   </main>;

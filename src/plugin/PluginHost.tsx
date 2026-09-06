@@ -56,7 +56,8 @@ import {
   localizePluginPanelTitle,
 } from "./pluginLabels";
 import { pluginSupportsPlatform } from "./platform";
-import { resolveQxGridIndex, shouldHandleQxGridKey } from "../hooks/qxGridNavigation";
+import { shouldHandleQxGridKey } from "../hooks/qxGridNavigation";
+import { resolveRenderedWorkbenchIndex } from "./workbenchKeyboard";
 import { focusQxRegion, qxMasterDetailNavigation } from "../hooks/useQxMasterDetail";
 import {
   hasPluginIslandSession,
@@ -227,14 +228,9 @@ export function PluginPanelViewport() {
     const gallery = containerRef.current
       ?.closest<HTMLElement>(".qx-shell")
       ?.querySelector<HTMLElement>(".qx-host-workbench-gallery, .qx-host-workbench-cards");
-    const renderedColumns = gallery
-      ? Number(gallery.dataset.qxGridColumns) || window.getComputedStyle(gallery).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length
-      : 0;
-    const nextIndex = resolveQxGridIndex({
-      key: event.key,
-      index: selectedIndex,
-      count: items.length,
-      columns: renderedColumns || workbench.layout.columns || 4,
+    const nextIndex = resolveRenderedWorkbenchIndex({
+      element: gallery, kind: workbench.layout.kind, key: event.key,
+      index: selectedIndex, count: items.length, columns: workbench.layout.columns,
     });
     if (nextIndex === null) return;
     event.preventDefault();
