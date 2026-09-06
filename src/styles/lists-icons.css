@@ -1415,6 +1415,7 @@
 .qx-host-workbench-form-controls .qx-select,
 .qx-host-workbench-form-controls .qx-shadcn-select-trigger {
   width: 100%;
+  max-width: 100%;
 }
 
 .qx-host-workbench-form-controls input:focus,

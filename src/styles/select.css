@@ -1,12 +1,14 @@
 .qx-select {
   position: relative;
-  width: 100%;
+  width: fit-content;
+  max-width: min(100%, 22rem);
   min-width: 0;
   -webkit-app-region: no-drag;
 }
 
 .qx-inline-select {
-  width: 160px;
+  width: fit-content;
+  max-width: min(100%, 220px);
 }
 
 /* Compact triggers are reserved for inline toolbars and the plugin detail
@@ -169,6 +171,10 @@
   white-space: nowrap;
 }
 
+.qx-shadcn-select-trigger > svg {
+  flex-shrink: 0;
+}
+
 .qx-shadcn-select-content,
 .qx-shadcn-popover-content,
 .qx-shadcn-dropdown-content {
@@ -185,6 +191,17 @@
   box-shadow: 0 18px 42px color-mix(in srgb, var(--qx-shadow) 18%, transparent);
   overflow: hidden;
   transform-origin: var(--radix-popper-transform-origin, var(--radix-popover-content-transform-origin, center));
+}
+
+/* Menus can reveal more text than their compact trigger, within the viewport. */
+.qx-shadcn-select-content {
+  min-width: min(24rem, var(--radix-select-trigger-width), var(--radix-select-content-available-width));
+  max-width: min(24rem, var(--radix-select-content-available-width));
+}
+
+.qx-shadcn-select-item > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* shadcn-style enter/exit (Radix Presence waits for animationend on close). */

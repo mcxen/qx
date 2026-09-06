@@ -60,7 +60,7 @@ import {
   buildLauncherResultRows,
   selectedLauncherItem,
 } from "./launcher/resultRows";
-import { bestMatchTier, MatchTier, textMatchesQuery, type MatchTierValue } from "./search/rankResults";
+import { bestMatchTier, MatchTier, type MatchTierValue } from "./search/rankResults";
 import {
   frequentMatchingEntries,
   recordSearchResultClick,
@@ -74,11 +74,11 @@ import { prefetchClipboardOpen } from "./modules/clipboard/openSession";
 import { tryModuleEscapeStep } from "./hooks/moduleEscapeHost";
 import { useQxModuleShell } from "./hooks/useQxModuleShell";
 import { useLocale, useT } from "./i18n";
+import { localizePluginName } from "./plugin/pluginLabels";
 import {
-  localizePluginCommandTitle,
-  localizePluginName,
-  localizePluginPanelTitle,
-} from "./plugin/pluginLabels";
+  pluginSearchMetadataFingerprint,
+  searchPluginEntries,
+} from "./search/pluginSearchProvider";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import {
   getQxDesktopPlatform,
@@ -700,9 +700,8 @@ function App() {
   useEffect(() => {
     recordRecentView(String(tab));
   }, [tab]);
-  const { load: loadPlugins, findCommands } = usePluginRegistry();
-  const pluginCommandCount = usePluginRegistry((state) => state.commands.length);
-  const pluginPanelCount = usePluginRegistry((state) => Object.keys(state.panels).length);
+  const { load: loadPlugins } = usePluginRegistry();
+  const pluginSearchMetadataVersion = usePluginRegistry(pluginSearchMetadataFingerprint);
   const phase1Ref = useRef(false);
   const autoUpdateStartedRef = useRef(false);
   const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -712,7 +711,7 @@ function App() {
   /** Ignore blur-to-hide for a short window after first-launch show (focus can flicker). */
   const ignoreBlurUntilRef = useRef(0);
   const emptyLauncherLoadInFlightRef = useRef(false);
-  const pluginSearchVersionRef = useRef("");
+  const pluginSearchVersionRef = useRef(pluginSearchMetadataVersion);
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchSettling, setIsSearchSettling] = useState(false);
   const [mountedTab, setMountedTab] = useState(tab);
@@ -2243,85 +2242,27 @@ function App() {
 
       const entries: AppEntry[] = [];
 
-      // Also match installed plugin panel names/keywords as navigation entries
+      // Registered panels and commands are the sole plugin search source.
+      // Manifest-only lazy providers use the same metadata projection as eager
+      // runtimes, so panel-only plugins are searchable before their iframe is
+      // started while disabled/incompatible plugins stay out of the registry.
       const pluginState = usePluginRegistry.getState();
-      const pluginMatches = findCommands(q).filter((match) => {
-        const pluginId = match.command.pluginId;
-        if (pluginId.startsWith("builtin:")) {
-          if (!isModuleSearchEnabled(pluginId.slice("builtin:".length))) return false;
-        }
-        return true;
-      });
-      const syntheticEntries: AppEntry[] = [];
       const settingsState = useSettingsStore.getState().settings;
-
-      if (q.trim()) {
-        for (const [pluginId, panel] of Object.entries(pluginState.panels)) {
-          const plugin = pluginState.plugins.find((item) => item.id === pluginId);
-          const nameSource = panel.pluginName || pluginId;
-          const titleSource = panel.title || pluginId;
-          const localizedPanelName = plugin
-            ? localizePluginPanelTitle(plugin, panel, t, locale)
-            : titleSource;
-          const kw = panel.keywords || [];
-          const builtinModuleId = pluginId.startsWith("builtin:") ? pluginId.slice("builtin:".length) : null;
-          if (builtinModuleId && !isModuleSearchEnabled(builtinModuleId)) continue;
-          if (
-            textMatchesQuery(q, localizedPanelName, nameSource, titleSource, ...kw) ||
-            itemMatchesSearchMetadata(settingsState, pluginMetadataKey(pluginId), q) ||
-            (builtinModuleId ? itemMatchesSearchMetadata(settingsState, moduleMetadataKey(builtinModuleId), q) : false)
-          ) {
-            syntheticEntries.push({
-              name: localizedPanelName,
-              path: builtinModuleId ? `__qx:${builtinModuleId}` : `__qx:plugin:${pluginId}`,
-              icon: panel.icon || `builtin:${pluginId}`,
-              kind: "command",
-              moduleId: builtinModuleId ?? undefined,
-            });
-          }
-        }
-        // Also match panel-less plugins (commands-only) by name/description/keywords
-        for (const p of pluginState.plugins) {
-          if (p.id.startsWith("builtin:")) continue;
-          if (pluginState.panels[p.id]) continue;
-          if (!p.enabled) continue;
-          const nameSource = p.name;
-          const descSource = p.description || "";
-          const localizedName = localizePluginName(p, t, locale);
-          const manifestKw = p.manifest?.keywords || [];
-          if (
-            textMatchesQuery(q, p.id, localizedName, nameSource, descSource, ...manifestKw) ||
-            itemMatchesSearchMetadata(settingsState, pluginMetadataKey(p.id), q)
-          ) {
-            syntheticEntries.push({
-              name: localizedName,
-              path: `__qx:plugin:${p.id}`,
-              icon: `builtin:${p.id}`,
-              kind: "command",
-            });
-          }
-        }
-      }
-
-      syntheticEntries.push(
-        ...pluginMatches.map((m) => ({
-          name: localizePluginCommandTitle(
-            pluginState.plugins.find((plugin) => plugin.id === m.command.pluginId) ?? {
-              id: m.command.pluginId,
-              name: m.command.pluginName,
-            },
-            m.command,
-            t,
-            locale,
-          ),
-          path: `__qx:cmd:${m.command.pluginId}:${m.command.name}`,
-          icon: m.command.icon || m.command.pluginIcon || `builtin:${m.command.pluginId}`,
-          kind: "command" as const,
-          moduleId: m.command.pluginId.startsWith("builtin:")
-            ? m.command.pluginId.slice("builtin:".length)
-            : undefined,
-        })),
-      );
+      const syntheticEntries: AppEntry[] = searchPluginEntries({
+        query: q,
+        plugins: pluginState.plugins,
+        commands: pluginState.commands,
+        panels: pluginState.panels,
+        locale,
+        t,
+        isModuleSearchEnabled,
+        matchesMetadata: (pluginId, moduleId) => (
+          itemMatchesSearchMetadata(settingsState, pluginMetadataKey(pluginId), q)
+          || (moduleId
+            ? itemMatchesSearchMetadata(settingsState, moduleMetadataKey(moduleId), q)
+            : false)
+        ),
+      });
 
       // Module surfaces load off the critical path (see loadModuleSurfaceProviders).
       // Calculator is an independent async provider (worker / microtask) so typing
@@ -2426,7 +2367,6 @@ function App() {
     },
     [
       applyResults,
-      findCommands,
       finishSearchActivity,
       loadModuleSurfaceProviders,
       loadSlowSearchProviders,
@@ -2484,14 +2424,14 @@ function App() {
   }, [query, settings.search_metadata, setResults, startSearchTransition]);
 
   useEffect(() => {
-    const version = `${pluginCommandCount}:${pluginPanelCount}`;
-    if (pluginSearchVersionRef.current === version) return;
-    pluginSearchVersionRef.current = version;
+    if (pluginSearchVersionRef.current === pluginSearchMetadataVersion) return;
+    pluginSearchVersionRef.current = pluginSearchMetadataVersion;
     // Only re-run when the user is actively searching — empty home list must
     // not refetch just because plugins finished loading.
     if (tab !== "launcher" || !query.trim()) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     void doSearch(query);
-  }, [pluginCommandCount, pluginPanelCount, query, tab, doSearch]);
+  }, [pluginSearchMetadataVersion, query, tab, doSearch]);
 
   useEffect(() => {
     const onUnhandledEscape = (event: KeyboardEvent) => {

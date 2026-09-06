@@ -116,6 +116,11 @@ export function pickDisplayName(
   }
 
   // External plugin panel / command entries
+  // Search providers already localize command titles. Keep the executable
+  // action's identity instead of replacing every action with its plugin name.
+  if (item.path.startsWith("__qx:cmd:") && !item.path.startsWith("__qx:cmd:builtin:")) {
+    return item.display_name?.trim() || item.name;
+  }
   const pluginId = pluginIdFromAppPath(item.path);
   if (pluginId && !pluginId.startsWith("builtin:")) {
     const plugin = plugins.find((p) => p.id === pluginId);

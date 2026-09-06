@@ -1,11 +1,15 @@
 import {
   normalizePluginWorkbenchState,
   normalizePluginWorkbenchItemsUpdate,
+  normalizePluginWorkbenchEditResult,
   type PluginWorkbenchEvent,
+  type PluginWorkbenchEditPayload,
   type PluginWorkbenchPayload,
 } from "./workbenchTypes";
 import { currentPluginThemePayload } from "./pluginTheme";
 import { openSettings } from "../modules/settings/openSettings";
+
+export type { PluginWorkbenchEditPayload };
 
 export interface PanelRuntimeSession {
   iframe: HTMLIFrameElement;
@@ -119,10 +123,12 @@ export type PluginChromePayload = {
 type ItemActionsListener = (payload: PluginItemActionsPayload) => void;
 type ChromeListener = (payload: PluginChromePayload) => void;
 type WorkbenchListener = (payload: PluginWorkbenchPayload) => void;
+type WorkbenchEditListener = (payload: PluginWorkbenchEditPayload) => void;
 
 const itemActionsListeners = new Set<ItemActionsListener>();
 const chromeListeners = new Set<ChromeListener>();
 const workbenchListeners = new Set<WorkbenchListener>();
+const workbenchEditListeners = new Set<WorkbenchEditListener>();
 
 export function subscribePluginItemActions(listener: ItemActionsListener): () => void {
   ensurePluginShellBridge();
@@ -140,6 +146,12 @@ export function subscribePluginWorkbench(listener: WorkbenchListener): () => voi
   ensurePluginShellBridge();
   workbenchListeners.add(listener);
   return () => workbenchListeners.delete(listener);
+}
+
+export function subscribePluginWorkbenchEdit(listener: WorkbenchEditListener): () => void {
+  ensurePluginShellBridge();
+  workbenchEditListeners.add(listener);
+  return () => workbenchEditListeners.delete(listener);
 }
 
 function postToPluginPanel(pluginId: string, message: Record<string, unknown>): void {
@@ -252,6 +264,14 @@ export function ensurePluginShellBridge(): void {
         runtimeId,
         update: normalizePluginWorkbenchItemsUpdate(data.update),
       });
+      return;
+    }
+
+    if (data.type === "qx:plugin:workbench:edit-response") {
+      if (!pluginId || !runtimeId || !isPanelRuntimeSource(pluginId, runtimeId, event.source)) return;
+      const result = normalizePluginWorkbenchEditResult(data.result);
+      if (!result) return;
+      publishSafely(workbenchEditListeners, { pluginId, runtimeId, result });
       return;
     }
 

@@ -15,6 +15,8 @@
 | `src/plugin/registry.ts` | Zustand store：加载/卸载/启用/禁用/搜索/快捷键 |
 | `src/plugin/backgroundActivity.ts` | **后台 interval 端口**：job 快照、last/next run、running；UI 标签唯一数据源 |
 | `src/plugin/runtime.ts` | iframe 沙箱生命周期（load/unload）、命令注册、面板 session 挂载 |
+| `src/plugin/pluginSearchMetadata.ts` | Manifest、Panel、Command 共用的纯搜索元数据投影 |
+| `src/search/pluginSearchProvider.ts` | 只消费已注册插件条目的 Launcher 搜索 provider 与窄 metadata fingerprint |
 | `src/plugin/pluginRuntimeHtml.ts` | iframe bootstrap HTML：import map、context/RPC 字面量、Workbench 注入 |
 | `src/plugin/pluginShellBridge.ts` | panel session registry、Workbench/Chrome/Actions 消息信任边界与宿主订阅 |
 | `src/plugin/pluginTheme.ts` | Custom Panel 主题 payload、公开语义 token 白名单与 iframe apply runtime |
@@ -26,6 +28,11 @@
 | `src/plugin/pluginSdkFactory.ts` | CLI→GUI helpers + Workbench kit 的单一、自包含实现；host 调用并序列化进 iframe |
 | `src/plugin/cliWorkbench.ts` | SDK factory 的类型化 host wrapper + iframe bootstrap 字符串 |
 | `src/plugin/workbenchTypes.ts` | 声明式 Workbench 数据契约 + iframe 信任边界归一化 |
+| `src/plugin/workbenchEditTypes.ts` | 原位编辑的窄数据契约、UTF-8 预算及回执归一化 |
+| `src/plugin/useWorkbenchEditBridge.ts`、`workbenchEditBridge.ts` | 当前面板编辑 RPC 生命周期、超时与相关回执 |
+| `src/plugin/useWorkbenchInteractions.ts`、`useWorkbenchNavigationGuard.ts` | 集合乐观更新、搜索去抖与统一草稿导航闸门 |
+| `src/plugin/PluginWorkbenchCards.tsx`、`workbenchEditSession.ts` | 保序自适应卡片与宿主本地草稿会话 |
+| `src/plugin/pluginCommandDispatch.ts` | 宿主命令执行与真实完成结果；设置检查与旧调度共用 |
 | `src/plugin/workbenchCache.ts` | 呈现快照的 scope key、内存热副本、single-flight 读取与有界持久化 |
 | `src/plugin/workbenchKeyboard.ts` | 隐藏 iframe 键盘转交策略 |
 | `src/hooks/qxGridNavigation.ts` | Workbench 与内置网格共用的二维索引纯函数 |
@@ -95,7 +102,19 @@ Workbench 的状态所有权和呈现性能分为三层，禁止重新合并成�
 集合；插件不得查询或依赖某个 item DOM 是否常驻。宿主缓存也只保存已规范化的成功呈现快照，
 不会代替插件保存原始响应、认证状态或后续动作所需的本地文件。
 
-不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作/表单控件数量和文本长度。item `id` 是强制、稳定、唯一的业务键；缺失或重复 item/tab/control id 在信任边界直接拒绝，tabs 至多一个 active，不保留 title/index 回退。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，URL 超限整体拒绝而非截断，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。详情图片可声明 `aspectRatio/zoomable/caption`，但加载失败、自适应窄栏和全尺寸 Dialog 均由宿主共享 `QxMediaViewer` 呈现；有序图片集合的方向适配、超长图滚动、缩放、拖拽平移及前后各两张的预取/预解码属于同一媒体协议。宿主解码缓存按最后访问时间保留 15 分钟并以 24 张为内存上限；缓存淘汰不改变集合。插件 iframe CSS 不能也不得覆盖宿主详情，也不得另建 lightbox 或预加载队列。`item.status/detail.status` 是保留旧内容时的局部 loading/success/error，并通过共用 activity 字段接受真实 `progress` 或 `completed / total / failed`，不能用清空集合或模拟百分比替代刷新反馈。详情表单只接受 `text` / `number` / `select`，变更以 `onInput` 纯数据事件回传；管理动作通过 `form.actions` 或连续 control 的稳定 `group.id + group.action` 声明，仍由宿主带 selectedId 投递 `onAction`。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
+原位编辑与既有表单 `onInput(id, value)` 分离。宿主通过 `onEdit` 事件请求开始、保存及取消；逐键草稿输入保留在宿主本地，不产生逐键 RPC。协议中的 `input` 阶段仅供兼容处理，不代表上游写入；
+SDK 为 handler 的纯数据结果补齐条目、编辑会话和请求身份，再交回 Shell bridge。
+bridge 先核对当前 panel 的 `pluginId + runtimeId + contentWindow` 和消息来源，编辑会话再核对
+request/session/item，任何旧 iframe、后台 worker 或已替换请求的回包都不能结束当前编辑。
+编辑状态和草稿不进入 Workbench 持久快照。插件必须从完整源正文建立领域编辑会话，自己维护
+CAS / idempotency；Qx 不解释 BluePrint `baseVersion`，也不为未来 memos 硬编码服务行为。
+公开字段及交互见 [`plugin-ui-guidelines.md`](../public/doc/plugin-ui-guidelines.md)。
+
+设置连接检查沿既有受限命令路径运行。`runCommand` 保留旧的 `Promise<void>` 契约；宿主设置使用
+同一执行器的 `runCommandWithResult` 获取真实 ok/error，不引入第二个插件执行或权限通道。
+`preferenceGroups` 必须同时经 Rust Manifest 扫描/安装与前端投影保留，不得只新增 TypeScript 字段。
+
+不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作/表单控件数量和文本长度。item `id` 是强制、稳定、唯一的业务键；缺失或重复 item/tab/control id 在信任边界直接拒绝，tabs 至多一个 active，不保留 title/index 回退。`layout.kind` 可选 `list`（默认）、`gallery` 或正文优先的 `cards`；Gallery 图片只接受 `https://` / `data:image/`，URL 超限整体拒绝而非截断，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。详情图片可声明 `aspectRatio/zoomable/caption`，但加载失败、自适应窄栏和全尺寸 Dialog 均由宿主共享 `QxMediaViewer` 呈现；有序图片集合的方向适配、超长图滚动、缩放、拖拽平移及前后各两张的预取/预解码属于同一媒体协议。宿主解码缓存按最后访问时间保留 15 分钟并以 24 张为内存上限；缓存淘汰不改变集合。插件 iframe CSS 不能也不得覆盖宿主详情，也不得另建 lightbox 或预加载队列。`item.status/detail.status` 是保留旧内容时的局部 loading/success/error，并通过共用 activity 字段接受真实 `progress` 或 `completed / total / failed`，不能用清空集合或模拟百分比替代刷新反馈。详情表单接受 `text` / `textarea` / `number` / `select`，变更以 `onInput` 纯数据事件回传；管理动作通过 `form.actions` 或连续 control 的稳定 `group.id + group.action` 声明，仍由宿主带 selectedId 投递 `onAction`。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
 
 `mountWorkbench()` 返回轻量 controller：`update(patch)` 保留未给出的顶层字段，
 `updateItems({ upsert, removeIds, order, selectedId })` 在 iframe SDK 内按稳定 id 合并，
@@ -179,6 +198,14 @@ Rust: list_installed_plugins()  ──►  PluginRegistry.load()
                                          ▼
                          注册 commands[] / panel 到 store
 ```
+
+Launcher 的插件入口只读取注册表中的 `commands[]` 与 `panel`。eager runtime 和
+Manifest-only lazy provider 都经 `pluginSearchMetadata` 合并同一组 ID、名称、本地化名称、
+面板标题和各级 `keywords`，再由 `pluginSearchProvider` 计算 `matchScore`；因此面板可以在
+懒加载前命中，`commands: []` 的 panel-only 插件也能搜索。禁用或平台/版本不兼容的插件不会
+注册这些条目，panel-less 插件不会被宿主伪造一个根入口。provider 只做内存纯投影，不启动
+插件、不发 IPC；Launcher 活动查询以该注册元数据的稳定 fingerprint 触发更新，而不是依赖
+后台状态或仅依赖 command/panel 数量。
 
 `read_plugin_modules` 返回安装目录内受大小与数量限制的 `.js` / `.mjs` 模块集合。
 宿主解析静态导入、re-export 和字符串形式的动态导入，将包内相对路径改写为隔离的

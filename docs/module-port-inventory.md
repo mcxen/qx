@@ -113,7 +113,7 @@
 | **unsplash** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist last search | 全宽 Gallery → 宿主左图库/右详情；item/panel Actions；与 Bing 复用宿主壁纸端口 |
 | **external-display-control** | ✅ | ✅ | `context.system.displayBrightness()` / `setDisplayBrightness()`；macOS 使用 DisplayServices + DDC/CI，Windows 使用 WMI + Win32 Monitor Configuration | — | 无 |
 | **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench List（缩略图）** + http/system wallpaper/file ports | persist SWR + 宿主 Workbench 图片磁盘缓存 + 20 槽壁纸文件环 | 宿主左侧缩略图列表/右侧稳定 landscape 高清详情；重复设置同一张壁纸复用本地文件；每日任务声明 `backgroundCategory: wallpaper`，由宿主统一暂停/恢复；item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
-| **raycast-calendar** | ✅ | ✅ | 冻结的 Raycast compatibility shim | — | 仅保留历史兼容，不是新插件样板；新增功能前应按 Qx 原生 Workbench/Actions/ports 重实现 |
+| **raycast-calendar** | ✅ | ✅ | 原生 Qx `mountActions` + locale/clipboard/openUrl；Main Area 专用七列月历 | 离线农历与官方年度数据 | 月历显示农历（含闰月）及休/班标记，下方全年调休表；已收录 2026 中国大陆安排，其他年份明确缺失。保留原插件 ID/偏好，不再依赖 Raycast shim |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island + tray | persist SWR | 不用 api.github.com；解析 actions/releases 网页；活跃部署以原生托盘子菜单显示预计百分比与用时 |
 | **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports + `homeWidgets` | — | CPU/Memory/Power/Network 通过 Manifest 与宿主 Home 组件关联，卡片仍由 Qx 共享采样总线绘制；Hardware 面板同轮 5 秒刷新且整轮 single-flight，静态规格与 Storage 保持 runtime cache；Windows 端口直接使用 Win32，不启动 PowerShell/WMI 采样进程；Processes 可操作且结束需 `YES` 确认；无 shell、自绘 Home DOM 或 CSS |
 

@@ -205,7 +205,7 @@ QxShell 的纵向结构高度不得因为窗口左右缩窄、文字变长、筛
 | 键盘 Esc 级联 | `useEscBack` → `onKeyDown` / `stepBack` | 每按一次退一层：inner → query → leave module；命中后 `preventDefault` + `stopPropagation` |
 | Shell 最终兜底 | `QxShell` 内置 | 若模块 `onKeyDown` 未消费 Esc，则触发 `escapeAction.onClick`（应与 `stepBack` 同语义） |
 | Host 阶梯兜底 | `App.performHostEscape` + `moduleEscapeHost` | 焦点不在 Shell 内时仍生效：先关闭灵动岛最近浏览切换器，再 `tryModuleEscapeStep`（`useQxModuleShell` 注册的 `stepBack`，含 RSS 文章列表→源列表），再 leave module → 清空 launcher query → hide。模块已 `preventDefault` 时不二次步进。**禁止**非 launcher 时直接 `setTab("launcher")` 跳过模块内阶梯 |
-| 搜索 / 内容筛选 / trailing | `search` / `topbarFilters` / `trailing` | 搜索在 Top Bar 主列；内容筛选只发布数据给宿主固定 Select；`trailing` 仅保留不可归入筛选或 Actions 的短状态 |
+| 搜索 / 内容筛选 / trailing | `search` / `topbarFilters` / `trailing` | 搜索在 Top Bar 主列；内容筛选只发布数据给宿主适宽 Select；`trailing` 仅保留不可归入筛选或 Actions 的短状态 |
 | 状态 | `island` / `customIsland` | 轻量任务与位置信息，见 Bottom Island |
 | 动作 | `actions` + `primaryActionId` | 单一动作集合；稳定 ID 指定 Bottom Bar 与 Enter 的主动作，Shell 自行生成 Actions 入口 |
 | **i18n** | `useT(key, englishFallback)` | **所有用户可见文案**（标题、按钮、空态、toast、confirm）必须可翻译；中文进 `i18n.ts` 的 `zh` 表 |
@@ -383,7 +383,8 @@ Advanced → Diagnostics 提供独立的 **Diagnostic Logging** 开关，默认�
 - 常规 Button、Input、Select、ToggleGroup/Tabs 的外框高度统一为 `32px`；紧凑工具栏允许使用 `28px`，Shell Top Bar 搜索与筛选统一为 `36px`。业务 CSS 不得再定义第四套默认控件高度。
 - `update-progress` 等独立透明任务窗口必须在 WebView 边缘保留 `8px` 透明 inset，由单一内容表面使用 `--qx-effective-radius`（默认 `8px`）裁切和绘制阴影；禁止“直角原生阴影 + 内层大圆角卡片”的双层窗口。Windows 关闭透明无边框窗口的 DWM 方形阴影，按钮复用 Qx shadcn `Button` 的标准 `32px` 高度。
 - 常规控件横向内边距统一为 `10px`，正文统一为 `12px / 500`；选中态、当前段和主操作使用 `600`，普通控件不得默认使用 `700` 造成无差别加粗。
-- Settings 非堆叠行的 Select、SegmentedControl、Slider、数字组合输入统一占用 `220px` trailing 轨道；Switch、图标按钮等固有尺寸控件除外。窄窗口允许收缩，但同组控件必须保持等宽与右侧对齐。
+- Select 默认按当前文本适宽，保留箭头与内边距，长文本在上限内省略；菜单可比触发器宽并换行展示长选项，但不得超出窗口。Settings 非堆叠行的独立 Select 右对齐、最多 `220px`，不为短选项预留整条轨道。SegmentedControl、Slider、数字组合输入仍使用 `220px` trailing 轨道；连续表单字段可显式铺满列，窄窗口允许收缩。
+- Shell 与工具栏筛选按内容适宽并可收缩，不设置宽的最小值。插件安装来源与按钮紧邻排列，来源控件最多 `220px`，仅实际空间不足时换行。
 - 视觉型选项（例如应用图标）可使用更高的内容区，但其外框宽度、圆角、选中态、字号和字重仍必须遵守同一控件系统。
 - `Select` 使用 Radix Select；分隔项约定 `value: "---divider---"`，只渲染分隔线，不可选。
 - `Slider` 使用 Radix Slider，必须支持 pointer、键盘、ARIA。
@@ -444,7 +445,7 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - 搜索是 Top Bar 的主体内容，并保留一个独立、紧凑的输入控件表面；只允许一层边框、背景和 focus ring，不得再包裹第二张搜索卡片或装饰容器。
 - 列表型模块中，搜索文字的起始位置必须与主列表行标题列的起始位置对齐，允许误差不超过 `4px`；对齐对象是标题文字，不是列表外边缘或类型图标。列表行本身不得为「已删除的顶栏返回」预留大段 `padding-left`。
 - Launcher 等带 Context Panel 的两栏 Shell，搜索卡片右边缘必须与 Main Area / Context Panel 分割线对齐，允许误差不超过 `4px`；筛选控件位于右侧 trailing/context 轨道。
-- 搜索占据可用主列；内容筛选通过 `QxShell.topbarFilters` 发布 `id / label / value / options / onChange`，由宿主固定 Select 渲染在 trailing 列，不得把搜索缩成短输入框。
+- 搜索占据可用主列；内容筛选通过 `QxShell.topbarFilters` 发布 `id / label / value / options / onChange`，由宿主适宽 Select 渲染在 trailing 列，不得把搜索缩成短输入框。
 - 内置模块和插件都不得在 `trailing` 中自绘 Select、分段按钮或 tabs 充当内容筛选。刷新、新建、导入、录制等命令属于 Bottom Bar / Actions；短状态优先进入 Island，避免 Top Bar 重新变成工具按钮排。
 - 插件安装、升级、重装成功只通过 Bottom Island 显示一次结果，不得在插件库内容顶部再渲染重复成功横幅；下载、兼容、安装失败仍须在当前操作区域保留可读错误，同时可同步发布 Island 错误状态。
 - Quick Entries 不以成组图标占用 Top Bar；它们保留在 Context Panel、Actions 或专用入口中。Top Bar trailing 只保留筛选和当前上下文必需操作。
@@ -468,7 +469,7 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - macOS 首次引导覆盖普通 Shell 时，卡片顶部必须提供明确的窗口拖拽握区，卡片外空白背景也可移动无边框窗口；拖拽层不得覆盖按钮、开关、链接或正文交互。
 - 文件结果只按 leaf name 命中，不以父目录制造相关性。短 ASCII 词（四字符及以下，例如 `Siri`）只允许字面量与弱分隔匹配，不生成逐字符通配符；更长 ASCII 缩写及至少三字符的非 ASCII 查询才允许密集有序子序列召回。Cardinal、Spotlight 与 Everything 的候选必须经过同一后置匹配，分类内先按名称相关性、再按修改时间排序。
 - trailing 操作不得挤压搜索框到不可输入。
-- 声明式 Workbench 的 Top Bar 由宿主统一组合：搜索只占 `search` 主列，tabs 与 `filters[]` 统一投影为 `topbarFilters` 固定 Select；筛选变更继续通过 `onTab(id)` / `onFilter(id, value)` 回传。插件不得提供筛选 DOM 或 CSS。后台状态进入紧凑宿主状态或 Island；统计、loading 与 error 信息属于 Main Area 状态行，不得把 Top Bar 撑成第二层。
+- 声明式 Workbench 的 Top Bar 由宿主统一组合：搜索只占 `search` 主列，tabs 与 `filters[]` 统一投影为 `topbarFilters` 适宽 Select；筛选变更继续通过 `onTab(id)` / `onFilter(id, value)` 回传。插件不得提供筛选 DOM 或 CSS。后台状态进入紧凑宿主状态或 Island；统计、loading 与 error 信息属于 Main Area 状态行，不得把 Top Bar 撑成第二层。
 - Workbench 是结构化业务表面，不是 CLI 专用皮肤。CLI、HTTP 与 typed
   `context.system.*` 数据源均可复用 List / Gallery / Detail / tabs / Actions；
   Sysinfo 是系统 API 数据源的参考。只有图表、地图、画布等无法表达为宿主结构化
@@ -485,6 +486,10 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
   同进程再次进入插件先同步命中热快照，不得为同一 scope 重复 IPC 或先清空可用内容。敏感面板可显式禁用宿主缓存。
 - Workbench manifest command 完成后宿主必须发送 `commandComplete` 回执；插件据此单次重读共享持久化状态，不得用亚秒级磁盘轮询等待暂停、继续、停止等动作生效。
 - Workbench Gallery 使用当前响应式网格的真实列数做二维选择：←/→ 在同行移动，↑/↓ 跨行并尽量保持列位置。焦点留在搜索框时，上下键仍浏览网格；空查询的左右键也浏览网格，有查询文字时左右键才保留原生光标语义。
+- 内容优先的 Workbench Cards 与图片优先的 Gallery 是不同呈现模式。Cards 保留段落，标题、图片、标签和时间按实际数据出现；无图不保留封面占位，无标题不强造标题行。列宽、间距、圆角、密度和主题由宿主控制，不接受插件像素布局或 CSS。
+- Cards 按源顺序排列并响应式换列，不使用会打乱阅读顺序的高度排序。单击只选择；Enter 仍进入阅读；声明可编辑能力的卡片允许双击正文就地编辑，链接、图片和其他控件不得误触发编辑。
+- 原位编辑是独立宿主会话：从完整原文开始，不得用摘要或截断文本初始化后覆盖上游。输入仅修改草稿，不自动保存；Cmd/Ctrl+Enter 提交，IME 组合期间不提交。Esc 遇到未保存内容先询问保存、放弃或继续编辑，不得悄悄清空草稿。
+- 保存期间提供局部反馈，失败和版本冲突保留草稿；仅匹配当前条目及会话的成功回执才能结束编辑。切换条目/筛选/离开时不得绕过脏状态保护；编辑不会将列表滚回顶部或把焦点抢回搜索。
 - 二维索引计算必须复用 `qxGridNavigation`；Workbench 只是消费者，不得在插件宿主内维护一份专用网格算法。List / Detail 的 region id 与 navigation 复用 `useQxMasterDetail`，Actions 项复用 `QxShellAction + QxActionList`。
 - Workbench List / Gallery 默认以完整 Main Area 作为浏览画布；点击条目或对带详情的条目按 Enter 后，宿主统一切换为「左侧保留当前 List / Gallery 集合 + 右侧 Detail」的主从布局。Esc 先关闭 Detail 并恢复全宽集合，再清本地 query，最后离开模块；Context Panel 仍只承载 Actions。插件不得为 Bing、Unsplash、Brew 等消费者各自复制这套布局状态。
 - Workbench List / Gallery 的内容轨是稳定宿主表面：空数据或少量数据时仍占满当前浏览区或已打开详情时的左侧集合栏；空态必须跨满所属区域并垂直居中，不能缩成首个 grid cell 或随 item 数量塌缩。若发布的是无条目的面板级 `detail`，Detail 直接占满 Main Area，不保留无意义的空集合栏。

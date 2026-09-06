@@ -40,7 +40,7 @@ Use code to verify drift-prone details. Start with `src/plugin/qxPluginContract.
 
 ## Implementation invariants
 
-- Prefer declarative Workbench List/Gallery/Detail/Form/Chart. Use a Custom Panel only when the content cannot be expressed by host structures; it still publishes host Actions and consumes host theme tokens.
+- Prefer declarative Workbench List/Cards/Gallery/Detail/Form/Chart. Content-first notes use Cards; image-first collections use Gallery. Use a Custom Panel only when the content cannot be expressed by host structures; it still publishes host Actions and consumes host theme tokens.
 - Keep business source normalization, cache, pagination, authentication state, and action side effects inside the plugin. Publish only serializable presentation data; never depend on item DOM residency or host cache files.
 - Use stable unique item/action/tab/filter IDs. Let the host own selection chrome, navigation, Enter, Esc, Top/Bottom Bars, About, and responsive layout.
 - Paint cached/basic content promptly, refresh in the background, cancel obsolete work, and reject stale generations. `panel.destroy` clears requests, timers, listeners, media caches, and Island/Tray sessions.
@@ -48,6 +48,8 @@ Use code to verify drift-prone details. Start with `src/plugin/qxPluginContract.
 - Keep visible copy localized through Manifest mappings and `context.locale`; never store credentials, tokens, raw login responses, caches, or logs in the package.
 - For HTTP, CLI, invoke, downloads, or third-party services, call every promised upstream path with the final implementation before marketplace publication. Mocks and fixtures are regression evidence only.
 - If a public port or permission changes, update its canonical document and all first-party consumers in the same change. Do not patch consumers one by one around a broken port.
+- For editable cards, read the editing contract in `public/doc/plugin-ui-guidelines.md`. The host owns draft interaction and correlated acknowledgements; the plugin owns full source text, write authorization, conflict detection and idempotency. Never initialize a write from a truncated preview. Use BluePrint as the first reference consumer, not as a service-specific branch in Qx; a future memos adapter must verify its own upstream contract.
+- Connection preferences should use host-declared grouping and explicit save where supported, following `public/doc/plugin-marketplace.md`. A command being dispatched is not proof that authentication succeeded.
 
 ## Completion
 

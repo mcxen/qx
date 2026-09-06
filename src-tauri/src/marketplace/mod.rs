@@ -12,6 +12,9 @@ use std::sync::{
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::command;
 
+mod preference_groups;
+use preference_groups::{validate_preference_groups, PluginPreferenceGroup};
+
 const USER_AGENT: &str = "Qx/0.1 (Marketplace; +https://github.com/mcxen/qx)";
 static PLUGIN_STORAGE_LOCKS: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 static PLUGIN_INSTALL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -227,6 +230,9 @@ pub struct PluginManifest {
     pub permissions: Vec<String>,
     #[serde(default)]
     pub preferences: Vec<PluginPreference>,
+    /// Declarative Settings sections; omitted groups preserve legacy autosave.
+    #[serde(default, rename = "preferenceGroups")]
+    pub preference_groups: Vec<PluginPreferenceGroup>,
     #[serde(default)]
     pub commands: Vec<PluginCommand>,
     #[serde(default)]
@@ -2132,6 +2138,7 @@ fn build_raycast_plugin_manifest(
             ]
         },
         preferences: Vec::new(),
+        preference_groups: Vec::new(),
         commands,
         shortcuts: Vec::new(),
         panel: Some(PluginPanel {
@@ -2430,6 +2437,11 @@ fn install_plugin_archive(
     validate_manifest_storage(manifest.storage.as_ref())?;
     validate_manifest_home_widgets(&manifest.home_widgets)?;
     validate_manifest_surface_providers(&manifest.surface_providers)?;
+    validate_preference_groups(
+        &manifest.preference_groups,
+        &manifest.preferences,
+        &manifest.commands,
+    )?;
     if let Err(error) = validate_manifest_host_platform(&manifest) {
         if let Some(path) = cleanup_path {
             let _ = fs::remove_file(path);
@@ -2992,7 +3004,11 @@ fn list_installed_plugins_sync() -> Result<Vec<InstalledPlugin>, String> {
         let enabled = is_plugin_enabled(&id);
 
         if let Some(m) = manifest {
-            if m.id != id || validate_plugin_id(&m.id).is_err() {
+            if m.id != id
+                || validate_plugin_id(&m.id).is_err()
+                || validate_preference_groups(&m.preference_groups, &m.preferences, &m.commands)
+                    .is_err()
+            {
                 continue;
             }
             out.push(InstalledPlugin {
@@ -3122,6 +3138,11 @@ fn collect_plugin_modules(
 pub fn read_plugin_modules(id: String) -> Result<PluginModuleBundle, String> {
     let dir = checked_plugin_dir(&id)?;
     let manifest = read_manifest(&dir).ok_or_else(|| format!("manifest not found for {id}"))?;
+    validate_preference_groups(
+        &manifest.preference_groups,
+        &manifest.preferences,
+        &manifest.commands,
+    )?;
     let entry_name = if manifest.entry.trim().is_empty() {
         "index.js"
     } else {
@@ -3220,6 +3241,12 @@ pub(crate) fn registered_plugin_cache_targets() -> Vec<RegisteredPluginCacheTarg
             || validate_manifest_storage(manifest.storage.as_ref()).is_err()
             || validate_manifest_home_widgets(&manifest.home_widgets).is_err()
             || validate_manifest_surface_providers(&manifest.surface_providers).is_err()
+            || validate_preference_groups(
+                &manifest.preference_groups,
+                &manifest.preferences,
+                &manifest.commands,
+            )
+            .is_err()
         {
             continue;
         }
@@ -3345,6 +3372,11 @@ pub(crate) fn clear_registered_plugin_cache_target(
     validate_manifest_storage(manifest.storage.as_ref())?;
     validate_manifest_home_widgets(&manifest.home_widgets)?;
     validate_manifest_surface_providers(&manifest.surface_providers)?;
+    validate_preference_groups(
+        &manifest.preference_groups,
+        &manifest.preferences,
+        &manifest.commands,
+    )?;
     if target_id == format!("plugin:{}:{HOST_WORKBENCH_TARGET_SUFFIX}", manifest.id) {
         let storage_lock = plugin_storage_lock(&target.plugin_id);
         let _guard = storage_lock
@@ -3733,6 +3765,7 @@ mod tests {
             keywords: vec![],
             permissions: vec![],
             preferences: vec![],
+            preference_groups: vec![],
             commands: vec![],
             shortcuts: vec![],
             panel: None,

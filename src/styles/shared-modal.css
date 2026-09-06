@@ -14,6 +14,12 @@
   flex-basis: var(--qx-settings-control-width);
 }
 
+.qx-settings-row:not(.qx-settings-row--stacked) > .qx-settings-row-control:has(> .qx-select:only-child) {
+  width: fit-content;
+  flex: 0 1 auto;
+  max-width: min(var(--qx-settings-control-width), 100%);
+}
+
 @media (max-width: 520px) {
   .qx-settings-row-control {
     flex: 1 1 100%;

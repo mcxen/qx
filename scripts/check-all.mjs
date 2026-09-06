@@ -15,10 +15,14 @@ const steps = [
   ["i18n", "scripts/check-i18n.mjs"],
   ["shell-navigation", "scripts/check-qx-shell-navigation.mjs"],
   ["module-search", "scripts/check-module-search.mjs"],
+  ["plugin-search", "scripts/check-plugin-search.mjs"],
   ["island", "scripts/check-qx-island.mjs"],
   ["module-ports", "scripts/check-module-ports.mjs"],
   ["plugin-shortcuts", "scripts/smoke-plugin-shortcuts.mjs"],
   ["workbench-html-export", "scripts/check-workbench-html-export.mjs"],
+  ["workbench-edit-bridge", "scripts/check-workbench-edit-bridge.mjs"],
+  ["workbench-cards", "scripts/check-workbench-cards.mjs"],
+  ["plugin-preferences", "scripts/check-plugin-preferences.mjs"],
   ["qx-ai-agent", "scripts/check-qx-ai-agent.mjs"],
 ];
 

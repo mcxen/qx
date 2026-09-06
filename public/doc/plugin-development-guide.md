@@ -333,6 +333,23 @@ export default {
 Manifest 中声明的每个 command 必须在 `QxPlugin.commands` 中提供同名且可调用的
 `run`；声明 panel 时必须提供 `panel.render`。宿主加载时会校验这些契约。
 
+插件的 `keywords` 是 Launcher 的声明式搜索词。宿主会在插件加载前后，用同一份索引合并
+Manifest、`panel`、各个 `commands[]` 的关键词，以及 ID、名称和全部本地化名称；因此中文名、
+拼音全拼和首字母缩写应由插件显式写入 `keywords`（例如 `日历`、`rili`、`rl`）。短词不依赖
+产品名中的任意后缀模糊匹配，面板只有 `commands: []` 也可以单独作为搜索入口。
+
+- `manifest.keywords` 描述整个插件；`panel.keywords` 描述面板入口；`commands[].keywords`
+  补充该命令的动作词。插件作者负责中文常用词、无声调拼音和首字母，例如
+  `"keywords": ["日历", "rili", "rl", "农历", "nongli", "nl"]`。
+- 宿主不内置按插件 ID 分支的词典，也不在每次输入时执行拼音转换或启动插件。
+  所有语言的已声明名称均可检索，显示名称仍跟随 Qx 语言。
+- `description` / `descriptions` 仅用于展示，不参与入口搜索；需要检索的概念必须显式声明在
+  `keywords` 中，避免 `qui` 命中说明文字 `requires token`。命令结果保留自己的动作标题。
+- 匹配分数随搜索结果进入统一排序；重新扫描后的词表变化会刷新活动查询，普通键入
+  仍使用同一防抖流程。无面板插件只返回已注册的真实命令。
+- 维护仓库的每个插件都必须进入 `scripts/fixtures/plugin-search-cases.json` 验收表，
+  并通过宿主 `npm run test:plugin-search` 的中文、拼音、缩写和禁用边界检查。
+
 `panel.render(container, context)` 应快速完成：
 
 1. 立即挂载首帧 Workbench（通过 `context.ui.mountWorkbench`）；宿主会先恢复上次成功的呈现快照。
@@ -388,6 +405,14 @@ Base64/Data URL 缓存应使用 `context.state.createLru({ maxEntries, maxSize, 
 也不要调用内部的 `tryModuleEscapeStep` 或 `tryCloseRecentSwitcher`；它们只属于宿主。
 
 ## 6. Workbench 与动作
+
+内容型笔记优先使用宿主 Cards 与原位编辑会话，不要复制自绘卡片或编辑器。
+字段、`onEdit` 回执、草稿保护和输入预算只在
+[`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md#22-内容卡片与原位编辑) 维护；旧表单 `onInput` 不变。
+连接设置的分组和显式保存见 [`plugin-marketplace.md`](./plugin-marketplace.md#preferences)。
+BluePrint 是这一组合的首个参考消费者：Qx 负责通用交互，PAT、随手记完整模型、CAS 和
+幂等写入属于插件。后续 memos 插件可复用宿主端口，但必须独立验证其真实服务协议，不能套用
+BluePrint 的权限、版本字段或 MCP 工具名称。
 
 结构化详情的 `detail.form.controls` 支持 `text`、`number`、`select` 和 `textarea`。
 长正文使用 `textarea`，`rows` 只提示 3-24 行的可见高度，宿主最多接收 64 KiB 文本；

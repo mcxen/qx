@@ -24,6 +24,23 @@ Read only the mode that matches the request. Commands run from the authoritative
 3. Update the TypeScript contract, direct context, unavailable context, iframe SDK/runtime, RPC permission mapping, Rust command registration, documentation, and every first-party consumer.
 4. Run Qx `npm run check`; for Rust changes also run `cargo fmt --check` and `cargo check` in `src-tauri/`. Windows-sensitive work additionally follows the repository's single-snapshot Windows workflow rule.
 
+### Card and editing ablation
+
+For changes to the shared card/editor/settings ports, verify the old consumer first, then each new capability in isolation, then the combination. Use the actual host normalizer and serialized SDK in behavioral tests, not a duplicate test-only implementation.
+
+- With new declarations absent, List/Gallery navigation, `onInput`, and preference autosave retain their behavior.
+- Cards without an editor remain read-only. Missing images/titles, long content, narrow widths and stable source order are layout cases, not reasons to invent data.
+- Editing covers IME, native editing shortcuts, dirty navigation, save failure/conflict, over-limit original text, and late acknowledgements after session replacement or teardown. Assert upstream write counts and exact payloads, not just button labels.
+- Manual preference groups retain unsaved input on failure. Connection checks must reflect actual completion or error and never log credentials.
+- Finish with the combined reference consumer and installed desktop interaction. Record untested real-service paths as pending; mocked regressions do not satisfy the publication gate.
+
+The Qx repository includes development-only fixtures in `scripts/fixtures/`: serve
+`workbench-cards.html` with Vite for responsive typography checks; temporarily install
+`native-cards/` as `qx-cards-fixture` for real Shell/Esc/editor behavior with synthetic
+notes and explicit save/error/conflict/read-only modes. Neither fixture is a marketplace
+package or evidence of a working upstream API. Remove the temporary installed fixture
+after verification and preserve any pre-existing installed directory.
+
 ## Local package and runtime validation
 
 Use the smallest affected package:

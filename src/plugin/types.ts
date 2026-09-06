@@ -1,3 +1,7 @@
+import type {
+  PluginWorkbenchEditEvent,
+  PluginWorkbenchEditHandlerResult,
+} from "./workbenchEditTypes";
 import type { PluginWorkbenchItem, PluginWorkbenchState } from "./workbenchTypes";
 
 export interface PluginPreference {
@@ -26,6 +30,35 @@ export interface PluginPreference {
   max?: number;
   step?: number;
   unit?: string;
+}
+
+export type PluginPreferenceSaveMode = "autosave" | "manual";
+
+/**
+ * Declarative settings section supplied by a plugin manifest.
+ *
+ * `preferenceIds` references the canonical `preferences` array so older
+ * manifests remain valid and a preference cannot be silently duplicated. A
+ * manual group keeps edits local until the user explicitly saves it; omitted
+ * groups retain the historical per-change autosave behavior.
+ */
+export interface PluginPreferenceGroup {
+  id: string;
+  title: string;
+  /** Locale → group title. */
+  titles?: Record<string, string>;
+  description?: string;
+  /** Locale → group description. */
+  descriptions?: Record<string, string>;
+  preferenceIds: string[];
+  saveMode?: PluginPreferenceSaveMode;
+  /** A declared plugin command used for a real connection check action. */
+  connectionCheck?: {
+    command: string;
+    title?: string;
+    /** Locale → action title. */
+    titles?: Record<string, string>;
+  };
 }
 
 export interface PluginCommand {
@@ -162,6 +195,7 @@ export interface PluginManifest {
   keywords?: string[];
   permissions?: string[];
   preferences?: PluginPreference[];
+  preferenceGroups?: PluginPreferenceGroup[];
   commands?: PluginCommand[];
   shortcuts?: PluginShortcut[];
   panel?: PluginPanel;
@@ -984,6 +1018,10 @@ export interface PluginContext {
         onQuery?: (value: string) => void;
         onSelect?: (id: string, item: PluginWorkbenchItem) => void;
         onInput?: (id: string, value: string, item?: PluginWorkbenchItem) => void;
+        onEdit?: (
+          event: PluginWorkbenchEditEvent,
+          item?: PluginWorkbenchItem,
+        ) => PluginWorkbenchEditHandlerResult | Promise<PluginWorkbenchEditHandlerResult>;
         onDownload?: (id: string, item?: PluginWorkbenchItem) => void;
       },
     ) => import("./workbenchTypes").PluginWorkbenchController;

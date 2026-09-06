@@ -15,6 +15,11 @@ import { invoke } from "@tauri-apps/api/core";
 import QxResizableSplit from "../components/QxResizableSplit";
 import {
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
   Input,
   Select,
   Textarea,
@@ -28,6 +33,9 @@ import type {
   PluginWorkbenchInlineContent,
   PluginWorkbenchReplyContent,
   PluginWorkbenchState,
+  PluginWorkbenchEditEvent,
+  PluginWorkbenchEditResult,
+  PluginWorkbenchItem,
 } from "./workbenchTypes";
 import { useT } from "../i18n";
 import { qxMasterDetailIds, qxRegionProps } from "../hooks/useQxMasterDetail";
@@ -46,6 +54,8 @@ import {
   workbenchToneClass,
 } from "./PluginWorkbenchPrimitives";
 import { resolveWorkbenchDetailMetadata } from "./workbenchDetailMetadata";
+import { useWorkbenchEditSession } from "./workbenchEditSession";
+import PluginWorkbenchInlineEditor from "./PluginWorkbenchInlineEditor";
 
 export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
@@ -56,9 +66,14 @@ interface PluginWorkbenchViewProps {
   state: PluginWorkbenchState;
   detailOpen: boolean;
   onActivate: (id: string) => void;
+  onSelect?: (id: string) => void;
   onInput: (id: string, value: string) => void;
   onAction: (id: string) => void;
   onDownload: (id: string) => void;
+  onEdit?: (event: PluginWorkbenchEditEvent) => Promise<PluginWorkbenchEditResult>;
+  onOpenLink?: (url: string) => void;
+  /** Host navigation guard; null unregisters the active editor session. */
+  registerNavigationGuard?: (guard: (() => Promise<boolean>) | null) => void;
 }
 
 function WorkbenchInlineAsset({
@@ -650,9 +665,13 @@ export default function PluginWorkbenchView({
   state,
   detailOpen,
   onActivate,
+  onSelect,
   onInput,
   onAction,
   onDownload,
+  onEdit,
+  onOpenLink,
+  registerNavigationGuard,
 }: PluginWorkbenchViewProps) {
   const t = useT();
   const [preview, setPreview] = useState<{
@@ -688,6 +707,73 @@ export default function PluginWorkbenchView({
       ? " is-sparse"
       : "";
   const detailOnly = items.length === 0 && Boolean(state.detail);
+  type DirtyDecision = "save" | "discard" | "continue";
+  const [dirtyPrompt, setDirtyPrompt] = useState<{ title: string } | null>(null);
+  const dirtyPromptRef = useRef<{
+    promise: Promise<DirtyDecision>;
+    resolve: (decision: DirtyDecision) => void;
+  } | null>(null);
+  const confirmDiscard = useCallback((title: string) => {
+    const existing = dirtyPromptRef.current;
+    if (existing) return existing.promise;
+    let resolveDecision: (decision: DirtyDecision) => void = () => {};
+    const promise = new Promise<DirtyDecision>((resolve) => {
+      resolveDecision = resolve;
+    });
+    dirtyPromptRef.current = { promise, resolve: resolveDecision };
+    setDirtyPrompt({ title });
+    return promise;
+  }, []);
+  const resolveDirtyPrompt = useCallback((decision: DirtyDecision) => {
+    const current = dirtyPromptRef.current;
+    if (!current) return;
+    dirtyPromptRef.current = null;
+    setDirtyPrompt(null);
+    current.resolve(decision);
+  }, []);
+  useEffect(() => () => resolveDirtyPrompt("continue"), [resolveDirtyPrompt]);
+  const canEditItem = useCallback((itemId: string) => {
+    const editor = state.items?.find((item) => item.id === itemId)?.editor;
+    return Boolean(editor && !editor.disabled && !editor.readOnly && onEdit);
+  }, [onEdit, state.items]);
+  const editSession = useWorkbenchEditSession({
+    onEdit,
+    confirmDiscard,
+    canEditItem,
+    messages: {
+      inlineUnavailable: t("plugins.workbench.editor.inlineUnavailable", "Inline editing is unavailable."),
+      unavailable: t("plugins.workbench.editor.unavailable", "Editing is no longer available for this note."),
+      conflict: t("plugins.workbench.editor.conflict", "Conflict — review and retry"),
+      saveError: t("plugins.workbench.editor.saveError", "Could not save this note."),
+      startError: t("plugins.workbench.editor.error", "Could not edit this note"),
+      byteLimit: (limit) => t("plugins.workbench.editor.byteLimit", "Text exceeds the {n} byte limit.").replace("{n}", String(limit)),
+    },
+  });
+  const canNavigate = useCallback(async () => {
+    const current = editSession.session;
+    if (!current) return true;
+    if (current.status === "starting" || current.status === "saving") return false;
+    if (current.value !== current.baseline) {
+      const decision = await confirmDiscard(current.item.title);
+      if (decision === "continue") return false;
+      if (decision === "save") return editSession.save();
+    }
+    return editSession.discard();
+  }, [confirmDiscard, editSession]);
+  useEffect(() => {
+    registerNavigationGuard?.(editSession.session ? canNavigate : null);
+  }, [canNavigate, registerNavigationGuard]);
+  useEffect(() => () => registerNavigationGuard?.(null), [registerNavigationGuard]);
+  const renderCardEditor = state.layout?.kind === "cards" && editSession.session
+    ? (item: PluginWorkbenchItem) => item.id === editSession.session?.itemId ? (
+        <PluginWorkbenchInlineEditor
+          session={editSession.session}
+          onInput={editSession.input}
+          onSave={editSession.save}
+          onCancel={editSession.cancel}
+        />
+      ) : null
+    : undefined;
   const openPreview = (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => {
     const images = collection.length ? collection : [image];
     const index = Math.max(0, images.findIndex((candidate) => candidate === image || candidate.url === image.url));
@@ -729,6 +815,13 @@ export default function PluginWorkbenchView({
         : t("plugins.workbench.empty", "No results"))}
       regionId={PLUGIN_WORKBENCH_REGIONS.list}
       onActivate={onActivate}
+      onSelect={onSelect}
+      onEdit={state.layout?.kind === "cards" && onEdit
+        ? (item) => { void editSession.start(item); }
+        : undefined}
+      onOpenLink={state.layout?.kind === "cards" ? onOpenLink : undefined}
+      editingItemId={editSession.session?.itemId}
+      renderEditor={renderCardEditor}
     />
   );
 
@@ -806,6 +899,40 @@ export default function PluginWorkbenchView({
         }}
         onDownload={downloadPreviewImage}
       />
+      {dirtyPrompt ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) resolveDirtyPrompt("continue");
+          }}
+        >
+          <DialogContent className="qx-host-workbench-dirty-dialog">
+            <DialogHeader>
+              <DialogTitle>{t("plugins.workbench.editor.dirty.title", "Unsaved draft")}</DialogTitle>
+              <DialogDescription>
+                {dirtyPrompt.title} · {t("plugins.workbench.editor.dirty.description", "Save the draft, discard changes, or continue editing?")}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="qx-host-workbench-dirty-actions">
+              <Button type="button" variant="default" onClick={() => {
+                resolveDirtyPrompt("save");
+              }}>
+                {t("plugins.workbench.editor.dirty.save", "Save draft")}
+              </Button>
+              <Button type="button" variant="destructive" onClick={() => {
+                resolveDirtyPrompt("discard");
+              }}>
+                {t("plugins.workbench.editor.dirty.discard", "Discard changes")}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => {
+                resolveDirtyPrompt("continue");
+              }}>
+                {t("plugins.workbench.editor.dirty.continue", "Continue editing")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

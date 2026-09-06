@@ -327,11 +327,14 @@
   width: 100%;
 }
 
-.qx-shell.launcher-shell .qx-shell-filter-slot,
-.qx-shell.launcher-shell .qx-shell-content-filter {
+.qx-shell.launcher-shell .qx-shell-filter-slot {
   width: 100%;
   max-width: none;
   flex: 1 1 auto;
+}
+
+.qx-shell.launcher-shell .qx-shell-content-filter {
+  max-width: 100%;
 }
 
 .qx-shell-main {
@@ -397,9 +400,10 @@
 }
 
 .qx-shell-content-filter {
-  width: clamp(132px, 15vw, 188px);
-  min-width: 132px;
-  flex: 0 1 188px;
+  width: fit-content;
+  min-width: 0;
+  max-width: 188px;
+  flex: 0 1 auto;
 }
 
 .qx-shell-content-filter .qx-shadcn-select-trigger {
@@ -2249,8 +2253,7 @@
   }
 
   .qx-shell-content-filter {
-    width: min(132px, 28vw);
-    min-width: min(112px, 28vw);
+    max-width: min(188px, 28vw);
   }
 
   .qx-shell.launcher-shell .qx-shell-topbar {

@@ -10,7 +10,6 @@ import {
   broadcastToPluginRuntimes,
   unloadPluginRuntime,
 } from "./runtime";
-import { createUnavailableContext } from "./context";
 import { BUILTIN_PLUGINS, buildBuiltinRegistrations } from "./builtin";
 import { createQxLogger, qxLog } from "../lib/logger";
 import { normalizeLanguagePreference, resolveLocale } from "../i18n";
@@ -50,8 +49,13 @@ import {
   pluginSupportsPlatform,
 } from "./platform";
 import { resolvePluginShortcutBinding } from "./pluginShortcuts";
+import { buildPluginSearchTerms } from "./pluginSearchMetadata";
 import { unregisterModuleActionsByOwner } from "../modules/qx-ai/agent/module-actions";
 import { unregisterQxAiHooksByOwner } from "../modules/qx-ai/agent/hooks";
+import {
+  dispatchPluginCommand,
+  type PluginCommandDispatchResult,
+} from "./pluginCommandDispatch";
 
 /** One pending timer per plugin command — never stack duplicates. */
 const backgroundTimers = new Map<string, number>();
@@ -205,6 +209,11 @@ interface PluginRegistryStore {
     command: RegisteredCommand,
     options?: import("./types").PluginCommandRunOptions,
   ) => Promise<void>;
+  /** Same restricted command path with a small result for host-owned actions. */
+  runCommandWithResult: (
+    command: RegisteredCommand,
+    options?: import("./types").PluginCommandRunOptions,
+  ) => Promise<PluginCommandDispatchResult>;
   setBackgroundCategoryEnabled: (
     category: PluginBackgroundCategory,
     enabled: boolean,
@@ -412,10 +421,8 @@ function scoreCommand(command: RegisteredCommand, query: string): number {
     query,
     command.title,
     command.name,
-    command.description,
     command.pluginName,
     ...Object.values(command.titles ?? {}),
-    ...Object.values(command.descriptions ?? {}),
     ...(command.keywords || []),
   );
   return score / 100;
@@ -426,7 +433,15 @@ function summarizeError(error: unknown): string {
   return message.replace(/^Error:\s*/i, "").slice(0, 140);
 }
 
-export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
+export const usePluginRegistry = create<PluginRegistryStore>((set, get) => {
+  const dispatchCommand = (
+    command: RegisteredCommand,
+    options?: import("./types").PluginCommandRunOptions,
+  ): Promise<PluginCommandDispatchResult> => (
+    dispatchPluginCommand(command, options, get().hooks)
+  );
+
+  return {
   plugins: [],
   commands: [],
   panels: {},
@@ -678,16 +693,13 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           ...command,
           pluginId: plugin.id,
           pluginName: plugin.name,
-          keywords: Array.from(new Set([
-            plugin.name,
-            plugin.id,
-            ...(manifest.keywords ?? []),
-            ...Object.values(manifest.names ?? {}),
-            ...Object.values(manifest.descriptions ?? {}),
-            ...Object.values(command.titles ?? {}),
-            ...Object.values(command.descriptions ?? {}),
-            ...(command.keywords ?? []),
-          ])),
+          keywords: buildPluginSearchTerms({
+            pluginId: plugin.id,
+            pluginName: plugin.name,
+            pluginDescription: plugin.description,
+            manifest,
+            command,
+          }),
           async run(ctx, options) {
             await ensureLazyPlugin(plugin);
             const real = get().commands.find((candidate) =>
@@ -702,12 +714,13 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           pluginName: plugin.name,
           title: manifest.panel.title || plugin.name,
           icon: manifest.panel.icon || manifest.icon,
-          keywords: Array.from(new Set([
-            plugin.name,
-            plugin.id,
-            ...(manifest.keywords ?? []),
-            ...(manifest.panel.keywords ?? []),
-          ])),
+          keywords: buildPluginSearchTerms({
+            pluginId: plugin.id,
+            pluginName: plugin.name,
+            pluginDescription: plugin.description,
+            manifest,
+            panel: manifest.panel,
+          }),
           async render(container, context) {
             await ensureLazyPlugin(plugin);
             const real = get().panels[plugin.id];
@@ -939,65 +952,9 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   },
 
   runCommand: async (command, options) => {
-    const startedAt = performance.now();
-    const isBackgroundJob = options?.launchType === "background";
-    const backgroundCategory = normalizeBackgroundCategory(command.backgroundCategory);
-    if (isBackgroundJob && !isBackgroundCategoryEnabled(backgroundCategory)) {
-      usePluginBackgroundStore.getState().markPaused(command);
-      registryLogger.info("Background plugin command skipped by host policy", {
-        pluginId: command.pluginId,
-        command: command.name,
-        backgroundCategory,
-      });
-      return;
-    }
-    // Interval commands (manual or timer) update the background-activity port so
-    // launcher / settings badges show last execution without coupling to timers.
-    if (isBackgroundIntervalCommand(command)) {
-      usePluginBackgroundStore.getState().markRunning(command);
-    }
-    registryLogger.info("Plugin command dispatch started", {
-      pluginId: command.pluginId,
-      command: command.name,
-      mode: command.mode,
-      launchType: options?.launchType || (isBackgroundJob ? "background" : "userInitiated"),
-    });
-    try {
-      await command.run(createUnavailableContext(command.pluginId), {
-        launchType: options?.launchType || "userInitiated",
-        timeoutMs: options?.timeoutMs,
-      });
-      if (isBackgroundIntervalCommand(command)) {
-        usePluginBackgroundStore.getState().markFinished(command, null);
-      }
-      registryLogger.info("Plugin command dispatch completed", {
-        pluginId: command.pluginId,
-        command: command.name,
-        durationMs: Math.round(performance.now() - startedAt),
-      });
-    } catch (error) {
-      if (isBackgroundIntervalCommand(command)) {
-        usePluginBackgroundStore.getState().markFinished(command, summarizeError(error));
-      }
-      registryLogger.error("Plugin command dispatch failed", {
-        pluginId: command.pluginId,
-        command: command.name,
-        durationMs: Math.round(performance.now() - startedAt),
-        error,
-      });
-      // Background interval failures stay quiet — toast spam made wallpaper thrash feel worse.
-      if (options?.launchType !== "background") {
-        const message = `Plugin command failed: ${String(error)}`;
-        get().hooks?.onToast(message);
-        get().hooks?.onPluginStatus?.({
-          kind: "error",
-          pluginId: command.pluginId,
-          label: "Command failed",
-          detail: `${command.pluginName}: ${summarizeError(error)}`,
-        });
-      }
-    }
+    await dispatchCommand(command, options);
   },
+  runCommandWithResult: (command, options) => dispatchCommand(command, options),
 
   setBackgroundCategoryEnabled: (category, enabled) => {
     persistBackgroundCategoryEnabled(category, enabled);
@@ -1020,4 +977,5 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     }
   },
 
-}));
+  };
+});

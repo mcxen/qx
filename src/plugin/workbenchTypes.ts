@@ -1,5 +1,14 @@
 import type { PluginIslandDisplayInput } from "./islandTypes";
 import type { QxActivityProgress } from "../types/contentActivity";
+import {
+  normalizePluginWorkbenchEditor,
+  MAX_WORKBENCH_EDITOR_BYTES,
+  workbenchUtf8ByteLength,
+  type PluginWorkbenchEditEvent,
+  type PluginWorkbenchEditor,
+} from "./workbenchEditTypes.ts";
+
+export * from "./workbenchEditTypes.ts";
 
 export type PluginWorkbenchTone = "neutral" | "success" | "warning" | "danger" | "accent";
 
@@ -137,6 +146,14 @@ export interface PluginWorkbenchImage {
   caption?: string;
 }
 
+/** Optional card-specific copy; never inferred from the bounded subtitle. */
+export interface PluginWorkbenchCard {
+  body?: string;
+  tags?: string[];
+  timestamp?: string;
+  pinned?: boolean;
+}
+
 export type PluginWorkbenchContentBlock = PluginWorkbenchInlineContent;
 
 export type PluginWorkbenchAsyncStatus = QxActivityProgress;
@@ -206,6 +223,15 @@ export interface PluginWorkbenchItem {
   tone?: PluginWorkbenchTone | string;
   /** Structured detail rendered by the host. */
   detail?: PluginWorkbenchDetail;
+  /** Card-only content and metadata for the opt-in cards layout. */
+  card?: PluginWorkbenchCard;
+  /**
+   * Opt-in host-owned inline editor. The host never derives its value from
+   * subtitle or another bounded card preview. When initialValue is omitted,
+   * the editor asks the plugin for the authoritative value in the start
+   * phase.
+   */
+  editor?: PluginWorkbenchEditor;
   /** Item-scoped QxShell actions. */
   actions?: PluginWorkbenchAction[];
   /** Kept inside the plugin runtime for handlers; never crosses into host rendering. */
@@ -223,9 +249,11 @@ export interface PluginWorkbenchState {
   queryPlaceholder?: string;
   /** Host-rendered collection layout. List remains the backwards-compatible default. */
   layout?: {
-    kind: "list" | "gallery";
-    /** Gallery column hint; the host still collapses columns responsively. */
+    kind: "list" | "gallery" | "cards";
+    /** Collection column hint; the host still resolves responsive columns. */
     columns?: number;
+    density?: "compact" | "comfortable";
+    showImages?: boolean;
     aspectRatio?: "landscape" | "square" | "portrait";
   };
   tabs?: Array<{ id: string; label: string; active?: boolean }>;
@@ -290,6 +318,7 @@ export type PluginWorkbenchEvent =
   | { kind: "input"; id: string; value: string; selectedId?: string }
   | { kind: "download"; id: string; selectedId?: string }
   | { kind: "action"; id: string; selectedId?: string }
+  | ({ kind: "edit" } & PluginWorkbenchEditEvent)
   | { kind: "commandComplete"; command: string; at: number }
   | { kind: "backgroundPoll"; command: string; at: number; ok: boolean; error?: string };
 
@@ -424,6 +453,24 @@ function normalizeAsyncStatus(value: unknown): PluginWorkbenchAsyncStatus | unde
     completed: Number.isFinite(completed) ? Math.max(0, completed) : undefined,
     total: Number.isFinite(total) ? Math.max(0, total) : undefined,
     failed: Number.isFinite(failed) ? Math.max(0, failed) : undefined,
+  };
+}
+
+function normalizeCard(value: unknown): PluginWorkbenchCard | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const body = typeof raw.body === "string" ? raw.body : undefined;
+  // Card body is display data, but it remains an authoritative text payload;
+  // reject over-budget values rather than showing a silently truncated draft.
+  if (body != null && workbenchUtf8ByteLength(body) > MAX_WORKBENCH_EDITOR_BYTES) return undefined;
+  const tags = Array.isArray(raw.tags)
+    ? raw.tags.slice(0, 12).map((tag) => shortText(tag, 64)?.trim() || "").filter(Boolean)
+    : undefined;
+  return {
+    body,
+    tags: tags?.length ? tags : undefined,
+    timestamp: shortText(raw.timestamp, 120),
+    pinned: raw.pinned === true,
   };
 }
 
@@ -672,11 +719,18 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
   const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   const mediaBudget: WorkbenchMediaBudget = { remaining: MAX_WORKBENCH_MEDIA_CHARS };
   const seenItemIds = new Set<string>();
+  const rawLayout = raw.layout && typeof raw.layout === "object"
+    ? raw.layout as Record<string, unknown>
+    : undefined;
+  const cardsLayout = rawLayout?.kind === "cards";
   const items = Array.isArray(raw.items)
     ? raw.items.slice(0, 500).map((entry, index) => {
         const item = (entry || {}) as Record<string, unknown>;
         const progress = Number(item.progress);
-        const title = shortText(item.title, 500) || `Item ${index + 1}`;
+        const normalizedTitle = shortText(item.title, 500);
+        const title = normalizedTitle == null || (!cardsLayout && normalizedTitle === "")
+          ? (cardsLayout ? "" : `Item ${index + 1}`)
+          : normalizedTitle;
         return {
           id: shortText(item.id, 256) || "",
           title,
@@ -690,6 +744,8 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
           progress: Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : undefined,
           tone: normalizeTone(item.tone),
           detail: normalizeDetail(item.detail, mediaBudget),
+          card: normalizeCard(item.card),
+          editor: normalizePluginWorkbenchEditor(item.editor),
           actions: normalizeActions(item.actions),
         } satisfies PluginWorkbenchItem;
       }).filter((item) => {
@@ -750,18 +806,26 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
   const layoutRaw = raw.layout && typeof raw.layout === "object"
     ? raw.layout as Record<string, unknown>
     : null;
-  const galleryColumns = Number(layoutRaw?.columns);
+  const requestedColumns = Number(layoutRaw?.columns);
+  const normalizedColumns = Number.isFinite(requestedColumns)
+    ? Math.max(1, Math.min(8, Math.round(requestedColumns)))
+    : undefined;
   const layout: NonNullable<PluginWorkbenchState["layout"]> = layoutRaw?.kind === "gallery"
-    ? {
+      ? {
         kind: "gallery" as const,
-        columns: Number.isFinite(galleryColumns)
-          ? Math.max(2, Math.min(8, Math.round(galleryColumns)))
-          : undefined,
+        columns: normalizedColumns == null ? undefined : Math.max(2, normalizedColumns),
         aspectRatio: layoutRaw.aspectRatio === "square" || layoutRaw.aspectRatio === "portrait"
           ? layoutRaw.aspectRatio
           : "landscape",
       }
-    : { kind: "list" as const };
+    : layoutRaw?.kind === "cards"
+      ? {
+          kind: "cards" as const,
+          columns: normalizedColumns,
+          density: layoutRaw.density === "compact" ? "compact" : "comfortable",
+          showImages: layoutRaw.showImages !== false,
+        }
+      : { kind: "list" as const };
   const backgroundPollRaw = raw.backgroundPoll && typeof raw.backgroundPoll === "object"
     ? raw.backgroundPoll as Record<string, unknown>
     : null;

@@ -10,6 +10,9 @@ import type {
 } from "./types";
 import type {
   PluginWorkbenchController,
+  PluginWorkbenchEditEvent,
+  PluginWorkbenchEditHandlerResult,
+  PluginWorkbenchEditResult,
   PluginWorkbenchItem,
   PluginWorkbenchItemsUpdate,
   PluginWorkbenchState,
@@ -34,6 +37,11 @@ type WorkbenchHandlers = {
   onQuery?: (value: string) => void;
   onSelect?: (id: string, item: PluginWorkbenchItem) => void;
   onInput?: (id: string, value: string, item?: PluginWorkbenchItem) => void;
+  /** Typed host-owned inline editor lifecycle. */
+  onEdit?: (
+    event: PluginWorkbenchEditEvent,
+    item?: PluginWorkbenchItem,
+  ) => PluginWorkbenchEditHandlerResult | Promise<PluginWorkbenchEditHandlerResult>;
   onDownload?: (id: string, item?: PluginWorkbenchItem) => void;
 };
 
@@ -446,7 +454,7 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
       if (runtimeWindow.__qxWorkbenchHandler) {
         runtimeWindow.removeEventListener("message", runtimeWindow.__qxWorkbenchHandler);
       }
-      runtimeWindow.__qxWorkbenchHandler = (event: MessageEvent) => {
+      runtimeWindow.__qxWorkbenchHandler = async (event: MessageEvent) => {
         if (event.source !== runtimeWindow.parent) return;
         const message = event.data || {};
         if (message.type !== "qx:workbench:event") return;
@@ -474,6 +482,53 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
           const selectedId = String(workbenchEvent.selectedId ?? currentState.selectedId ?? "");
           const item = (currentState.items || []).find((candidate) => candidate.id === selectedId);
           handlers.onInput?.(id, value, item);
+        } else if (workbenchEvent.kind === "edit") {
+          const phase = workbenchEvent.phase;
+          if (phase !== "start" && phase !== "input" && phase !== "save" && phase !== "cancel") return;
+          const itemId = String(workbenchEvent.itemId ?? "");
+          const sessionId = String(workbenchEvent.sessionId ?? "");
+          const requestId = String(workbenchEvent.requestId ?? "");
+          if (!itemId || !sessionId || !requestId) return;
+          const item = (currentState.items || []).find((candidate) => candidate.id === itemId);
+          const editEvent = phase === "start"
+            ? { phase, itemId, sessionId, requestId }
+            : phase === "input" || phase === "save"
+              ? { phase, itemId, sessionId, requestId, value: String(workbenchEvent.value ?? "") }
+              : {
+                  phase,
+                  itemId,
+                  sessionId,
+                  requestId,
+                  ...(workbenchEvent.value == null ? {} : { value: String(workbenchEvent.value) }),
+                };
+          const identity = { phase, itemId, sessionId, requestId };
+          const errorResult = (messageText: string): PluginWorkbenchEditResult => phase === "start"
+            ? { ...identity, status: "error", message: messageText }
+            : phase === "input"
+              ? { ...identity, status: "error", message: messageText }
+              : phase === "save"
+                ? { ...identity, status: "error", message: messageText }
+                : { ...identity, status: "error", message: messageText };
+          let result: PluginWorkbenchEditResult;
+          try {
+            if (!handlers.onEdit) {
+              result = errorResult("Inline editing is not supported by this plugin.");
+            } else {
+              const candidate = await handlers.onEdit(editEvent, item);
+              result = {
+                ...candidate,
+                ...identity,
+              } as PluginWorkbenchEditResult;
+            }
+          } catch (error) {
+            result = errorResult(String(error).replace(/^Error:\s*/i, "").slice(0, 1_000));
+          }
+          runtimeWindow.parent.postMessage({
+            type: "qx:plugin:workbench:edit-response",
+            pluginId: runtimeWindow.__qxPluginId,
+            runtimeId: runtimeWindow.__qxPluginRuntimeId,
+            result,
+          }, "*");
         } else if (workbenchEvent.kind === "download") {
           const id = String(workbenchEvent.id ?? "");
           const selectedId = String(workbenchEvent.selectedId ?? currentState.selectedId ?? "");

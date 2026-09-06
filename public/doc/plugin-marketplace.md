@@ -117,10 +117,11 @@ my-plugin/
 | `descriptions` | 市场插件是 | 本地化描述；至少包含 `en` 与 `zh-CN` |
 | `icon`, `screenshots` | 否 | 包内相对路径；社区插件默认使用 `icon-generated.png`，市场展示优先使用 `manifest.icon` |
 | `platforms` | 否 | `macos`、`windows`、`linux` 的去重数组；空或省略表示全平台。非空时宿主会从市场列表隐藏不匹配的包（例如 Windows 不展示 macOS-only 的 Homebrew），并拒绝安装与运行 |
-| `keywords` | 否 | 搜索别名 |
+| `keywords` | 否 | Launcher 搜索词；宿主会把 Manifest、`panel` 和每个 `commands[]` 的关键词与 ID、名称及本地化名称统一索引。需要中文、拼音全拼或首字母命中时由插件显式声明对应词（例如 `日历`、`rili`、`rl`），短词不会依赖任意后缀模糊匹配 |
 | `permissions` | 否 | 最小能力集合 |
 | `entry` | 否 | ESM 入口，默认 `index.js` |
 | `preferences` | 否 | 宿主设置表单 |
+| `preferenceGroups` | 否 | 引用 preference ID 的本地化分区、手动/自动保存方式与同插件连接检查命令 |
 | `commands` | 否 | 可搜索命令 |
 | `shortcuts` | 否 | 用户可启用的全局命令快捷键；仅作默认声明，宿主将用户 override 存入 `settings.shortcuts` 的 `plugin:<pluginId>:<command>` |
 | `panel` | 否 | 注册面板入口；`title` 应省略或与 `name` 相同，以便宿主使用 `names` 本地化 |
@@ -158,6 +159,32 @@ Plugins 工作流负责更新索引和包，Plugin Store 工作流负责重新�
 
 支持 `string`、`textarea`、`password`、`number`、`boolean`、`select`、`segmented`、`slider`。
 宿主统一绘制控件，插件不要另做设置页来保存同一字段。密码值不得写入日志或市场索引。
+
+需要连接配置与浏览偏好分区时，可声明 `preferenceGroups`，引用既有 `preferences` 的稳定 ID，
+不复制字段定义。未声明分组的插件继续使用原有逐项自动保存。
+
+```json
+{
+  "preferenceGroups": [{
+    "id": "connection",
+    "title": "Connection",
+    "titles": { "en": "Connection", "zh-CN": "连接" },
+    "preferenceIds": ["endpoint", "pat"],
+    "saveMode": "manual",
+    "connectionCheck": {
+      "command": "check-connection",
+      "titles": { "en": "Check connection", "zh-CN": "检查连接" }
+    }
+  }]
+}
+```
+
+分组支持 `description` / `descriptions`；`saveMode` 为 `manual` 或默认 `autosave`。
+连接信息宜使用 `manual`：输入只进入本地草稿，用户显式保存后才持久化，保存失败保留输入。
+浏览密度等独立偏好可继续自动保存。分组和字段均由宿主使用线性设置分区绘制，不接受 HTML/CSS。
+`connectionCheck.command` 必须是本插件 Manifest 中已声明、实际导出的命令，经正常权限边界执行；
+检查使用已保存配置，不能把尚未保存的 PAT 作为任意命令参数传输。检查失败应抛出可解释错误，
+不得将“命令已派发”表示为“认证成功”，也不得回显 token 或原始认证响应。
 
 `label`、`description`、`placeholder` 是英文回退文本；对应的 `labels`、`descriptions`、
 `placeholders` 可提供 `en` 与 `zh-CN` 映射。`options[]` 中的每项也可通过 `labels` 映射

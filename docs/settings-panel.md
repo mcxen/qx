@@ -167,6 +167,13 @@ Windows 必须同时设置 `ICON_SMALL` 与任务栏 / Alt+Tab 使用的 `ICON_B
 
 Dialog 内（扩展配置）同样用 `SettingsCard` + `Row`，保持同一套线性语言。
 
+声明了偏好分组的插件优先显示连接和业务偏好，再显示快捷键、别名及权限等宿主管理内容。
+分组只是既有 preference ID 的投影，不拥有第二份配置存储。手动保存组保留 dirty 草稿，
+写入失败不清空输入；关闭配置先处理未保存更改。未声明新分组的插件保留自动保存行为。
+密码默认遮蔽，临时显隐按钮提供本地化可访问名称；显隐不触发保存。
+连接检查只能调用本插件已声明命令，结果依赖真实完成或错误，不能根据派发成功推断联网或鉴权成功。
+公开字段以 [`plugin-marketplace.md`](../public/doc/plugin-marketplace.md#preferences) 为准。
+
 真正需要「面板容器」时才用 shadcn `Card` / `.qx-card`（例如扩展市场 tile 封面）。
 
 Extensions → Installed 也遵循线性语言：Built-in / External 是分组标签，每组只保留一个外框，模块之间用 hairline 分隔；单个模块不得各自渲染成大圆角卡片。图标使用紧凑尺寸，状态 chips 固定在尾部列，整行点击打开配置 Dialog。
@@ -195,7 +202,7 @@ Extensions → Browse 的搜索、仓库筛选和“仓库源”管理入口在�
 ### 控件尺寸
 
 - Settings 行使用 `--qx-control-height: 32px` 的常规表单控件；28px 紧凑控件只用于工具栏。
-- Select、SegmentedControl、Slider 和组合数字输入使用 `--qx-settings-control-width: 220px` 的统一尾部轨道。
+- 独立 Select 按当前选项文字适宽、右对齐，以 `--qx-settings-control-width: 220px` 为上限；长选项在触发器中省略、菜单中换行。SegmentedControl、Slider 和组合数字输入保留统一尾部轨道；多行表单可显式铺满字段列。
 - 普通控件文字为 `12px / 500`，选中态与主操作为 `600`；视觉选项可以增高内容区，但不能另造宽度、字重和状态样式。
 
 ## 5. 响应式

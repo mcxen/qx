@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import type { ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
 import { useQxListSelection } from "../hooks/useQxListSelection";
@@ -17,6 +18,7 @@ import {
   workbenchToneClass,
 } from "./PluginWorkbenchPrimitives";
 import type { PluginWorkbenchItem, PluginWorkbenchState } from "./workbenchTypes";
+import PluginWorkbenchCards from "./PluginWorkbenchCards";
 
 interface WorkbenchCollectionProps {
   pluginId: string;
@@ -27,6 +29,11 @@ interface WorkbenchCollectionProps {
   emptyText: string;
   regionId: string;
   onActivate: (id: string) => void;
+  onSelect?: (id: string) => void;
+  onEdit?: (item: PluginWorkbenchItem) => void;
+  onOpenLink?: (url: string) => void;
+  editingItemId?: string;
+  renderEditor?: (item: PluginWorkbenchItem) => ReactNode;
 }
 
 interface SharedCollectionProps extends WorkbenchCollectionProps {
@@ -340,6 +347,24 @@ function VirtualWorkbenchGallery({
 export default function PluginWorkbenchCollection(props: WorkbenchCollectionProps) {
   const items = props.state.items || [];
   const shared = { ...props, items };
+  if (props.state.layout?.kind === "cards") {
+    return (
+      <PluginWorkbenchCards
+        pluginId={props.pluginId}
+        state={props.state}
+        selectedIndex={props.selectedIndex}
+        listTitle={props.listTitle}
+        loadingText={props.loadingText}
+        emptyText={props.emptyText}
+        regionId={props.regionId}
+        onSelect={props.onSelect || props.onActivate}
+        onEdit={props.onEdit}
+        onOpenLink={props.onOpenLink}
+        editingItemId={props.editingItemId}
+        renderEditor={props.renderEditor}
+      />
+    );
+  }
   return props.state.layout?.kind === "gallery"
     ? <VirtualWorkbenchGallery {...shared} />
     : <VirtualWorkbenchList {...shared} />;

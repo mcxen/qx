@@ -56,7 +56,6 @@ import {
   Select,
   SettingsCard,
   Skeleton,
-  Slider,
   Tabs,
   TabsContent,
   TabsList,
@@ -78,7 +77,7 @@ import type {
   PluginReleaseNote,
   PluginPlatform,
   PluginPlatformCompatibility,
-  PluginPreference,
+  PluginPreferenceGroup,
 } from "../../../plugin/types";
 import { marketplaceEntryKey } from "../../../plugin/types";
 import {
@@ -96,7 +95,6 @@ import {
   localizePluginDescription,
   localizePluginName,
   localizePluginPermission,
-  localizePluginPreference,
   type TranslateFn,
 } from "../../../plugin/pluginLabels";
 import InstalledModuleCard from "./InstalledModuleCard";
@@ -119,6 +117,20 @@ import { isBuiltinModuleEnabled } from "../../moduleAvailability";
 import PluginBadge from "./PluginBadge";
 import PluginScreenshotCarousel from "./PluginScreenshotCarousel";
 import WeatherSettings from "../WeatherSettings";
+import {
+  PluginPreferences,
+  type PreferenceValue,
+  type PreferenceValues,
+} from "./PluginPreferences";
+import {
+  createPreferenceSaveQueue,
+  type PreferenceSaveQueue,
+} from "./pluginPreferenceSaveQueue";
+import {
+  buildPreferenceSaveRequest,
+  normalizePreferenceIds,
+  resetRequestedToPersisted,
+} from "./pluginPreferenceSavePolicy";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -432,154 +444,6 @@ function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Preference form field                                              */
-/* ------------------------------------------------------------------ */
-
-/** Multi-line prefs: explicit `textarea`, or string lists described as one-per-line. */
-function isMultilinePreference(pref: PluginPreference): boolean {
-  if (pref.type === "textarea") return true;
-  if (pref.type !== "string") return false;
-  if (typeof pref.default === "string" && pref.default.includes("\n")) return true;
-  const desc = `${pref.description ?? ""} ${pref.label ?? ""}`.toLowerCase();
-  return (
-    desc.includes("one per line")
-    || desc.includes("per line")
-    || desc.includes("每行")
-    || desc.includes("一行一个")
-    || desc.includes("newline")
-  );
-}
-
-function PreferenceField({
-  pref,
-  value,
-  onChange,
-}: {
-  pref: PluginPreference;
-  value: string | number | boolean;
-  onChange: (v: string | number | boolean) => void;
-}) {
-  switch (pref.type) {
-    case "boolean":
-      return (
-        <Toggle
-          value={Boolean(value)}
-          onChange={(v) => onChange(v)}
-        />
-      );
-
-    case "select":
-      return (
-        <Select
-          value={String(value ?? "")}
-          options={pref.options ?? []}
-          ariaLabel={pref.label}
-          className="qx-plugin-preference-control"
-          onChange={(next) => onChange(next)}
-        />
-      );
-
-    case "segmented":
-      return (
-        <div className="qx-plugin-preference-control">
-          <SegmentedControl
-            value={String(value ?? "")}
-            options={pref.options ?? []}
-            onChange={(next) => onChange(next)}
-          />
-        </div>
-      );
-
-    case "slider": {
-      const min = Number.isFinite(pref.min) ? Number(pref.min) : 0;
-      const max = Number.isFinite(pref.max) ? Number(pref.max) : 100;
-      const step = Number.isFinite(pref.step) && Number(pref.step) > 0 ? Number(pref.step) : 1;
-      const numericValue = Math.max(min, Math.min(max, Number(value) || min));
-      return (
-        <div className="qx-plugin-preference-control qx-plugin-preference-slider">
-          <Slider
-            value={numericValue}
-            min={min}
-            max={max}
-            step={step}
-            ariaLabel={pref.label}
-            formatLabel={(next) => `${next}${pref.unit || ""}`}
-            onChange={(next) => onChange(next)}
-          />
-          <span>{numericValue}{pref.unit || ""}</span>
-        </div>
-      );
-    }
-
-    case "number":
-      return (
-        <div className="qx-settings-input-wrap qx-plugin-preference-control">
-          <Input
-            type="number"
-            value={String(value ?? 0)}
-            onChange={(e) => onChange(Number(e.target.value))}
-          />
-        </div>
-      );
-
-    case "password":
-      return (
-        <div className="qx-settings-input-wrap qx-plugin-preference-control">
-          <Input
-            type="password"
-            value={String(value ?? "")}
-            onChange={(e) => onChange(e.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
-      );
-
-    case "textarea":
-      return (
-        <div className="qx-settings-textarea-wrap">
-          <textarea
-            className="qx-shadcn-textarea"
-            value={String(value ?? "")}
-            rows={typeof pref.rows === "number" && pref.rows > 0 ? pref.rows : 4}
-            placeholder={pref.placeholder || undefined}
-            spellCheck={false}
-            onChange={(e) => onChange(e.target.value)}
-            aria-label={pref.label}
-          />
-        </div>
-      );
-
-    default: // "string" — promote list-like strings to textarea
-      if (isMultilinePreference(pref)) {
-        return (
-          <div className="qx-settings-textarea-wrap">
-            <textarea
-              className="qx-shadcn-textarea"
-              value={String(value ?? "")}
-              rows={typeof pref.rows === "number" && pref.rows > 0 ? pref.rows : 4}
-              placeholder={pref.placeholder || undefined}
-              spellCheck={false}
-              onChange={(e) => onChange(e.target.value)}
-              aria-label={pref.label}
-            />
-          </div>
-        );
-      }
-      return (
-        <div className="qx-settings-input-wrap qx-plugin-preference-control">
-          <Input
-            type="text"
-            value={String(value ?? "")}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={pref.placeholder || undefined}
-          />
-        </div>
-      );
-  }
-}
-
 function ExtensionShortcutsCard({
   plugin,
 }: {
@@ -805,10 +669,12 @@ function PluginDetail({
   plugin,
   onToggle,
   onUninstall,
+  onDirtyChange,
 }: {
   plugin: InstalledPlugin;
   onToggle: () => void;
   onUninstall: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -816,6 +682,7 @@ function PluginDetail({
   const hasCustomBuiltinSettings = plugin.id === "builtin:weather";
   const configurableBuiltin = isConfigurableBuiltinModule(plugin.id);
   const preferences = plugin.manifest?.preferences ?? [];
+  const preferenceGroups = plugin.manifest?.preferenceGroups ?? [];
   const permissions = plugin.manifest?.permissions ?? plugin.permissions ?? [];
   const iconAsset = plugin.manifest?.icon;
   const screenshots = plugin.manifest?.screenshots ?? [];
@@ -838,12 +705,32 @@ function PluginDetail({
   const queued = queuedIds.includes(plugin.id);
 
   /* ---- preference values ---- */
-  const [prefValues, setPrefValues] = useState<Record<string, string | number | boolean>>({});
+  const [prefValues, setPrefValues] = useState<PreferenceValues>({});
+  const [savedPrefValues, setSavedPrefValues] = useState<PreferenceValues>({});
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [prefsBusy, setPrefsBusy] = useState(false);
+  const [prefsError, setPrefsError] = useState<string | null>(null);
+  const [checkingGroupId, setCheckingGroupId] = useState<string | null>(null);
   const [hostVersion, setHostVersion] = useState<string | null>(null);
-  const prefValuesRef = useRef<Record<string, string | number | boolean>>({});
+  const prefValuesRef = useRef<PreferenceValues>({});
+  const savedPrefValuesRef = useRef<PreferenceValues>({});
+  // Values allowed to enter the next complete write. This intentionally
+  // excludes unrelated manual drafts until their group is explicitly saved.
+  const persistableValuesRef = useRef<PreferenceValues>({});
   const loadTokenRef = useRef(0);
+  const checkingGroupRef = useRef<string | null>(null);
+  const saveQueueRef = useRef<PreferenceSaveQueue | null>(null);
+  if (!saveQueueRef.current) {
+    saveQueueRef.current = createPreferenceSaveQueue({
+      write: async ({ pluginId, values }) => {
+        await invoke("plugin_preferences_set", {
+          id: pluginId,
+          values,
+        });
+      },
+      onBusyChange: setPrefsBusy,
+    });
+  }
   const appCompatible = builtin
     || hostVersion === null
     || appVersionMeetsMinimum(hostVersion ?? "", plugin.manifest?.min_app_version);
@@ -872,36 +759,46 @@ function PluginDetail({
 
   // Compute defaults from preference definitions.
   const computeDefaults = useCallback(() => {
-    const defaults: Record<string, string | number | boolean> = {};
+    const defaults: PreferenceValues = {};
     for (const p of preferences) {
       defaults[p.id] = p.default ?? (p.type === "boolean" ? false : p.type === "number" ? 0 : "");
     }
     return defaults;
   }, [preferences]);
 
+  // External drafts must not reload when unrelated global settings change.
+  const preferenceSettings = settingsKey ? settings : null;
   // Load preferences whenever the selected plugin changes.
   useEffect(() => {
     if (preferences.length === 0) {
       setPrefValues({});
+      setSavedPrefValues({});
       prefValuesRef.current = {};
+      savedPrefValuesRef.current = {};
+      persistableValuesRef.current = {};
+      setPrefsError(null);
       setPrefsLoaded(true);
       return;
     }
 
     const token = ++loadTokenRef.current;
     setPrefsLoaded(false);
+    setPrefsError(null);
     const defaults = computeDefaults();
 
     if (settingsKey) {
       // Built-in module: read from global settings store.
       const storeSection = (settings as unknown as Record<string, Record<string, unknown>>)[settingsKey] ?? {};
-      const next: Record<string, string | number | boolean> = {};
+      const next: PreferenceValues = {};
       for (const p of preferences) {
         next[p.id] = (storeSection[p.id] as string | number | boolean) ?? defaults[p.id];
       }
       if (token !== loadTokenRef.current) return;
       prefValuesRef.current = next;
+      savedPrefValuesRef.current = next;
+      persistableValuesRef.current = next;
       setPrefValues(next);
+      setSavedPrefValues(next);
       setPrefsLoaded(true);
       return;
     }
@@ -909,26 +806,111 @@ function PluginDetail({
     // External plugin: read from plugin_preferences_get.
     (async () => {
       try {
-        const saved = await invoke<Record<string, string | number | boolean>>(
+        const saved = await invoke<PreferenceValues>(
           "plugin_preferences_get",
           { id: plugin.id },
         );
         if (token !== loadTokenRef.current) return;
         const next = { ...defaults, ...saved };
         prefValuesRef.current = next;
+        savedPrefValuesRef.current = next;
+        persistableValuesRef.current = next;
         setPrefValues(next);
+        setSavedPrefValues(next);
       } catch {
         if (token !== loadTokenRef.current) return;
         prefValuesRef.current = defaults;
+        savedPrefValuesRef.current = defaults;
+        persistableValuesRef.current = defaults;
         setPrefValues(defaults);
+        setSavedPrefValues(defaults);
       } finally {
         if (token === loadTokenRef.current) setPrefsLoaded(true);
       }
     })();
-  }, [plugin.id, settingsKey, settings, computeDefaults]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [plugin.id, settingsKey, preferenceSettings, computeDefaults]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const declaredPreferenceIds = useMemo(
+    () => new Set(preferences.map((preference) => preference.id)),
+    [preferences],
+  );
+
+  const manualPreferenceIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const group of preferenceGroups) {
+      if (group.saveMode !== "manual") continue;
+      normalizePreferenceIds(group, declaredPreferenceIds).forEach((id) => ids.add(id));
+    }
+    return ids;
+  }, [declaredPreferenceIds, preferenceGroups]);
+
+  const dirtyGroupIds = useMemo(() => {
+    const groups: PluginPreferenceGroup[] = preferenceGroups.length > 0
+      ? preferenceGroups
+      : [{
+        id: "__ungrouped",
+        title: "",
+        preferenceIds: preferences.map((preference) => preference.id),
+        saveMode: "autosave",
+      }];
+    const dirty = new Set<string>();
+    for (const group of groups) {
+      // Autosave groups may be briefly ahead of their persisted baseline while
+      // the writer is in flight; they are not user-confirmation dirty state.
+      if (group.saveMode !== "manual") continue;
+      const ids = normalizePreferenceIds(group, declaredPreferenceIds);
+      if ([...ids].some((id) => !Object.is(prefValues[id], savedPrefValues[id]))) {
+        dirty.add(group.id);
+      }
+    }
+    return dirty;
+  }, [declaredPreferenceIds, prefValues, preferenceGroups, preferences, savedPrefValues]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirtyGroupIds.size > 0);
+  }, [dirtyGroupIds, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  const persistExternalValues = useCallback(
+    (values: PreferenceValues): Promise<void> => {
+      const pluginId = plugin.id;
+      const token = loadTokenRef.current;
+      const snapshot: PreferenceValues = { ...values };
+      // This map is deliberately separate from the UI draft. It advances only
+      // for an autosave field or an explicitly saved manual group.
+      persistableValuesRef.current = snapshot;
+      const queue = saveQueueRef.current;
+      if (!queue) return Promise.reject(new Error("Preference save queue unavailable"));
+      return queue.enqueue({
+        pluginId,
+        token,
+        values: snapshot,
+      }).then(
+        () => {
+          if (token !== loadTokenRef.current || pluginId !== plugin.id) return;
+          savedPrefValuesRef.current = snapshot;
+          setSavedPrefValues(snapshot);
+          setPrefsError(null);
+        },
+        (error) => {
+          if (token === loadTokenRef.current && pluginId === plugin.id) {
+            // Only roll back the requested baseline if no newer request has
+            // superseded this failed snapshot.
+            if (persistableValuesRef.current === snapshot) {
+              persistableValuesRef.current = resetRequestedToPersisted(savedPrefValuesRef.current);
+            }
+            setPrefsError(String(error));
+          }
+          throw error;
+        },
+      );
+    },
+    [plugin.id],
+  );
 
   const handlePrefChange = useCallback(
-    async (prefId: string, value: string | number | boolean) => {
+    (prefId: string, value: PreferenceValue) => {
       const normalizedValue = (settingsKey === "screencap"
         && (prefId === "fps" || prefId === "capture_delay_seconds"))
         || (settingsKey === "macros" && prefId === "stop_tail_seconds")
@@ -937,27 +919,127 @@ function PluginDetail({
       const next = { ...prefValuesRef.current, [prefId]: normalizedValue };
       prefValuesRef.current = next;
       setPrefValues(next);
-      setPrefsBusy(true);
 
       if (settingsKey) {
-        // Built-in module: write to global settings store.
+        if (manualPreferenceIds.has(prefId)) return;
+        const request = buildPreferenceSaveRequest(
+          persistableValuesRef.current,
+          { kind: "autosave", preferenceId: prefId, value: normalizedValue },
+        );
+        persistableValuesRef.current = request.nextRequested;
+        // Built-in module: write one complete, persistable preference map.
         const storeSection = (settings as unknown as Record<string, Record<string, unknown>>)[settingsKey] ?? {};
-        patch(settingsKey as any, { ...storeSection, [prefId]: normalizedValue });
-        setPrefsBusy(false);
+        patch(settingsKey as any, { ...storeSection, ...request.snapshot });
+        savedPrefValuesRef.current = request.snapshot;
+        setSavedPrefValues(request.snapshot);
         return;
       }
 
-      // External plugin: write to plugin_preferences_set.
-      try {
-        await invoke("plugin_preferences_set", { id: plugin.id, values: next });
-      } catch (err) {
-        console.error("Failed to save preference", err);
-      } finally {
-        setPrefsBusy(false);
-      }
+      if (manualPreferenceIds.has(prefId)) return;
+      // Legacy plugins and ungrouped preferences keep per-change autosave.
+      const request = buildPreferenceSaveRequest(
+        persistableValuesRef.current,
+        { kind: "autosave", preferenceId: prefId, value: normalizedValue },
+      );
+      void persistExternalValues(request.snapshot).catch((error) => {
+        console.error("Failed to save preference", error);
+      });
     },
-    [plugin.id, settingsKey, settings, patch],
+    [manualPreferenceIds, persistExternalValues, settingsKey, settings, patch],
   );
+
+  const persistGroupValues = useCallback(async (group: PluginPreferenceGroup) => {
+    const preferenceIds = normalizePreferenceIds(group, declaredPreferenceIds);
+    const request = buildPreferenceSaveRequest(
+      persistableValuesRef.current,
+      {
+        kind: "manual",
+        preferenceIds,
+        values: prefValuesRef.current,
+      },
+    );
+    if (settingsKey) {
+      const storeSection = (settings as unknown as Record<string, Record<string, unknown>>)[settingsKey] ?? {};
+      patch(settingsKey as any, { ...storeSection, ...request.snapshot });
+      persistableValuesRef.current = request.nextRequested;
+      savedPrefValuesRef.current = request.snapshot;
+      setSavedPrefValues(request.snapshot);
+      setPrefsError(null);
+      return;
+    }
+    await persistExternalValues(request.snapshot);
+  }, [declaredPreferenceIds, patch, persistExternalValues, settings, settingsKey]);
+
+  const handleSaveGroup = useCallback(async (group: PluginPreferenceGroup) => {
+    if (group.saveMode !== "manual") return;
+    try {
+      await persistGroupValues(group);
+    } catch (error) {
+      setPrefsError(String(error));
+      throw error;
+    }
+  }, [persistGroupValues]);
+
+  const handleCancelGroup = useCallback((group: PluginPreferenceGroup) => {
+    if (group.saveMode !== "manual") return;
+    const next = { ...prefValuesRef.current };
+    for (const id of normalizePreferenceIds(group, declaredPreferenceIds)) {
+      if (Object.prototype.hasOwnProperty.call(savedPrefValuesRef.current, id)) {
+        next[id] = savedPrefValuesRef.current[id];
+      }
+    }
+    prefValuesRef.current = next;
+    setPrefValues(next);
+    setPrefsError(null);
+  }, [declaredPreferenceIds]);
+
+  const handleCheckConnection = useCallback(async (group: PluginPreferenceGroup) => {
+    const check = group.connectionCheck;
+    if (!check) return;
+    if (checkingGroupRef.current) return;
+    const token = loadTokenRef.current;
+    const pluginId = plugin.id;
+    checkingGroupRef.current = group.id;
+    setCheckingGroupId(group.id);
+    const isCurrent = () =>
+      token === loadTokenRef.current
+      && pluginId === plugin.id
+      && checkingGroupRef.current === group.id;
+    try {
+      if (isCurrent()) setPrefsError(null);
+      if (group.saveMode === "manual" && dirtyGroupIds.has(group.id)) {
+        try {
+          await handleSaveGroup(group);
+        } catch {
+          return;
+        }
+        if (!isCurrent()) return;
+      }
+      if (!isCurrent()) return;
+      const declared = (plugin.manifest?.commands ?? []).some((command) => command.name === check.command);
+      if (!declared) {
+        setPrefsError(t("plugins.preferences.connectionCommandMissing", "Connection check command is not declared by this plugin."));
+        return;
+      }
+      const command = await usePluginRegistry.getState().resolveCommand(pluginId, check.command);
+      if (!isCurrent()) return;
+      if (!command || command.interval) {
+        setPrefsError(t("plugins.preferences.connectionCommandUnavailable", "Connection check is unavailable."));
+        return;
+      }
+      const result = await usePluginRegistry.getState().runCommandWithResult(command, { launchType: "userInitiated" });
+      if (!isCurrent()) return;
+      if (!result.ok) {
+        setPrefsError(result.error || t("plugins.preferences.connectionCheckFailed", "Connection check failed."));
+      }
+      // Do not emit a generic success toast here. The plugin command owns any
+      // useful identity/permission result, while failures use the host's
+      // existing restricted-command status/toast path.
+    } finally {
+      if (checkingGroupRef.current === group.id) checkingGroupRef.current = null;
+      if (token === loadTokenRef.current && pluginId === plugin.id) setCheckingGroupId(null);
+    }
+  }, [dirtyGroupIds, handleSaveGroup, plugin.id, plugin.manifest?.commands, t]);
 
   return (
     <div className="qx-plugin-detail-panel">
@@ -1144,6 +1226,37 @@ function PluginDetail({
 
       {!builtin && <RaycastCompatibilityReport plugin={plugin} />}
 
+      {!hasCustomBuiltinSettings && preferences.length > 0 && (
+        <PluginPreferences
+          plugin={plugin}
+          preferences={preferences}
+          groups={preferenceGroups}
+          values={prefValues}
+          loaded={prefsLoaded}
+          saving={prefsBusy}
+          checkingGroupId={checkingGroupId}
+          error={prefsError}
+          dirtyGroupIds={dirtyGroupIds}
+          onChange={handlePrefChange}
+          onSaveGroup={(group) => void handleSaveGroup(group)}
+          onCancelGroup={handleCancelGroup}
+          onCheckConnection={(group) => void handleCheckConnection(group)}
+        />
+      )}
+
+      {!hasCustomBuiltinSettings && plugin.id === "v2ex" && (
+        <SettingsCard title={t("plugins.v2exToken.title", "V2EX Token")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void openUrl("https://v2ex.com/settings/tokens")}
+          >
+            <ExternalLink size={13} aria-hidden="true" />
+            {t("plugins.getToken", "Get Token")}
+          </Button>
+        </SettingsCard>
+      )}
+
       <ExtensionShortcutsCard plugin={plugin} />
 
       <SettingsCard
@@ -1168,42 +1281,6 @@ function PluginDetail({
       )}
 
       {hasCustomBuiltinSettings && <WeatherSettings />}
-
-      {!hasCustomBuiltinSettings && preferences.length > 0 && prefsLoaded && (
-        <SettingsCard
-          title={t("plugins.preferences", "Preferences")}
-          description={prefsBusy ? t("plugins.preferences.saving", "Saving…") : undefined}
-        >
-          {preferences.map((pref) => {
-            const localizedPref = localizePluginPreference(plugin, pref, t, locale);
-            return (
-              <Row
-                key={pref.id}
-                title={localizedPref.label}
-                description={localizedPref.description}
-                stacked={isMultilinePreference(localizedPref) || localizedPref.type === "textarea"}
-              >
-                <PreferenceField
-                  pref={localizedPref}
-                  value={prefValues[pref.id] ?? pref.default ?? ""}
-                  onChange={(v) => handlePrefChange(pref.id, v)}
-                />
-              </Row>
-            );
-          })}
-
-          {plugin.id === "v2ex" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void openUrl("https://v2ex.com/settings/tokens")}
-            >
-              <ExternalLink size={13} aria-hidden="true" />
-              {t("plugins.getToken", "Get Token")}
-            </Button>
-          )}
-        </SettingsCard>
-      )}
 
       <ExtensionCommandsCard plugin={plugin} />
 
@@ -2097,6 +2174,8 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
   const [tab, setTab] = useState<Tab>("installed");
   /** Open config dialog for this installed module id (null = closed). */
   const [configId, setConfigId] = useState<string | null>(null);
+  const [configDirty, setConfigDirty] = useState(false);
+  const [discardPromptOpen, setDiscardPromptOpen] = useState(false);
   const [marketplaceToolbarHost, setMarketplaceToolbarHost] = useState<HTMLDivElement | null>(null);
   const [archivePath, setArchivePath] = useState("");
   const [archiveUrl, setArchiveUrl] = useState("");
@@ -2110,8 +2189,24 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
   useEffect(() => {
     if (configId && !plugins.find((p) => p.id === configId)) {
       setConfigId(null);
+      setConfigDirty(false);
     }
   }, [plugins, configId]);
+
+  const closeConfigDialog = useCallback(() => {
+    if (configDirty) {
+      setDiscardPromptOpen(true);
+      return;
+    }
+    setConfigDirty(false);
+    setConfigId(null);
+  }, [configDirty]);
+
+  const discardAndCloseConfigDialog = useCallback(() => {
+    setDiscardPromptOpen(false);
+    setConfigDirty(false);
+    setConfigId(null);
+  }, []);
 
   // Raycast "Configure Extension" can request the exact plugin card after
   // navigation lands on Settings → Extensions.
@@ -2480,7 +2575,10 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
                     <div key={plugin.id} role="listitem">
                       <InstalledModuleCard
                         plugin={plugin}
-                        onOpen={() => setConfigId(plugin.id)}
+                        onOpen={() => {
+                          setConfigDirty(false);
+                          setConfigId(plugin.id);
+                        }}
                         onToggle={() => void handleToggle(plugin)}
                         badges={badges}
                         actions={updateOffer?.kind === "ready" ? (
@@ -2523,7 +2621,7 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
           </div>
         )}
 
-        <Dialog open={Boolean(configPlugin)} onOpenChange={(open) => { if (!open) setConfigId(null); }}>
+        <Dialog open={Boolean(configPlugin)} onOpenChange={(open) => { if (!open) closeConfigDialog(); }}>
           <DialogContent className="qx-plugin-config-dialog">
             {configPlugin && (
               <>
@@ -2539,13 +2637,48 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
                 <PluginDetail
                   plugin={configPlugin}
                   onToggle={() => void handleToggle(configPlugin)}
+                  onDirtyChange={setConfigDirty}
                   onUninstall={() => {
                     void handleUninstall(configPlugin.id);
-                    setConfigId(null);
+                    closeConfigDialog();
                   }}
                 />
               </>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={discardPromptOpen} onOpenChange={setDiscardPromptOpen}>
+          <DialogContent className="qx-plugin-discard-dialog">
+            <DialogHeader>
+              <DialogTitle>
+                {t("plugins.configureDialog.discardTitle", "Discard unsaved changes?")}
+              </DialogTitle>
+              <DialogDescription>
+                {t(
+                  "plugins.configureDialog.discardDescription",
+                  "Your changes have not been saved yet.",
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="qx-plugin-discard-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDiscardPromptOpen(false)}
+              >
+                {t("plugins.configureDialog.continueEditing", "Continue editing")}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={discardAndCloseConfigDialog}
+              >
+                {t("plugins.configureDialog.discardChanges", "Discard changes")}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </TabsContent>

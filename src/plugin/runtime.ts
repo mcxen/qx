@@ -27,6 +27,7 @@ import {
   buildPluginRuntimeHtml,
   pluginDisplaySettingsSnapshot,
 } from "./pluginRuntimeHtml";
+import { buildPluginSearchTerms } from "./pluginSearchMetadata";
 export {
   broadcastToPluginRuntimes,
   isExpectedPluginMessageOrigin,
@@ -39,8 +40,10 @@ export {
   subscribePluginChrome,
   subscribePluginItemActions,
   subscribePluginWorkbench,
+  subscribePluginWorkbenchEdit,
   type PluginChromePayload,
   type PluginItemActionDescriptor,
+  type PluginWorkbenchEditPayload,
 } from "./pluginShellBridge";
 export { resolvePluginAssetUrl } from "./pluginRuntimeTransport";
 export { buildPluginRuntimeHtml } from "./pluginRuntimeHtml";
@@ -113,16 +116,13 @@ export async function loadPlugin(
       const commandIcon = await resolvePluginAssetUrl(plugin.id, cmd.icon);
       const registered: RegisteredCommand = {
         ...cmd,
-        keywords: Array.from(new Set([
-          plugin.name,
-          plugin.id,
-          ...(manifest.keywords || []),
-          ...Object.values(manifest.names || {}),
-          ...Object.values(manifest.descriptions || {}),
-          ...Object.values(cmd.titles || {}),
-          ...Object.values(cmd.descriptions || {}),
-          ...(cmd.keywords || []),
-        ].map((keyword) => keyword.trim()).filter(Boolean))),
+        keywords: buildPluginSearchTerms({
+          pluginId: plugin.id,
+          pluginName: plugin.name,
+          pluginDescription: plugin.description,
+          manifest,
+          command: cmd,
+        }),
         icon: commandIcon || pluginIcon,
         pluginId: plugin.id,
         pluginName: plugin.name,
@@ -188,12 +188,13 @@ export async function loadPlugin(
       pluginIcon,
       title: manifest.panel.title || plugin.name,
       icon: panelIcon || pluginIcon,
-      keywords: Array.from(new Set([
-        plugin.name,
-        plugin.id,
-        ...(manifest.keywords || []),
-        ...(manifest.panel.keywords || []),
-      ].map((keyword) => keyword.trim()).filter(Boolean))),
+      keywords: buildPluginSearchTerms({
+        pluginId: plugin.id,
+        pluginName: plugin.name,
+        pluginDescription: plugin.description,
+        manifest,
+        panel: manifest.panel,
+      }),
       async render(container, _ctx) {
         const startedAt = performance.now();
         runtimeLogger.info("Plugin panel render started", { pluginId: plugin.id });

@@ -7,11 +7,9 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { openUrl as openerOpenUrl } from "@tauri-apps/plugin-opener";
 import { useShallow } from "zustand/react/shallow";
-import QxShell, {
-  type QxShellAction,
-  type QxShellTopbarFilter,
-} from "../components/QxShell";
+import QxShell, { type QxShellAction, type QxShellTopbarFilter } from "../components/QxShell";
 import { QxActionSections } from "../components/QxActionPanel";
 import PluginBackgroundBadge, {
   usePluginBackgroundJob,
@@ -34,6 +32,7 @@ import {
 } from "./runtime";
 import QxModuleSearch from "../components/QxModuleSearch";
 import PluginWorkbenchView, { PLUGIN_WORKBENCH_REGIONS } from "./PluginWorkbenchView";
+import { useWorkbenchEditBridge } from "./useWorkbenchEditBridge";
 import type { PluginWorkbenchAction, PluginWorkbenchState } from "./workbenchTypes";
 import {
   applyPluginWorkbenchItemsUpdate,
@@ -65,8 +64,10 @@ import {
 } from "./pluginIsland";
 import { islandHost } from "../island";
 import { useWorkbenchHtmlExportAction } from "./useWorkbenchHtmlExportAction";
-import { openSettings } from "../modules/settings/openSettings";
+import { goHomeToLauncher, openSettings } from "../modules/settings/openSettings";
 import { assignPluginActionMenuKeys, isBareEnterShortcut } from "./pluginActions";
+import { useWorkbenchNavigationGuard } from "./useWorkbenchNavigationGuard";
+import { useWorkbenchInteractions } from "./useWorkbenchInteractions";
 
 export function PluginHost() {
   const loaded = usePluginRegistry((state) => state.loaded);
@@ -144,7 +145,32 @@ export function PluginPanelViewport() {
   const raycastActionPanel = useSettingsStore(
     (state) => state.settings.plugin_display.raycast_action_panel,
   );
-  const goBack = useCallback(() => setTab("launcher"), [setTab]);
+  const requestWorkbenchEdit = useWorkbenchEditBridge(pluginId, isPluginTab);
+  const { register: registerWorkbenchNavigationGuard, run: runWorkbenchNavigation, active: hasWorkbenchEditor } = useWorkbenchNavigationGuard();
+  const goBack = useCallback(() => {
+    runWorkbenchNavigation(() => setTab("launcher"));
+  }, [runWorkbenchNavigation, setTab]);
+  const goHome = useCallback(() => {
+    runWorkbenchNavigation(() => goHomeToLauncher());
+  }, [runWorkbenchNavigation]);
+  const openWorkbenchLink = useCallback((url: string) => {
+    if (!/^https?:\/\//i.test(url)) return;
+    const permissions = new Set([
+      ...(plugin?.permissions || []),
+      ...(plugin?.manifest?.permissions || []),
+    ]);
+    if (!permissions.has("*") && !permissions.has("open-url")) {
+      window.dispatchEvent(new CustomEvent("qx:toast", {
+        detail: t("plugins.workbench.openLinkDenied", "This plugin cannot open external links."),
+      }));
+      return;
+    }
+    void openerOpenUrl(url).catch(() => {
+      window.dispatchEvent(new CustomEvent("qx:toast", {
+        detail: t("plugins.workbench.openLinkFailed", "Could not open this link."),
+      }));
+    });
+  }, [plugin, t]);
   const runPluginIslandCommand = useCallback(async (targetPluginId: string, commandName: string) => {
     const command = await usePluginRegistry.getState().resolveCommand(
       targetPluginId,
@@ -153,63 +179,9 @@ export function PluginPanelViewport() {
     if (!command) throw new Error(`Plugin island command is not registered: ${commandName}`);
     await usePluginRegistry.getState().runCommand(command);
   }, []);
-  const selectWorkbenchItem = useCallback((id: string) => {
-    // Keep pointer and keyboard selection responsive even when the plugin iframe
-    // is busy. The plugin still receives the event and remains the source of
-    // truth for subsequent workbench publications.
-    setWorkbench((current) => {
-      if (!current || String(current.selectedId ?? "") === id) return current;
-      return { ...current, selectedId: id };
-    });
-    postPluginWorkbenchEvent(pluginId, { kind: "select", id });
-  }, [pluginId]);
-  const updateWorkbenchQuery = useCallback((value: string) => {
-    setWorkbenchDetailOpen(false);
-    setWorkbench((current) => current ? { ...current, query: value } : current);
-    if (workbenchQueryTimerRef.current !== null) {
-      window.clearTimeout(workbenchQueryTimerRef.current);
-      workbenchQueryTimerRef.current = null;
-    }
-    const publish = () => {
-      workbenchQueryTimerRef.current = null;
-      postPluginWorkbenchEvent(pluginId, { kind: "query", value });
-    };
-    if (!value) publish();
-    else workbenchQueryTimerRef.current = window.setTimeout(publish, 140);
-  }, [pluginId]);
-  const selectWorkbenchTab = useCallback((id: string) => {
-    if (workbenchQueryTimerRef.current !== null) {
-      window.clearTimeout(workbenchQueryTimerRef.current);
-      workbenchQueryTimerRef.current = null;
-    }
-    setWorkbenchDetailOpen(false);
-    setWorkbench((current) => current
-      ? {
-          ...current,
-          tabs: current.tabs?.map((tabItem) => ({
-            ...tabItem,
-            active: tabItem.id === id,
-          })),
-        }
-      : current);
-    postPluginWorkbenchEvent(pluginId, { kind: "tab", id });
-  }, [pluginId]);
-  const updateWorkbenchFilter = useCallback((id: string, value: string) => {
-    if (workbenchQueryTimerRef.current !== null) {
-      window.clearTimeout(workbenchQueryTimerRef.current);
-      workbenchQueryTimerRef.current = null;
-    }
-    setWorkbenchDetailOpen(false);
-    setWorkbench((current) => current
-      ? {
-          ...current,
-          filters: current.filters?.map((filter) => (
-            filter.id === id ? { ...filter, value } : filter
-          )),
-        }
-      : current);
-    postPluginWorkbenchEvent(pluginId, { kind: "filter", id, value });
-  }, [pluginId]);
+  const { applyWorkbenchSelection, selectWorkbenchItem, updateWorkbenchQuery, selectWorkbenchTab, updateWorkbenchFilter } = useWorkbenchInteractions({
+    pluginId, workbench, setWorkbench, setWorkbenchDetailOpen, workbenchQueryTimerRef, runWorkbenchNavigation,
+  });
 
   const handlePluginKeys = useCallback((event: React.KeyboardEvent) => {
     // Do not bind bare R for panel remount — plugins may use Cmd+R for item
@@ -224,7 +196,7 @@ export function PluginPanelViewport() {
       && !event.altKey
     ) {
       event.preventDefault();
-      setRefreshKey((k) => k + 1);
+      runWorkbenchNavigation(() => setRefreshKey((k) => k + 1));
       return;
     }
 
@@ -234,7 +206,7 @@ export function PluginPanelViewport() {
       `[data-qx-region="${PLUGIN_WORKBENCH_REGIONS.detail}"]`,
     ));
     if (
-      workbench?.layout?.kind !== "gallery"
+      (workbench?.layout?.kind !== "gallery" && workbench?.layout?.kind !== "cards")
       || (workbenchDetailOpen && fromDetail)
       || isImeCompositionEvent(event.nativeEvent)
       || !shouldHandleQxGridKey({
@@ -254,9 +226,9 @@ export function PluginPanelViewport() {
       : -1;
     const gallery = containerRef.current
       ?.closest<HTMLElement>(".qx-shell")
-      ?.querySelector<HTMLElement>(".qx-host-workbench-gallery");
+      ?.querySelector<HTMLElement>(".qx-host-workbench-gallery, .qx-host-workbench-cards");
     const renderedColumns = gallery
-      ? window.getComputedStyle(gallery).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length
+      ? Number(gallery.dataset.qxGridColumns) || window.getComputedStyle(gallery).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length
       : 0;
     const nextIndex = resolveQxGridIndex({
       key: event.key,
@@ -271,7 +243,7 @@ export function PluginPanelViewport() {
     if (item) {
       selectWorkbenchItem(item.id);
     }
-  }, [selectWorkbenchItem, workbench, workbenchDetailOpen]);
+  }, [runWorkbenchNavigation, selectWorkbenchItem, workbench, workbenchDetailOpen]);
 
   useEffect(() => {
     if (!isPluginTab || !pluginId) {
@@ -531,17 +503,22 @@ export function PluginPanelViewport() {
   }, []);
 
   const activateWorkbenchItem = useCallback((id: string) => {
-    selectWorkbenchItem(id);
     const item = workbench?.items?.find((candidate) => candidate.id === id);
-    if (!item?.detail && !workbench?.detail) return;
-    setWorkbenchDetailOpen(true);
-    window.requestAnimationFrame(() => {
-      focusQxRegion(
-        PLUGIN_WORKBENCH_REGIONS.detail,
-        containerRef.current?.closest<HTMLElement>(".qx-shell"),
-      );
+    if (!item?.detail && !workbench?.detail) {
+      selectWorkbenchItem(id);
+      return;
+    }
+    runWorkbenchNavigation(() => {
+      applyWorkbenchSelection(id);
+      setWorkbenchDetailOpen(true);
+      window.requestAnimationFrame(() => {
+        focusQxRegion(
+          PLUGIN_WORKBENCH_REGIONS.detail,
+          containerRef.current?.closest<HTMLElement>(".qx-shell"),
+        );
+      });
     });
-  }, [selectWorkbenchItem, workbench]);
+  }, [applyWorkbenchSelection, runWorkbenchNavigation, selectWorkbenchItem, workbench]);
 
   const updateWorkbenchInput = useCallback((id: string, value: string) => {
     postPluginWorkbenchEvent(pluginId, {
@@ -601,6 +578,7 @@ export function PluginPanelViewport() {
     : undefined;
 
   const runWorkbenchAction = useCallback((actionId: string) => {
+    runWorkbenchNavigation(() => {
     const descriptor = [...workbenchActionDescriptors, ...workbenchFormActionDescriptors]
       .find((action) => action.id === actionId);
     if (descriptor?.command) {
@@ -623,7 +601,9 @@ export function PluginPanelViewport() {
           ? selectedWorkbenchItem.id
         : undefined,
     });
+    });
   }, [
+    runWorkbenchNavigation,
     pluginCommands,
     pluginId,
     selectedWorkbenchItem,
@@ -631,12 +611,7 @@ export function PluginPanelViewport() {
     workbenchFormActionDescriptors,
   ]);
 
-  // Workbench Enter contract:
-  // - List + item has detail → Open Details (read first)
-  // - Detail open → Back to List
-  // - List/root without a navigable detail → explicit primary (or first enabled)
-  // Business actions keep explicit modified shortcuts but never take bare Enter
-  // away from list/detail navigation.
+  // Enter navigates list/detail first; business actions retain modified shortcuts.
   const explicitPrimaryWorkbenchAction = useMemo(
     () => workbenchActionDescriptors.find((action) => action.primary && !action.disabled),
     [workbenchActionDescriptors],
@@ -708,7 +683,7 @@ export function PluginPanelViewport() {
       {
         id: "__qx:plugin-preferences",
         label: t("plugins.openPluginSettings", "Plugin Settings…"),
-        onClick: () => openSettings({ focusPluginId: pluginId }),
+        onClick: () => runWorkbenchNavigation(() => openSettings({ focusPluginId: pluginId })),
       },
     ]
     : [
@@ -724,13 +699,14 @@ export function PluginPanelViewport() {
       {
         id: "__qx:plugin-preferences",
         label: t("plugins.openPluginSettings", "Plugin Settings…"),
-        onClick: () => openSettings({ focusPluginId: pluginId }),
+        onClick: () => runWorkbenchNavigation(() => openSettings({ focusPluginId: pluginId })),
       },
     ]), [
         hasExplicitPanelPrimary,
         itemActions,
         pluginId,
         runItem,
+        runWorkbenchNavigation,
         runWorkbenchAction,
         selectedWorkbenchDetail,
         selectedWorkbenchItem,
@@ -780,8 +756,8 @@ export function PluginPanelViewport() {
     leave: goBack,
     esc: {
       inner: {
-        active: workbenchDetailOpen,
-        close: closeWorkbenchDetail,
+        active: hasWorkbenchEditor || workbenchDetailOpen,
+        close: () => hasWorkbenchEditor ? runWorkbenchNavigation(() => {}) : closeWorkbenchDetail(),
       },
       query: {
         active: Boolean(workbench?.query),
@@ -960,6 +936,7 @@ export function PluginPanelViewport() {
       }
       island={shell.island}
       islandManagedExternally={workbenchIslandManaged || pluginIslandSessionActive}
+      onGoHome={goHome}
       primaryActionId={primaryActionId}
       actionTitle={
         actionSelectionTitle
@@ -986,9 +963,13 @@ export function PluginPanelViewport() {
             state={workbench}
             detailOpen={workbenchDetailOpen}
             onActivate={activateWorkbenchItem}
+            onSelect={selectWorkbenchItem}
             onInput={updateWorkbenchInput}
             onAction={runWorkbenchAction}
             onDownload={downloadWorkbenchImage}
+            onEdit={requestWorkbenchEdit}
+            onOpenLink={openWorkbenchLink}
+            registerNavigationGuard={registerWorkbenchNavigationGuard}
           />
         ) : null}
         {!panel && (

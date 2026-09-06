@@ -47,6 +47,7 @@ Bottom Bar
 |---|---|
 | 同构结果、可筛选条目 | List |
 | 图片或媒体为主 | Grid |
+| 正文、标签和时间为主的短笔记 | Cards |
 | 选中项长内容 | List + Detail |
 | 参数输入并提交 | Form |
 | 只显示说明或结果 | Detail |
@@ -140,7 +141,55 @@ Base64 或重复图片字节写进 persist；首次从未成功拉取过的动�
 `loading: false + items: []`，因为成功空集合是权威结果，会覆盖上次快照。SWR 后台刷新成功后
 必须更新当前 Workbench，不能只写磁盘等到下次打开才显示。
 
-### 2.2 数据图表
+### 2.2 内容卡片与原位编辑
+
+短笔记使用 `layout: { kind: "cards", density: "comfortable", showImages: true }`。
+`density` 也可为 `compact`；`columns` 仍只是数字提示，最终列数和几何由宿主决定。
+Cards 保留源顺序，不按卡片高度重新排序。可发布：
+
+```js
+{
+  id: note.id,
+  title: note.title || "",
+  card: {
+    body: note.content,
+    tags: note.tags,
+    timestamp: formattedTime,
+    pinned: note.pinned,
+  },
+  images: previewImages,
+  detail: { body: note.content },
+  editor: canUpdate ? { maxBytes: 65536, rows: 10 } : undefined,
+}
+```
+
+`card.body` 是阅读投影，不是保存源。标题、图片和元数据按实际存在的数据显示，无图不预留封面。
+时间由插件本地化；颜色、字体、换列、虚拟化、选中及媒体预览由宿主统一处理。
+单击选择，Enter 阅读；存在可用 `item.editor` 时，双击正文进入宿主编辑器。
+`editor.readOnly` / `disabled` 禁止编辑；插件仍须在真正写入前重新检查上游权限。
+图片、链接与控件的双击不触发编辑。
+
+`mountWorkbench` 的可选 `onEdit(event, item)` 与旧 `onInput(id, value, item)` 独立。
+事件携带宿主生成的 `itemId`、`sessionId`、`requestId`，输入及保存还带 `value`。
+插件返回纯结果，SDK 自动关联回执，不要求插件手动回传身份字段：
+
+| `event.phase` | handler 结果 | 业务职责 |
+|---|---|---|
+| `start` | `{ status: "ready", value, revision? }` 或 `error` | 读取完整原文并建立当前版本的编辑会话 |
+| `input` | `{ status: "accepted" }` 或 `error` | 兼容阶段，不写入上游；当前宿主逐键输入仅更新本地草稿，不派发此事件 |
+| `save` | `{ status: "saved", value?, revision? }`、`conflict` 或 `error` | 等待实际写入结果；不得派发后立刻宣称保存成功 |
+| `cancel` | `{ status: "cancelled" }` 或 `error` | 结束插件领域会话，不提交草稿 |
+
+失败/冲突可返回 `message`。`revision` 是不透明的插件版本标记；BluePrint 的 CAS 与
+`operationId` 等服务细节始终留在插件，不塞入通用宿主契约。handler 可返回 Promise，
+宿主只处理当前请求和会话的回执。面板销毁或编辑会话替换后，旧异步结果不得回写新会话。
+
+编辑正文上限为 64 KiB UTF-8，`maxBytes` 可声明更小上限；超限原文整体拒绝，不能截断后保存。
+宿主草稿不进入 Workbench 持久快照。Cmd/Ctrl+Enter 保存，IME 组合期间不提交；
+Esc 或离开脏编辑会话先处理保存/放弃/继续编辑，失败及冲突保持草稿与焦点。
+关闭新声明后的 List/Gallery、旧表单回调和旧导航行为必须保持不变。
+
+### 2.3 数据图表
 
 需要趋势、时间序列或指标曲线时，插件应发布结构化 `detail.chart`，由宿主使用 Qx 的
 shadcn/Radix 语义 token 绘制；不要把自绘 SVG、Canvas、data URI 或硬编码颜色塞进

@@ -1841,6 +1841,7 @@
 
 .qx-screencap-options .qx-select {
   width: 100%;
+  max-width: 100%;
 }
 
 @media (max-width: 680px) {
@@ -1872,7 +1873,7 @@
 }
 
 .qx-screencap-convert-row .qx-select {
-  width: 92px;
+  width: fit-content;
 }
 
 /* ── Capture Preview (right pane of screencap module) ────────────────── */

@@ -475,6 +475,17 @@ img.qx-ext-card-icon {
   padding-right: 4px;
 }
 
+.qx-plugin-discard-dialog {
+  width: min(380px, calc(100vw - 40px)) !important;
+}
+
+.qx-plugin-discard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .qx-settings-page {
   display: flex;
   flex-direction: column;
@@ -600,11 +611,11 @@ img.qx-ext-card-icon {
   margin-top: 2px;
 }
 
-/* Settings rows use one standard trailing control width and height. */
+/* Selects fit their text within the trailing track. */
 .qx-settings-row-control > .qx-select,
 .qx-settings-row-control > .qx-inline-select {
-  width: 100%;
-  min-width: min(148px, 100%);
+  width: fit-content;
+  min-width: 0;
   max-width: 100%;
 }
 
@@ -1059,7 +1070,7 @@ img.qx-ext-card-icon {
 .qx-plugin-marketplace-query {
   display: flex;
   align-items: center;
-  flex: 0 1 300px;
+  flex: 0 1 auto;
   min-width: 0;
   gap: 8px;
 }
@@ -1069,8 +1080,9 @@ img.qx-ext-card-icon {
 }
 
 .qx-plugin-source-filter {
-  flex: 0 1 168px;
-  min-width: 112px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
 }
 
 .qx-plugin-source-filter .qx-shadcn-select-trigger {
@@ -1109,7 +1121,7 @@ img.qx-ext-card-icon {
 
 @media (max-width: 620px) {
   .qx-plugin-source-filter {
-    flex-basis: 120px;
+    max-width: 120px;
   }
 
   .qx-plugin-libraries-button span {
@@ -1405,9 +1417,11 @@ img.qx-plugin-detail-icon {
 
 .qx-plugin-install-source {
   display: grid;
-  grid-template-columns: auto minmax(150px, 220px);
+  grid-template-columns: auto minmax(0, auto);
   align-items: center;
-  flex: 1 1 260px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   gap: 8px;
   color: var(--qx-text-secondary);
   font-size: 12px;
@@ -1415,6 +1429,7 @@ img.qx-plugin-detail-icon {
 
 .qx-plugin-install-source .qx-select {
   min-width: 0;
+  max-width: min(100%, 220px);
 }
 
 .qx-plugin-install-actions {
@@ -2861,6 +2876,59 @@ span.qx-plugin-screenshot {
   min-width: 0;
 }
 
+.qx-plugin-preference-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.qx-plugin-preference-group {
+  min-width: 0;
+}
+
+.qx-plugin-preference-group .qx-settings-section-head {
+  max-width: none;
+}
+
+.qx-plugin-preference-actions,
+.qx-plugin-preference-connection-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qx-plugin-preference-error {
+  margin: 6px 0 0;
+  color: var(--qx-danger);
+  font-size: 11px;
+}
+
+.qx-plugin-preference-password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.qx-plugin-preference-password .qx-shadcn-input {
+  padding-right: 34px;
+}
+
+.qx-plugin-preference-reveal {
+  position: absolute;
+  right: 2px;
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  color: var(--qx-text-tertiary);
+}
+
+.qx-plugin-preference-reveal:hover,
+.qx-plugin-preference-reveal:focus-visible {
+  color: var(--qx-text-primary);
+}
+
 .qx-plugin-preference-control .qx-shadcn-select-trigger,
 .qx-plugin-preference-control > .qx-shadcn-toggle-group {
   width: 100%;
@@ -3213,7 +3281,7 @@ span.qx-plugin-screenshot {
 }
 
 .qx-tray-add-row .qx-select {
-  min-width: 156px;
+  min-width: 0;
 }
 
 .qx-tray-add-row .qx-shadcn-button {

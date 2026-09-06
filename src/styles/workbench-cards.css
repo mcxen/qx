@@ -1,0 +1,77 @@
+.qx-host-workbench-cards {
+  display: block;
+  position: relative;
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  padding: 12px;
+}
+
+.qx-workbench-cards-canvas { position: relative; width: 100%; }
+.qx-workbench-cards-row { position: absolute; top: 0; left: 0; width: 100%; display: grid; align-items: stretch; }
+.qx-workbench-note-card {
+  min-width: 0;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--qx-text-primary);
+  background: var(--qx-bg-component-1);
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-radius);
+}
+.qx-workbench-note-card:hover { border-color: var(--qx-border-2); }
+.qx-workbench-note-card.is-active { background: var(--qx-bg-component-2); border-color: var(--qx-accent); }
+.qx-workbench-note-card:focus-within { outline: 1px solid var(--qx-accent); outline-offset: 1px; }
+.qx-workbench-note-content { min-width: 0; }
+.qx-workbench-note-content h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.qx-workbench-note-content h3 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.qx-workbench-note-body {
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 9;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.qx-workbench-note-body p { margin: 0 0 8px; white-space: pre-wrap; }
+.qx-workbench-note-body p:last-child { margin-bottom: 0; }
+.qx-workbench-note-body :is(ul, ol) { padding-left: 18px; margin: 6px 0; }
+.qx-workbench-note-body blockquote { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--qx-border-2); color: var(--qx-text-secondary); }
+.qx-workbench-note-body pre { white-space: pre-wrap; margin: 6px 0; padding: 6px; background: var(--qx-bg-component-2); border-radius: var(--qx-radius); }
+.qx-workbench-note-body code { font-size: 12px; }
+.qx-workbench-note-body .qx-workbench-note-link { display: inline; height: auto; padding: 0; white-space: normal; font: inherit; vertical-align: baseline; color: var(--qx-accent); text-decoration: underline; text-underline-offset: 2px; }
+.qx-workbench-note-images { display: flex; gap: 6px; overflow-x: auto; min-width: 0; }
+.qx-workbench-note-image {
+  flex: 0 0 88px;
+  width: 88px;
+  height: 72px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--qx-radius);
+  background: var(--qx-bg-component-2);
+}
+.qx-workbench-note-image img { width: 100%; height: 100%; object-fit: cover; }
+.qx-workbench-note-tags { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 11px; color: var(--qx-text-secondary); overflow-wrap: anywhere; }
+.qx-workbench-note-tags > span { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qx-workbench-note-meta { margin-top: auto; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--qx-text-tertiary); }
+.qx-workbench-note-meta > span:first-child { flex: 1; min-width: 0; }
+.qx-workbench-note-meta > span { min-width: 0; overflow-wrap: anywhere; }
+.qx-host-workbench-cards.is-compact .qx-workbench-note-card { padding: 10px; gap: 8px; }
+.qx-host-workbench-cards.is-compact .qx-workbench-note-body { -webkit-line-clamp: 6; }
+.qx-host-workbench-cards > .qx-host-workbench-empty { min-height: 100%; }
+
+.qx-host-workbench-card-editor { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.qx-host-workbench-card-editor-input { width: 100%; min-height: 120px; max-height: 360px; resize: vertical; font-size: 13px; line-height: 1.6; }
+.qx-host-workbench-card-editor-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.qx-host-workbench-card-editor-state { display: flex; align-items: center; flex: 1 1 140px; gap: 5px; min-width: 0; font-size: 11px; color: var(--qx-text-secondary); }
+.qx-host-workbench-card-editor-state > span { min-width: 0; overflow-wrap: anywhere; }
+.qx-host-workbench-card-editor-count { white-space: nowrap; color: var(--qx-text-tertiary); }
+.qx-host-workbench-card-editor-actions { display: flex; gap: 6px; }
+.qx-host-workbench-card-editor:is(.is-error, .is-conflict) .qx-host-workbench-card-editor-state { color: var(--qx-danger); }
+.qx-host-workbench-dirty-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }

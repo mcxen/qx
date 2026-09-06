@@ -1,0 +1,12 @@
+{
+  "id": "qx-cards-fixture",
+  "name": "Qx Cards Test Fixture",
+  "names": { "en": "Qx Cards Test Fixture", "zh-CN": "Qx 卡片验收夹具" },
+  "version": "1.0.0",
+  "description": "Development-only synthetic data. No external service or network writes.",
+  "descriptions": { "en": "Development-only synthetic data. No external service or network writes.", "zh-CN": "仅开发验收使用合成数据，不连接外部服务、不进行网络写入。" },
+  "entry": "index.js",
+  "permissions": [],
+  "panel": { "title": "Qx Cards Test Fixture" },
+  "min_app_version": "0.6.103"
+}
