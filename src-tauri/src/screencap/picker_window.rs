@@ -48,7 +48,7 @@ fn promote_macos_capture_surface(window: &tauri::WebviewWindow) {
     use objc2::runtime::AnyObject;
     use objc2_app_kit::NSWindowCollectionBehavior;
 
-    const CG_SCREEN_SAVER_WINDOW_LEVEL_KEY: i32 = 13;
+    const CG_POP_UP_MENU_WINDOW_LEVEL_KEY: i32 = 11;
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
         fn CGWindowLevelForKey(key: i32) -> i32;
@@ -63,10 +63,11 @@ fn promote_macos_capture_surface(window: &tauri::WebviewWindow) {
     }
 
     unsafe {
-        // Ordinary `always_on_top` windows sit below the menu/status bar and
-        // Dock. A capture picker must own those pixels and their pointer input
-        // too, otherwise the supposedly frozen desktop remains interactive.
-        let level = CGWindowLevelForKey(CG_SCREEN_SAVER_WINDOW_LEVEL_KEY) as isize;
+        // Stay above the menu/status bar and Dock, but below system popups
+        // such as IME candidates. Screen Saver level covers the candidate
+        // window even when the WebView correctly maintains marked text.
+        // Apply this to both picker and shades, including cross-display reuse.
+        let level = (CGWindowLevelForKey(CG_POP_UP_MENU_WINDOW_LEVEL_KEY) - 1) as isize;
         let current: NSWindowCollectionBehavior = msg_send![ns_window, collectionBehavior];
         let behavior = current
             | NSWindowCollectionBehavior::CanJoinAllSpaces
@@ -203,7 +204,7 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
             .transparent(true)
             .background_color(Color(0, 0, 0, 0))
             .shadow(false)
-            // macOS uses the native Screen Saver level below; keeping Tauri's
+            // macOS uses a native capture level below; keeping Tauri's
             // generic floating state enabled would continuously reset it.
             .always_on_top(!cfg!(target_os = "macos"))
             .skip_taskbar(true)

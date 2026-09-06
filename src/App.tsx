@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type AppEntry, type SearchScope } from "./store";
 import Launcher from "./Launcher";
+import { useLauncherSelection } from "./launcher/useLauncherSelection";
 import { requestLauncherSearchFocus } from "./SearchBar";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
@@ -635,7 +636,7 @@ function App() {
     setQuery,
     setResults,
     results,
-    selectedIndex,
+    selectedIndex: storedSelectedIndex,
     setSelectedIndex,
     tab,
     setTab,
@@ -657,7 +658,6 @@ function App() {
   const previousQueryRef = useRef(query);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchScopeRef = useRef<SearchScope>("all");
-  const selectedLauncherRowKeyRef = useRef<string | null>(null);
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const mainVisible = useStore((state) => state.visible);
   const t = useT();
@@ -740,39 +740,9 @@ function App() {
     });
   }, []);
 
-  const selectLauncherRow = useCallback((index: number) => {
-    const safeIndex = launcherRows.length > 0
-      ? Math.max(0, Math.min(index, launcherRows.length - 1))
-      : 0;
-    selectedLauncherRowKeyRef.current = launcherRows[safeIndex]?.key ?? null;
-    setSelectedIndex(safeIndex);
-  }, [launcherRows, setSelectedIndex]);
-
-  useEffect(() => {
-    const stableKey = selectedLauncherRowKeyRef.current;
-    if (stableKey) {
-      const stableIndex = launcherRows.findIndex((row) => row.key === stableKey);
-      if (stableIndex >= 0) {
-        if (stableIndex !== selectedIndex) setSelectedIndex(stableIndex);
-        return;
-      }
-    }
-    if (launcherRows.length === 0) {
-      if (selectedIndex !== 0) setSelectedIndex(0);
-      selectedLauncherRowKeyRef.current = null;
-      return;
-    }
-    if (selectedIndex >= launcherRows.length) {
-      setSelectedIndex(launcherRows.length - 1);
-      selectedLauncherRowKeyRef.current = launcherRows[launcherRows.length - 1]?.key ?? null;
-      return;
-    }
-    selectedLauncherRowKeyRef.current = launcherRows[selectedIndex]?.key ?? null;
-  }, [launcherRows, selectedIndex, setSelectedIndex]);
-
-  useEffect(() => {
-    selectedLauncherRowKeyRef.current = null;
-  }, [query]);
+  const { selectedIndex, selectRow: selectLauncherRow } = useLauncherSelection(
+    launcherRows, query, searchScopeRef.current, storedSelectedIndex, setSelectedIndex,
+  );
 
   if (previousQueryRef.current !== query) {
     previousQueryRef.current = query;

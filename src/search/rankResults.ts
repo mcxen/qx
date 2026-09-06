@@ -5,7 +5,7 @@
  * - Relevance first (exact > prefix > word-prefix > contains).
  * - Short queries (length ≤ SHORT_QUERY_MAX) never match via mid-string contains
  *   (fixes `ip` ⊂ `clipboard` ranking above `iPhone…`).
- * - Same tier: kind → clickCount → file type (office docs before source/logs)
+ * - Same tier: direct name match → kind → clickCount → file type (office docs before source/logs)
  *   → shorter display name → localeCompare (zh-aware).
  * - Empty query: caller must not use this (home list uses pin sort).
  * - Sticky pins are applied by the caller after ranking via
@@ -320,10 +320,50 @@ export function scoreEntryTier(entry: AppEntry, query: string): MatchTierValue {
   return computed;
 }
 
+function entryRank(entry: AppEntry, query: string) {
+  const name = entryDisplayName(entry);
+  return {
+    tier: scoreEntryTier(entry, query),
+    nameTier: entry.kind === "calculation" ? MatchTier.exact : bestMatchTier(query, name, entry.name),
+    kind: kindBias(entry.kind),
+    clicks: typeof entry.clickCount === "number" && Number.isFinite(entry.clickCount)
+      ? entry.clickCount : 0,
+    fileType: fileTypeBias(entry),
+    len: name.length || 999,
+    nameKey: name.toLowerCase(),
+  };
+}
+
+function compareEntryRanks(a: ReturnType<typeof entryRank>, b: ReturnType<typeof entryRank>): number {
+  return a.tier - b.tier
+    || a.nameTier - b.nameTier
+    || a.kind - b.kind
+    || b.clicks - a.clicks
+    || a.fileType - b.fileType
+    || a.len - b.len
+    || a.nameKey.localeCompare(b.nameKey, "zh-Hans", { sensitivity: "base" });
+}
+
+/** Same ranking as the worker, but a linear scan for default selection, without sorting on the UI thread. */
+export function bestSearchResultIndex(entries: AppEntry[], query: string): number {
+  if (!query.trim()) return -1;
+  let bestIndex = -1;
+  let bestRank: ReturnType<typeof entryRank> | undefined;
+  entries.forEach((entry, index) => {
+    const rank = entryRank(entry, query);
+    if (rank.tier >= MatchTier.none) return;
+    if (!bestRank || compareEntryRanks(rank, bestRank) < 0) {
+      bestIndex = index;
+      bestRank = rank;
+    }
+  });
+  return bestIndex;
+}
+
 /**
  * Global sort for non-empty search. Stable, pure, no pin/hide logic.
  *
- * Order: match tier → kind bias → **usage (clickCount desc)** → file type
+ * Order: match tier → direct name match → kind bias → **usage (clickCount desc)** → file type
  * (office before source) → name length → locale name.
  * Usage never outranks a stronger text match; type bias never outranks usage.
  */
@@ -332,31 +372,7 @@ export function rankSearchResults(entries: AppEntry[], query: string): AppEntry[
   if (!q || entries.length <= 1) return entries;
 
   return entries
-    .map((entry, index) => {
-      const name = entryDisplayName(entry);
-      const clicks = typeof entry.clickCount === "number" && Number.isFinite(entry.clickCount)
-        ? entry.clickCount
-        : 0;
-      return {
-        entry,
-        index,
-        tier: scoreEntryTier(entry, q),
-        kind: kindBias(entry.kind),
-        clicks,
-        fileType: fileTypeBias(entry),
-        len: name.length || 999,
-        nameKey: name.toLowerCase(),
-      };
-    })
-    .sort((a, b) => {
-      if (a.tier !== b.tier) return a.tier - b.tier;
-      if (a.kind !== b.kind) return a.kind - b.kind;
-      if (a.clicks !== b.clicks) return b.clicks - a.clicks;
-      if (a.fileType !== b.fileType) return a.fileType - b.fileType;
-      if (a.len !== b.len) return a.len - b.len;
-      const byName = a.nameKey.localeCompare(b.nameKey, "zh-Hans", { sensitivity: "base" });
-      if (byName !== 0) return byName;
-      return a.index - b.index;
-    })
+    .map((entry, index) => ({ entry, index, ...entryRank(entry, q) }))
+    .sort((a, b) => compareEntryRanks(a, b) || a.index - b.index)
     .map(({ entry }) => entry);
 }

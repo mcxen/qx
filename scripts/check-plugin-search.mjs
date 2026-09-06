@@ -16,11 +16,12 @@ function bundle(entry, name) {
   return import(`${pathToFileURL(outfile).href}?check=${Date.now()}-${name}`);
 }
 
-const [metadata, provider, rank, display] = await Promise.all([
+const [metadata, provider, rank, display, resultRows] = await Promise.all([
   bundle("src/plugin/pluginSearchMetadata.ts", "metadata.mjs"),
   bundle("src/search/pluginSearchProvider.ts", "provider.mjs"),
   bundle("src/search/rankResults.ts", "rank.mjs"),
   bundle("src/search/appDisplay.ts", "display.mjs"),
+  bundle("src/launcher/resultRows.ts", "rows.mjs"),
 ]);
 
 const calendarManifest = JSON.parse(
@@ -74,6 +75,32 @@ const v2Commands = v2Manifest.commands.map((command) => ({
   keywords: metadata.buildPluginSearchTerms({ pluginId: "v2ex", pluginName: "V2EX", manifest: v2Manifest, command }),
 }));
 const v2Input = { ...input, plugins: [v2Plugin], panels: {}, commands: v2Commands };
+const v2WithPanel = { ...v2Input, panels: { v2ex: {
+  pluginId: "v2ex", pluginName: "V2EX", title: "V2EX", keywords: [], render() {},
+} } };
+const unrelatedPin = { name: "显示器亮度", path: "__qx:plugin:brightness", kind: "command", icon: "" };
+const pinSettings = { search_metadata: { "plugin:brightness": { pinned: true, pin_order: 0 } } };
+for (const locale of ["en", "zh-CN"]) {
+  for (const query of ["v2", "v2ex", "V2EX"]) {
+    const hits = provider.searchPluginEntries({ ...v2WithPanel, locale, query });
+    assert.ok(hits.length > 1, "regression needs the module and its inherited-name commands");
+    const entries = [unrelatedPin, ...hits.map((hit) => ({ ...hit, clickCount: hit.path.includes(":cmd:") ? 999 : 0 }))];
+    assert.equal(rank.rankSearchResults(entries, query)[0].path, "__qx:plugin:v2ex",
+      "direct module name wins over frequent inherited-name actions");
+    const rows = resultRows.buildLauncherResultRows(entries, [], new Set(), pinSettings);
+    const best = resultRows.bestLauncherRowIndex(rows, query);
+    assert.equal(resultRows.selectedLauncherItem(rows, best)?.path, "__qx:plugin:v2ex",
+      "default selection ignores sticky position and category headers, even before worker sorting");
+    const collapsed = resultRows.buildLauncherResultRows(entries, [], new Set(["launcher.plugins"]), pinSettings);
+    assert.equal(resultRows.bestLauncherRowIndex(collapsed, query), -1, "unmatched pins never become default fallback");
+  }
+}
+const tokenHits = provider.searchPluginEntries({ ...v2WithPanel, query: "token" });
+assert.ok(rank.rankSearchResults(tokenHits, "token")[0].path.startsWith("__qx:cmd:v2ex:"));
+assert.equal(resultRows.bestLauncherRowIndex([], "v2"), -1);
+assert.equal(rank.bestSearchResultIndex([unrelatedPin], "no-match"), -1);
+const calculation = { name: "4", path: "__qx:calc:2+2", kind: "calculation", icon: "" };
+assert.equal(rank.rankSearchResults([{ ...unrelatedPin, name: "2+2" }, calculation], "2+2")[0], calculation);
 const legacyV2Input = { ...v2Input, commands: v2Commands.map((command) => ({
   ...command, keywords: [...command.keywords, command.description],
 })) };

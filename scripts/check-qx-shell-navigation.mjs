@@ -250,7 +250,12 @@ assert.equal(shouldCommitCaptureTextChange(false, false), true);
 assert.equal(shouldFinishCaptureTextEditing("Enter", false, true, 229, true), false);
 assert.equal(shouldFinishCaptureTextEditing("Enter", false, false, 13, false), true);
 assert.equal(shouldFinishCaptureTextEditing("Enter", true, false, 13, false), false);
-assert.equal(shouldFinishCaptureTextEditing("Escape", false, false, 229, false), true);
+for (const key of ["Enter", "Escape", "ArrowDown", " "]) {
+  assert.equal(shouldFinishCaptureTextEditing(key, false, true, 0, false), false);
+  assert.equal(shouldFinishCaptureTextEditing(key, false, false, 0, true), false);
+  assert.equal(shouldFinishCaptureTextEditing(key, false, false, 229, false), false);
+}
+assert.equal(shouldFinishCaptureTextEditing("Escape", false, false, 27, false), true);
 assert.equal(captureTextOutsideDismissId(null, null), null);
 assert.equal(captureTextOutsideDismissId("text-1", null), "text-1");
 assert.equal(shouldApplyCaptureTextOutsideDismiss("text-1", "text-2", null), false);
@@ -307,9 +312,11 @@ assert.match(captureAnnotationCompositorSource, /pub fn composite\(/);
 assert.match(captureAnnotationCompositorSource, /apply_mosaic_ops\(image,[\s\S]*for annotation in annotations/);
 assert.match(captureAnnotationCompositorSource, /CaptureAnnotation::Text/);
 
-// On macOS the backing NSWindow owns the Screen Saver level. Generic Tauri
-// floating state stays disabled there so it cannot demote the capture surface.
-assert.match(capturePickerWindowSource, /CG_SCREEN_SAVER_WINDOW_LEVEL_KEY/);
+// The native capture surface covers desktop chrome but leaves system IME
+// popups above it. Generic Tauri floating state must not reset that level.
+assert.match(capturePickerWindowSource, /CG_POP_UP_MENU_WINDOW_LEVEL_KEY: i32 = 11/);
+assert.match(capturePickerWindowSource, /CGWindowLevelForKey\(CG_POP_UP_MENU_WINDOW_LEVEL_KEY\) - 1/);
+assert.doesNotMatch(capturePickerWindowSource, /CG_SCREEN_SAVER_WINDOW_LEVEL_KEY/);
 assert.match(capturePickerWindowSource, /setLevel: level/);
 assert.match(capturePickerWindowSource, /always_on_top\(!cfg!\(target_os = "macos"\)\)/);
 

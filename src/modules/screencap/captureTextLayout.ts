@@ -51,8 +51,10 @@ export function shouldFinishCaptureTextEditing(
   legacyKeyCode: number,
   sessionComposing: boolean,
 ): boolean {
-  if (eventComposing || sessionComposing) return false;
-  if (key === "Enter") return !shiftKey && legacyKeyCode !== 229;
+  // WebKit can end composition before dispatching the candidate's final key.
+  // Its legacy IME marker must protect Escape as well as Enter.
+  if (eventComposing || sessionComposing || legacyKeyCode === 229) return false;
+  if (key === "Enter") return !shiftKey;
   return key === "Escape";
 }
 

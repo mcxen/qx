@@ -1,6 +1,6 @@
 # Qx 当前任务与验证状态
 
-> 状态：Current · 基线：v0.6.103 · 最后整理：2026-09-06
+> 状态：Current · 基线：v0.6.106 · 最后整理：2026-09-06
 >
 > 本文件只保留正在进行、明确阻塞或下一次必须复核的工作。已完成记录、旧实现计划和未重新确认的历史验收项保存在 [`docs/archive/task-ledger-through-v0.6.101.md`](docs/archive/task-ledger-through-v0.6.101.md)，不会自动作为当前待办继续累积。
 
@@ -13,12 +13,32 @@
 
 ## 当前工作
 
+### Release — v0.6.106 搜索选择与截图输入法（2026-09-06）
+
+- 用户要求全部 diff 提交、推送及 tag 发布。本批次包含下述 Launcher 默认选择和截图 IME 修复；插件 gitlink 仍为已推送的 `bd92c90`，两个插件工作区均干净。
+- 发布前完整 `npm run check`、版本同步后的 docs check、TypeScript/Vite build、cargo fmt/check 全部通过。搜索交互沿用本任务已取得的生产列表浏览器回归；平台安装态边界见各条目。
+- 相对 v0.6.105 复核全部 tracked 与新增源码/文档/配置；构建输出不入库。桌面包由 tag 工作流构建，Windows 只确认一次触发状态，不将进行中构建视为可下载资产。
+
 ### Feature — Markdown 卡片原位编辑（2026-09-06）
 
 - 宿主新增可选 `editor.format="markdown"`，缺省/未知值保持纯文本；Tiptap 按需加载，读写仍为字符串，BluePrint 显式选择此能力并保留完整 CAS/附件写模型。
 - 编辑锚点与选中滚动互斥；生产组件浏览器夹具已验证纯文本卡片双击/取消的 viewport top 不变。定位工具自动居中不作为产品跳动证据。
 - `npm run check`、TypeScript/Vite build、Markdown 语义/往返与桥接门禁通过。生产组件浏览器验证源码往返逐字保留、裸任务语法转为 taskItem、单次保存、失败/冲突保留草稿、脏取消确认和 320px 工具栏无横溢出；修复重复进入时访问已销毁 Tiptap view 的崩溃。尚未替换本轮已安装应用或宣称真实上游写入通过；真实 macOS IME 与完整安装态组合矩阵待验。
 - 本轮超过 1200 行发布阈值，准备 0.6.105；保留并行截图/搜索变更，独立暂存本轮编辑器范围。CI 插件目录按 gitlink 固定 revision/path，与本地门禁一致，不自动发布插件市场包。
+
+### Fix — Launcher 搜索默认选中最相关结果（2026-09-06）
+
+- 新查询/范围按共享相关性规则选择可见条目，跳过无关置顶项和分组标题；同级名称命中优先于继承插件词的命令，`v2` 选择 V2EX 面板。
+- 选择生命周期从 App 抽出；未手动选择时跟随增量结果，键盘/点击选择后按稳定 key 保留，不被后到结果抢走。
+- 插件搜索回归（含 542 次双语目录搜索）、生产 hook + ResultsList 浏览器夹具通过：默认高亮、Enter 目标、上下键、点击、增量保留/升级和查询/范围重置。TS/Vite build 通过。
+- 首轮全量检查受并行 Markdown 脚本尚未落盘影响；该工作已随 v0.6.105 提交，本批次随 v0.6.106 重新执行完整发布检查。搜索修复尚未替换本机安装版，Windows 安装态未验收。
+
+### Fix — 截图文字输入法候选框（2026-09-06）
+
+- macOS picker/shade 从 Screen Saver 层级调整为系统弹出菜单层级减一，保持菜单栏与 Dock 遮挡，同时给输入法候选框留出上层。
+- 文字编辑统一保护 IME Enter/Esc，包括 WebKit 合成结束边界的 `keyCode=229`，避免取消候选时退出编辑。
+- 验证：截图/IME 回归、TypeScript/Vite build、cargo fmt/check、Tauri app 构建通过；Apple Development 签名安装并重启，实测 picker/shade 层级均为 100（旧版 1000），原生文字框能接收拼音 preedit。自动化画面受内容保护，候选词可见性与鼠标选词尚未完成视觉验收；Windows 原生窗口层级未改动。
+- 截图/IME 修复纳入 v0.6.106，与搜索选择修复一同复核发布；并行 Markdown 检查脚本已落盘。安装前备份：`~/.qx/local-backups/screenshot-ime.xXsixg/Qx.app`。
 
 ### BluePrint Masonry 落地与安装态纠偏（2026-09-06）
 

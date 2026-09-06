@@ -6,6 +6,7 @@ import {
   normalizeFileSearchCategories,
 } from "../search/fileCategories";
 import { metadataKeyForEntry, splitPinnedEntries } from "../search/searchMetadata";
+import { bestSearchResultIndex } from "../search/rankResults";
 
 export type LauncherResultRow =
   | {
@@ -183,4 +184,11 @@ export function selectedLauncherItem(
 ): AppEntry | null {
   const row = rows[selectedRowIndex];
   return row?.kind === "item" ? row.item : null;
+}
+
+/** Group and sticky-pin positions do not imply search relevance. Ignore collapsed items. */
+export function bestLauncherRowIndex(rows: LauncherResultRow[], query: string): number {
+  const items = rows.flatMap((row, rowIndex) => row.kind === "item" ? [{ item: row.item, rowIndex }] : []);
+  const best = bestSearchResultIndex(items.map(({ item }) => item), query);
+  return items[best]?.rowIndex ?? -1;
 }

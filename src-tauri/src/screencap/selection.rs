@@ -321,7 +321,7 @@ fn show_region_picker_internal(
             // Windows 8+ transparent WebView contract in Tauri.
             .background_color(Color(0, 0, 0, 0))
             .shadow(false)
-            // AppKit capture surfaces use a native Screen Saver level. Tauri's
+            // AppKit capture surfaces use a native IME-safe level. Tauri's
             // generic macOS floating state would overwrite that level.
             .always_on_top(!cfg!(target_os = "macos"))
             .skip_taskbar(true)
