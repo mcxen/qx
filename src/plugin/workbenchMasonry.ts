@@ -46,6 +46,22 @@ export interface WorkbenchMasonryScrollAnchor {
   offset: number;
 }
 
+/**
+ * Stable viewport anchor for the card that is currently being edited.
+ *
+ * `viewportTop` is the card's top relative to the scroll viewport rather than
+ * a raw document coordinate. Keeping the source index and lane here lets
+ * callers verify that a height-only editor reflow did not move the editor to
+ * another lane; a column-count/width change may still legitimately change the
+ * lane.
+ */
+export interface WorkbenchMasonryEditAnchor {
+  id: string;
+  index: number;
+  column: number;
+  viewportTop: number;
+}
+
 export interface WorkbenchMasonryOptions {
   width: number;
   columns: number;
@@ -235,4 +251,32 @@ export function restoreWorkbenchMasonryScrollTop(
   const position = byId || layout.positions[Math.min(anchor.index, layout.positions.length - 1)];
   if (!position) return undefined;
   return Math.max(0, position.y + anchor.offset);
+}
+
+/** Capture the editing card's current top edge in the scroll viewport. */
+export function workbenchMasonryEditAnchor(
+  layout: WorkbenchMasonryLayout,
+  scrollTop: number,
+  id: string,
+): WorkbenchMasonryEditAnchor | undefined {
+  const position = layout.positions.find((candidate) => candidate.id === id);
+  if (!position) return undefined;
+  const top = Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0;
+  return {
+    id: position.id,
+    index: position.index,
+    column: position.column,
+    viewportTop: position.y - top,
+  };
+}
+
+/** Restore an editing card without chasing its growing bottom edge. */
+export function restoreWorkbenchMasonryEditAnchor(
+  layout: WorkbenchMasonryLayout,
+  anchor: WorkbenchMasonryEditAnchor | undefined,
+): number | undefined {
+  if (!anchor || !layout.positions.length) return undefined;
+  const position = layout.positions.find((candidate) => candidate.id === anchor.id);
+  if (!position) return undefined;
+  return Math.max(0, position.y - anchor.viewportTop);
 }

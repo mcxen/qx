@@ -22,6 +22,7 @@ const steps = [
   ["workbench-html-export", "scripts/check-workbench-html-export.mjs"],
   ["workbench-edit-bridge", "scripts/check-workbench-edit-bridge.mjs"],
   ["workbench-cards", "scripts/check-workbench-cards.mjs"],
+  ["workbench-markdown", "scripts/check-workbench-markdown.mjs"],
   ["plugin-preferences", "scripts/check-plugin-preferences.mjs"],
   ["qx-ai-agent", "scripts/check-qx-ai-agent.mjs"],
 ];

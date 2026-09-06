@@ -58,6 +58,12 @@ rg -n '0\.X\.OLD|v0\.X\.OLD|0\.X\.Y|v0\.X\.Y' \
 
 ## Validation
 
+CI checks the first-party plugin catalog at the commit recorded by Qx's
+`qx-plugins` gitlink, checked out at that exact path. Push that commit to a
+reachable development branch before the host tag. Do not substitute marketplace
+`main` or `qx-plugins-clone`: host checks must use the same catalog revision and
+path as the local validation. This checkout does not publish marketplace packages.
+
 Run the smallest useful release validation set:
 
 ```bash

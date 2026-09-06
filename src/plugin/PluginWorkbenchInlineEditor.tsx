@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, type KeyboardEvent } from "react";
 import { AlertTriangle, Check, LoaderCircle } from "lucide-react";
 import { Button, Textarea } from "../components/ui";
 import { isImeCompositionEvent } from "../utils/keyboard";
@@ -6,14 +6,14 @@ import { useT } from "../i18n";
 import type { WorkbenchEditSession } from "./workbenchEditSession";
 import { workbenchUtf8ByteLength } from "./workbenchEditTypes";
 
-interface PluginWorkbenchInlineEditorProps {
+export interface PluginWorkbenchInlineEditorProps {
   session: WorkbenchEditSession;
   onInput: (value: string) => void;
   onSave: () => Promise<boolean>;
   onCancel: () => Promise<boolean>;
 }
 
-export default function PluginWorkbenchInlineEditor({
+function PlainPluginWorkbenchInlineEditor({
   session,
   onInput,
   onSave,
@@ -115,5 +115,18 @@ export default function PluginWorkbenchInlineEditor({
         </span>
       </div>
     </div>
+  );
+}
+
+const WorkbenchMarkdownEditor = lazy(() => import("./WorkbenchMarkdownEditor"));
+
+export default function PluginWorkbenchInlineEditor(props: PluginWorkbenchInlineEditorProps) {
+  if (props.session.item.editor?.format !== "markdown") {
+    return <PlainPluginWorkbenchInlineEditor {...props} />;
+  }
+  return (
+    <Suspense fallback={<PlainPluginWorkbenchInlineEditor {...props} />}>
+      <WorkbenchMarkdownEditor {...props} />
+    </Suspense>
   );
 }

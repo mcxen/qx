@@ -417,6 +417,10 @@ BluePrint 是这一组合的首个参考消费者：Qx 负责通用交互，PAT�
 幂等写入属于插件。后续 memos 插件可复用宿主端口，但必须独立验证其真实服务协议，不能套用
 BluePrint 的权限、版本字段或 MCP 工具名称。
 
+原位编辑的 `editor.format: "markdown"` 是可选共享能力：宿主提供按需加载的 Tiptap
+与源码模式，插件仍通过 `onEdit` 交付/保存字符串。未声明的旧插件保留纯文本行为。
+首次消费者应验证自身的轻量语法与附件契约，不能直接照搬另一个服务的富文本 JSON。
+
 结构化详情的 `detail.form.controls` 支持 `text`、`number`、`select` 和 `textarea`。
 长正文使用 `textarea`，`rows` 只提示 3-24 行的可见高度，宿主最多接收 64 KiB 文本；
 值变化仍通过 `onInput` 回到插件状态源。密码和令牌应放在 Manifest 的 `password` 偏好中，

@@ -31,6 +31,7 @@ For changes to the shared card/editor/settings ports, verify the old consumer fi
 - With new declarations absent, List/Gallery navigation, `onInput`, and preference autosave retain their behavior.
 - Cards without an editor remain read-only. Missing images/titles, long content, narrow widths and stable source order are layout cases, not reasons to invent data.
 - Editing covers IME, native editing shortcuts, dirty navigation, save failure/conflict, over-limit original text, and late acknowledgements after session replacement or teardown. Assert upstream write counts and exact payloads, not just button labels.
+- Markdown editing additionally checks absent/unknown format compatibility, unchanged original bytes across mode switches, unsupported-source fallback, lists/tasks/code/underline round trips, and source/visual editing under the same save/conflict session. Measure the editing card's viewport position as well as overlap; a geometry-only textarea fixture is not rich-editor acceptance.
 - Manual preference groups retain unsaved input on failure. Connection checks must reflect actual completion or error and never log credentials.
 - Finish with the combined reference consumer and installed desktop interaction. Record untested real-service paths as pending; mocked regressions do not satisfy the publication gate.
 

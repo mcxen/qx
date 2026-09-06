@@ -5206,7 +5206,7 @@ dependencies = [
 
 [[package]]
 name = "qx"
-version = "0.6.104"
+version = "0.6.105"
 dependencies = [
  "ab_glyph",
  "arboard",

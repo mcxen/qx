@@ -1,0 +1,239 @@
+.qx-host-workbench-markdown-editor {
+  gap: 8px;
+}
+
+.qx-host-workbench-markdown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 2px 4px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+  scrollbar-width: none;
+}
+
+.qx-host-workbench-markdown-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.qx-host-workbench-markdown-tool {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  color: var(--qx-text-secondary);
+}
+
+.qx-host-workbench-markdown-tool:hover,
+.qx-host-workbench-markdown-tool[aria-pressed="true"] {
+  color: var(--qx-text-primary);
+}
+
+.qx-host-workbench-markdown-toolbar-divider {
+  flex: 0 0 1px;
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--qx-border-1);
+}
+
+.qx-host-workbench-markdown-toolbar-spacer {
+  flex: 1 1 auto;
+  min-width: 4px;
+}
+
+.qx-host-workbench-markdown-source-toggle {
+  flex: 0 0 auto;
+  height: 26px;
+  min-height: 26px;
+  padding-inline: 7px;
+  font-size: 11px;
+  color: var(--qx-text-secondary);
+}
+
+.qx-host-workbench-markdown-content {
+  min-width: 0;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror {
+  min-height: 128px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 9px 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  outline: none;
+  color: var(--qx-text-primary);
+  background: var(--qx-bg-component-1);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror:focus {
+  border-color: var(--qx-accent);
+  box-shadow: 0 0 0 1px var(--qx-accent);
+}
+
+.qx-host-workbench-markdown-content .ProseMirror > :first-child {
+  margin-top: 0;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror > :last-child {
+  margin-bottom: 0;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror p,
+.qx-host-workbench-markdown-content .ProseMirror h1,
+.qx-host-workbench-markdown-content .ProseMirror h2,
+.qx-host-workbench-markdown-content .ProseMirror h3,
+.qx-host-workbench-markdown-content .ProseMirror blockquote,
+.qx-host-workbench-markdown-content .ProseMirror pre {
+  margin: 0 0 8px;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror h1,
+.qx-host-workbench-markdown-content .ProseMirror h2,
+.qx-host-workbench-markdown-content .ProseMirror h3 {
+  line-height: 1.35;
+  font-weight: 650;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror h1 { font-size: 18px; }
+.qx-host-workbench-markdown-content .ProseMirror h2 { font-size: 16px; }
+.qx-host-workbench-markdown-content .ProseMirror h3 { font-size: 14px; }
+
+.qx-host-workbench-markdown-content .ProseMirror ul,
+.qx-host-workbench-markdown-content .ProseMirror ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror ul {
+  list-style-type: disc;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror ol {
+  list-style-type: decimal;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror li > p {
+  margin-bottom: 2px;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror blockquote {
+  padding-left: 10px;
+  border-left: 2px solid var(--qx-border-2);
+  color: var(--qx-text-secondary);
+}
+
+.qx-host-workbench-markdown-content .ProseMirror pre {
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+  font-family: var(--qx-font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror code {
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: var(--qx-bg-component-2);
+  font-family: var(--qx-font-mono);
+  font-size: 12px;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror a {
+  color: var(--qx-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror [data-type="taskList"] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror [data-type="taskList"] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror [data-type="taskList"] > li > label {
+  flex: 0 0 auto;
+  padding-top: 3px;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror [data-type="taskList"] > li > label input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  appearance: none;
+  border: 1px solid var(--qx-border-2);
+  border-radius: 3px;
+  background: var(--qx-bg-component-1);
+  vertical-align: middle;
+}
+
+.qx-host-workbench-markdown-content .ProseMirror [data-type="taskList"] > li > label input:checked {
+  border-color: var(--qx-accent);
+  background: var(--qx-accent);
+}
+
+.qx-host-workbench-markdown-content .ProseMirror [data-type="taskList"] > li > label input:checked::after {
+  display: block;
+  width: 5px;
+  height: 8px;
+  margin: 1px 0 0 3px;
+  border: solid var(--qx-text-on-accent);
+  border-width: 0 1px 1px 0;
+  transform: rotate(45deg);
+  content: "";
+}
+
+.qx-host-workbench-markdown-source-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.qx-host-workbench-markdown-source {
+  max-height: 360px;
+  font-family: var(--qx-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.qx-host-workbench-markdown-warning {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--qx-warning);
+  font-size: 11px;
+}
+
+.qx-host-workbench-markdown-warning > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.qx-host-workbench-markdown-warning button {
+  margin-left: auto;
+}

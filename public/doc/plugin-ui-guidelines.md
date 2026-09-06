@@ -161,7 +161,7 @@ Cards 使用宿主 Masonry 瀑布流：按源顺序逐项放入最短列（同�
   },
   images: previewImages,
   detail: { body: note.content },
-  editor: canUpdate ? { maxBytes: 65536, rows: 10 } : undefined,
+  editor: canUpdate ? { format: "markdown", maxBytes: 65536, rows: 10 } : undefined,
 }
 ```
 
@@ -172,6 +172,14 @@ Cards 使用宿主 Masonry 瀑布流：按源顺序逐项放入最短列（同�
 单击选择，Enter 阅读；存在可用 `item.editor` 时，双击正文进入宿主编辑器。
 `editor.readOnly` / `disabled` 禁止编辑；插件仍须在真正写入前重新检查上游权限。
 图片、链接与控件的双击不触发编辑。
+
+`editor.format` 可显式声明 `markdown`，由宿主按需加载共享 Tiptap 可视化编辑器，
+并提供源码模式；省略、`plaintext` 或未知值仍使用纯文本编辑器。插件不得传递编辑器
+实例、HTML 控件或私有 CSS。读写契约中的 `value` 始终是字符串，不变为 Tiptap JSON。
+只打开编辑或切换模式不得改写原始字符串；不支持或无法可靠往返的语法保留在源码模式，
+不能静默丢弃后保存。插件不要把编辑器支持的语法等同于上游支持的语法。
+图片/附件仍由插件自己的领域模型和已有资产端口管理；BluePrint 的图片/文件 assetId
+必须随完整写模型保留，不能把独立附件擅自转换成正文中的图片 Markdown。
 
 `mountWorkbench` 的可选 `onEdit(event, item)` 与旧 `onInput(id, value, item)` 独立。
 事件携带宿主生成的 `itemId`、`sessionId`、`requestId`，输入及保存还带 `value`。

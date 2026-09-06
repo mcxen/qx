@@ -11,6 +11,7 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import { Pin } from "lucide-react";
+import remarkGfm from "remark-gfm";
 import { Button } from "../components/ui";
 import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
 import QxMediaViewer from "../components/QxMediaViewer";
@@ -18,13 +19,17 @@ import { getQxListItemProps } from "../hooks/useQxListSelection";
 import { qxRegionProps } from "../hooks/useQxMasterDetail";
 import { useT } from "../i18n";
 import { WorkbenchCachedImage, WorkbenchStatus, resolveWorkbenchImageUrl } from "./PluginWorkbenchPrimitives";
+import remarkWorkbenchUnderline from "./workbenchNoteMarkdown";
 import {
   layoutWorkbenchMasonry,
   resolveWorkbenchMasonryColumns,
+  restoreWorkbenchMasonryEditAnchor,
   restoreWorkbenchMasonryScrollTop,
   visibleWorkbenchMasonryIndexes,
+  workbenchMasonryEditAnchor,
   workbenchMasonryScrollAnchor,
   type WorkbenchMasonryLayout,
+  type WorkbenchMasonryEditAnchor,
   type WorkbenchMasonryScrollAnchor,
 } from "./workbenchMasonry";
 import type { PluginWorkbenchImage, PluginWorkbenchItem, PluginWorkbenchState } from "./workbenchTypes";
@@ -80,6 +85,8 @@ export default function PluginWorkbenchCards({
   const scrollFrameRef = useRef<number | null>(null);
   const previousLayoutRef = useRef<WorkbenchMasonryLayout | null>(null);
   const pendingAnchorRef = useRef<WorkbenchMasonryScrollAnchor | undefined>(undefined);
+  const previousEditingIdRef = useRef<string | undefined>(undefined);
+  const editingAnchorRef = useRef<WorkbenchMasonryEditAnchor | undefined>(undefined);
   const previousSelectedIdRef = useRef<string | undefined>(undefined);
   const pendingSelectionScrollRef = useRef<{ id: string; index: number } | undefined>(undefined);
 
@@ -114,10 +121,37 @@ export default function PluginWorkbenchCards({
       estimatedHeight: compact ? 180 : 220,
     },
   ), [columns, compact, contentWidth, gap, geometryMeasuredHeights, itemIdentity, measuredHeightKey]);
+  const layoutRef = useRef<WorkbenchMasonryLayout>(layout);
+  layoutRef.current = layout;
 
   const bindScrollElement = useCallback((element: HTMLDivElement | null) => {
     setScrollElement(element);
   }, []);
+
+  const setActualScrollTop = useCallback((next: number) => {
+    if (!scrollElement) return;
+    const maxScrollTop = Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight);
+    const desired = Number.isFinite(next)
+      ? Math.min(maxScrollTop, Math.max(0, next))
+      : scrollElement.scrollTop;
+    if (Math.abs(scrollElement.scrollTop - desired) < 1) return;
+    scrollElement.scrollTop = desired;
+    const editAnchor = editingAnchorRef.current;
+    if (editAnchor) {
+      const position = layoutRef.current.positions.find((candidate) => candidate.id === editAnchor.id);
+      if (position) {
+        editingAnchorRef.current = {
+          ...editAnchor,
+          index: position.index,
+          column: position.column,
+          viewportTop: position.y - scrollElement.scrollTop,
+        };
+      }
+    }
+    // The browser may clamp against the current canvas height. Always publish
+    // the actual value so React's virtualization window cannot drift from DOM.
+    setScrollTop(scrollElement.scrollTop);
+  }, [scrollElement]);
 
   useEffect(() => {
     if (!scrollElement) return;
@@ -173,6 +207,18 @@ export default function PluginWorkbenchCards({
 
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
+    const editAnchor = editingAnchorRef.current;
+    if (editAnchor) {
+      const position = layoutRef.current.positions.find((candidate) => candidate.id === editAnchor.id);
+      if (position) {
+        editingAnchorRef.current = {
+          ...editAnchor,
+          index: position.index,
+          column: position.column,
+          viewportTop: position.y - target.scrollTop,
+        };
+      }
+    }
     if (scrollFrameRef.current != null) return;
     scrollFrameRef.current = window.requestAnimationFrame(() => {
       scrollFrameRef.current = null;
@@ -212,25 +258,65 @@ export default function PluginWorkbenchCards({
     };
   }, [measurementGeometryKey, scrollElement]);
 
+  // Editing replaces the card body before the first ResizeObserver callback.
+  // Capture its current viewport top once, then keep that anchor current when
+  // the user scrolls. This makes editor growth a local reflow instead of a
+  // second selection/viewport scroll request.
+  useLayoutEffect(() => {
+    if (!scrollElement) return;
+    const previousEditingId = previousEditingIdRef.current;
+    if (editingItemId === previousEditingId) return;
+    if (editingItemId) {
+      const sourceLayout = previousLayoutRef.current || layout;
+      editingAnchorRef.current = workbenchMasonryEditAnchor(
+        sourceLayout,
+        scrollElement.scrollTop,
+        editingItemId,
+      ) || workbenchMasonryEditAnchor(layout, scrollElement.scrollTop, editingItemId);
+      pendingAnchorRef.current = undefined;
+    } else {
+      editingAnchorRef.current = undefined;
+    }
+    previousEditingIdRef.current = editingItemId;
+  }, [editingItemId, layout, scrollElement]);
+
   // Reflows caused by width, insertion/removal, image decode, and editor
   // growth retain the item at the viewport top instead of jumping to zero.
   useLayoutEffect(() => {
     if (!scrollElement) return;
     const previous = previousLayoutRef.current;
     if (previous && previous !== layout) {
-      pendingAnchorRef.current = workbenchMasonryScrollAnchor(previous, scrollElement.scrollTop);
+      const editingAnchor = editingAnchorRef.current;
+      pendingAnchorRef.current = editingItemId && editingAnchor?.id === editingItemId
+        ? undefined
+        : workbenchMasonryScrollAnchor(previous, scrollElement.scrollTop);
     }
     previousLayoutRef.current = layout;
-  }, [layout, scrollElement]);
+  }, [editingItemId, layout, scrollElement]);
+
+  // While an editor is active, its top edge is the sole reflow anchor. The
+  // target is clamped to the real scroll range, preventing a very tall draft
+  // from repeatedly requesting an impossible bottom position.
+  useLayoutEffect(() => {
+    if (!scrollElement || !editingItemId) return;
+    const anchor = editingAnchorRef.current;
+    if (!anchor || anchor.id !== editingItemId) return;
+    const restored = restoreWorkbenchMasonryEditAnchor(layout, anchor);
+    if (restored == null) return;
+    setActualScrollTop(restored);
+  }, [editingItemId, layout, scrollElement, setActualScrollTop]);
 
   useLayoutEffect(() => {
     if (!scrollElement || !pendingAnchorRef.current) return;
+    if (editingItemId && editingAnchorRef.current?.id === editingItemId) {
+      pendingAnchorRef.current = undefined;
+      return;
+    }
     const restored = restoreWorkbenchMasonryScrollTop(layout, pendingAnchorRef.current);
     pendingAnchorRef.current = undefined;
-    if (restored == null || Math.abs(scrollElement.scrollTop - restored) < 1) return;
-    scrollElement.scrollTop = restored;
-    setScrollTop(scrollElement.scrollTop);
-  }, [layout, scrollElement]);
+    if (restored == null) return;
+    setActualScrollTop(restored);
+  }, [editingItemId, layout, scrollElement, setActualScrollTop]);
 
   const selectedId = selectedIndex >= 0 ? items[selectedIndex]?.id : undefined;
   const selectedMeasured = selectedId ? geometryMeasuredHeights.has(measuredHeightKey(selectedId)) : false;
@@ -246,6 +332,14 @@ export default function PluginWorkbenchCards({
     }
     const pending = pendingSelectionScrollRef.current;
     if (!scrollElement || !pending || pending.id !== selectedId) return;
+    // A double-click can select and enter editing in adjacent browser events.
+    // The edit anchor captured in layout-effect already owns this card's
+    // viewport; letting pending selection scroll it again causes a visible
+    // top/bottom tug-of-war.
+    if (editingItemId && editingAnchorRef.current?.id === selectedId) {
+      pendingSelectionScrollRef.current = undefined;
+      return;
+    }
     const targetIndex = items.findIndex((item) => item.id === pending.id);
     const position = layout.positions[targetIndex >= 0 ? targetIndex : pending.index];
     if (!position) return;
@@ -255,15 +349,21 @@ export default function PluginWorkbenchCards({
       : position.y + position.height > viewportEnd
         ? Math.max(0, position.y + position.height - scrollElement.clientHeight)
         : scrollElement.scrollTop;
-    if (Math.abs(nextScrollTop - scrollElement.scrollTop) < 1) return;
-    scrollElement.scrollTop = nextScrollTop;
-    setScrollTop(scrollElement.scrollTop);
+    if (Math.abs(nextScrollTop - scrollElement.scrollTop) < 1) {
+      if (selectedMeasured) pendingSelectionScrollRef.current = undefined;
+      return;
+    }
+    setActualScrollTop(nextScrollTop);
     if (selectedMeasured) pendingSelectionScrollRef.current = undefined;
-  }, [itemIdentity, layout, scrollElement, selectedId, selectedIndex, selectedMeasured]);
+  }, [editingItemId, itemIdentity, layout, scrollElement, selectedId, selectedIndex, selectedMeasured, setActualScrollTop]);
 
   useEffect(() => {
     const pending = pendingSelectionScrollRef.current;
     if (!pending || pending.id !== selectedId || !selectedMeasured || !scrollElement) return;
+    if (editingItemId && editingAnchorRef.current?.id === selectedId) {
+      pendingSelectionScrollRef.current = undefined;
+      return;
+    }
     const targetIndex = items.findIndex((item) => item.id === pending.id);
     const position = layout.positions[targetIndex >= 0 ? targetIndex : pending.index];
     if (!position) return;
@@ -271,7 +371,7 @@ export default function PluginWorkbenchCards({
     if (position.y >= scrollElement.scrollTop && position.y + position.height <= viewportEnd) {
       pendingSelectionScrollRef.current = undefined;
     }
-  }, [itemIdentity, layout, scrollElement, selectedId, selectedMeasured]);
+  }, [editingItemId, itemIdentity, layout, scrollElement, selectedId, selectedMeasured]);
 
   const editingIndex = editingItemId ? items.findIndex((item) => item.id === editingItemId) : -1;
   const visibleIndexes = useMemo(() => {
@@ -296,6 +396,14 @@ export default function PluginWorkbenchCards({
         onOpenLink(href);
       }}>{children}</Button>;
     },
+    input: ({ checked }: { checked?: boolean }) => (
+      <span
+        className="qx-workbench-note-task-marker"
+        aria-hidden="true"
+      >
+        {checked ? "☑" : "☐"}
+      </span>
+    ),
   }), [onOpenLink]);
 
   const openPreview = (images: PluginWorkbenchImage[], index: number) => {
@@ -345,15 +453,16 @@ export default function PluginWorkbenchCards({
                   style={cardStyle}
                   {...getQxListItemProps(index, selectedIndex, { baseClass: false, className: "qx-workbench-note-card" })}
                   onClick={(event) => {
-                    if (!(event.target instanceof Element) || event.target.closest("button,a,input,textarea,select")) return;
+                    if (!(event.target instanceof Element) || event.target.closest("button,a,input,textarea,select,[contenteditable='true']")) return;
                     onSelect(item.id);
                   }}
                 >
                   {editor || (
                     <>
                       <div className="qx-workbench-note-content" onDoubleClick={(event) => {
-                        if (!canEdit || !(event.target instanceof Element) || event.target.closest("a,button,img,input,textarea,select,[data-qx-card-link]")) return;
+                        if (!canEdit || !(event.target instanceof Element) || event.target.closest("a,button,img,input,textarea,select,[contenteditable='true'],[data-qx-card-link]")) return;
                         event.preventDefault();
+                        event.stopPropagation();
                         onEdit?.(item);
                       }}>
                         {item.title.trim() ? <h3>{item.title}</h3> : null}
@@ -365,7 +474,8 @@ export default function PluginWorkbenchCards({
                             <div className="qx-workbench-note-body">
                               <ReactMarkdown
                                 skipHtml
-                                allowedElements={["p", "strong", "em", "del", "code", "pre", "ul", "ol", "li", "blockquote", "a", "br", "hr"]}
+                                remarkPlugins={[remarkGfm, remarkWorkbenchUnderline]}
+                                allowedElements={["h1", "h2", "h3", "h4", "h5", "h6", "p", "strong", "em", "del", "code", "pre", "ul", "ol", "li", "blockquote", "a", "u", "br", "hr", "input"]}
                                 unwrapDisallowed
                                 components={markdownComponents}
                               >{body}</ReactMarkdown>

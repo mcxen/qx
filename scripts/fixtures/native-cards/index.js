@@ -28,7 +28,7 @@ export default {
         items: rows.filter((row) => `${row.title} ${row.content}`.includes(query)).map((row, index) => ({
           id: row.id, title: row.title, subtitle: "Truncated preview — not the write source",
           card: { body: row.content, tags: ["fixture"], timestamp: `09/06 ${index}:00` },
-          editor: outcome === "readonly" ? undefined : { rows: 6 },
+          editor: outcome === "readonly" ? undefined : { rows: 6, format: "markdown" },
           detail: { body: row.content },
         })),
       });

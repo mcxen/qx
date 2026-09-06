@@ -40,6 +40,30 @@
 .qx-workbench-note-body p { margin: 0 0 8px; white-space: pre-wrap; }
 .qx-workbench-note-body p:last-child { margin-bottom: 0; }
 .qx-workbench-note-body :is(ul, ol) { padding-left: 18px; margin: 6px 0; }
+.qx-workbench-note-body ul { list-style-type: disc; }
+.qx-workbench-note-body ol { list-style-type: decimal; }
+.qx-workbench-note-body ul ul { list-style-type: circle; }
+.qx-workbench-note-body ol ol { list-style-type: lower-alpha; }
+.qx-workbench-note-body .task-list-item { list-style-type: none; }
+.qx-workbench-note-task-marker {
+  display: inline-block;
+  width: 1.15em;
+  margin-inline-end: 3px;
+  color: var(--qx-text-secondary);
+  font-size: 13px;
+  line-height: 1;
+  vertical-align: -1px;
+}
+.qx-workbench-note-body :is(h1, h2, h3, h4, h5, h6) {
+  margin: 10px 0 6px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.qx-workbench-note-body h1 { font-size: 18px; }
+.qx-workbench-note-body h2 { font-size: 16px; }
+.qx-workbench-note-body h3 { font-size: 14px; }
+.qx-workbench-note-body :is(h4, h5, h6) { font-size: 13px; }
 .qx-workbench-note-body blockquote { margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--qx-border-2); color: var(--qx-text-secondary); }
 .qx-workbench-note-body pre { white-space: pre-wrap; margin: 6px 0; padding: 6px; background: var(--qx-bg-component-2); border-radius: var(--qx-radius); }
 .qx-workbench-note-body code { font-size: 12px; }

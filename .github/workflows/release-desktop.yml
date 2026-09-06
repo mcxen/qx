@@ -44,11 +44,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve pinned plugin catalog
+        id: plugins
+        shell: bash
+        run: echo "ref=$(git rev-parse HEAD:qx-plugins)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout first-party plugin catalog
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/qx-plugins
-          path: qx-plugins-clone
+          ref: ${{ steps.plugins.outputs.ref }}
+          path: qx-plugins
 
       - name: Resolve release tag
         shell: bash

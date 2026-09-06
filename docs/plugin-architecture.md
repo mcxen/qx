@@ -32,6 +32,7 @@
 | `src/plugin/useWorkbenchEditBridge.ts`、`workbenchEditBridge.ts` | 当前面板编辑 RPC 生命周期、超时与相关回执 |
 | `src/plugin/useWorkbenchInteractions.ts`、`useWorkbenchNavigationGuard.ts` | 集合乐观更新、搜索去抖与统一草稿导航闸门 |
 | `src/plugin/PluginWorkbenchCards.tsx`、`workbenchEditSession.ts` | 保序自适应卡片与宿主本地草稿会话 |
+| `src/plugin/WorkbenchMarkdownEditor.tsx`、`workbenchMarkdown.ts` | 按需加载的共享 Markdown 可视化编辑、字符串转换和源码保真边界；不承载插件鉴权或上传 |
 | `src/plugin/pluginCommandDispatch.ts` | 宿主命令执行与真实完成结果；设置检查与旧调度共用 |
 | `src/plugin/workbenchCache.ts` | 呈现快照的 scope key、内存热副本、single-flight 读取与有界持久化 |
 | `src/plugin/workbenchKeyboard.ts` | 隐藏 iframe 键盘转交策略与宿主已渲染集合的导航适配 |

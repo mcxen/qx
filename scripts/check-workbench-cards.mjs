@@ -7,6 +7,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { build } from "esbuild";
+import { unified } from "unified";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
 
 const { outputFiles } = await build({
   entryPoints: ["src/plugin/workbenchTypes.ts"],
@@ -29,8 +32,10 @@ const masonry = await import(`data:text/javascript;base64,${Buffer.from(masonryO
 const {
   layoutWorkbenchMasonry,
   resolveWorkbenchMasonryColumns,
+  restoreWorkbenchMasonryEditAnchor,
   restoreWorkbenchMasonryScrollTop,
   visibleWorkbenchMasonryIndexes,
+  workbenchMasonryEditAnchor,
   workbenchMasonryScrollAnchor,
 } = masonry;
 
@@ -44,6 +49,42 @@ const { outputFiles: keyboardOutput } = await build({
 const { resolveRenderedWorkbenchIndex } = await import(
   `data:text/javascript;base64,${Buffer.from(keyboardOutput[0].text).toString("base64")}`,
 );
+
+const { outputFiles: noteMarkdownOutput } = await build({
+  entryPoints: ["src/plugin/workbenchNoteMarkdown.ts"],
+  bundle: true,
+  write: false,
+  format: "esm",
+  platform: "node",
+});
+const { default: remarkWorkbenchUnderline } = await import(
+  `data:text/javascript;base64,${Buffer.from(noteMarkdownOutput[0].text).toString("base64")}`,
+);
+
+function findMarkdownNode(node, predicate) {
+  if (predicate(node)) return node;
+  for (const child of node.children || []) {
+    const found = findMarkdownNode(child, predicate);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+// Card Markdown admits GFM tasks and only the exact attribute-free underline
+// pair. Other HTML remains raw and is still discarded by ReactMarkdown's
+// skipHtml path.
+const noteMarkdown = unified().use(remarkParse).use(remarkGfm).use(remarkWorkbenchUnderline);
+const noteTree = noteMarkdown.runSync(noteMarkdown.parse(
+  "A <u>marked **note**</u>\n\n- [ ] todo\n- [x] done\n\n<u class=\"unsafe\">drop</u>",
+));
+const underline = findMarkdownNode(noteTree, (node) => node.type === "underline");
+assert.equal(underline?.data?.hName, "u");
+assert.equal(underline?.children?.[0]?.value, "marked ");
+const uncheckedTask = findMarkdownNode(noteTree, (node) => node.type === "listItem" && node.checked === false);
+const checkedTask = findMarkdownNode(noteTree, (node) => node.type === "listItem" && node.checked === true);
+assert.ok(uncheckedTask && checkedTask, "remark-gfm task list state was not parsed");
+assert.equal(findMarkdownNode(noteTree, (node) => node.type === "underline" && node.value === "drop"), undefined);
+assert.ok(findMarkdownNode(noteTree, (node) => node.type === "html" && /unsafe/.test(node.value || "")));
 
 // Masonry geometry: source order is retained while each next item goes to
 // the currently shortest lane. No two card rectangles may overlap.
@@ -110,6 +151,22 @@ const reflowed = layoutWorkbenchMasonry([
 const restored = restoreWorkbenchMasonryScrollTop(reflowed, anchor);
 assert.equal(anchor?.id, "long-a");
 assert.ok(restored != null && restored >= 0);
+
+// An editor's own height can grow dramatically. Its source-order lane and
+// viewport top remain the sole edit anchor; restoring the same geometry is
+// idempotent and never chases the card's bottom edge.
+const editingAnchor = workbenchMasonryEditAnchor(interleaved, 18, "short-b");
+assert.equal(editingAnchor?.id, "short-b");
+assert.equal(editingAnchor?.column, interleaved.positions[1].column);
+const hugeDraft = layoutWorkbenchMasonry(
+  interleaved.positions.map(({ id, height }) => ({ id, height: id === "short-b" ? 5_000 : height })),
+  { width: 620, columns: 2, gap: 12 },
+);
+assert.equal(hugeDraft.positions[1].column, editingAnchor?.column);
+const restoredEditorTop = restoreWorkbenchMasonryEditAnchor(hugeDraft, editingAnchor);
+assert.equal(restoredEditorTop, 18);
+assert.equal(restoreWorkbenchMasonryEditAnchor(hugeDraft, editingAnchor), restoredEditorTop);
+
 const removed = layoutWorkbenchMasonry(
   interleaved.positions
     .filter(({ id }) => id !== "short-b")
@@ -194,8 +251,9 @@ assert.equal(normalizePluginWorkbenchEditResult({
   phase: "start", status: "ready", itemId: "editable", sessionId: "s1", requestId: "r".repeat(257), value: "x",
 }), undefined);
 
-const [cardsSource, sessionSource, editorSource, viewSource, hostSource] = await Promise.all([
+const [cardsSource, cardsStylesSource, sessionSource, editorSource, viewSource, hostSource] = await Promise.all([
   readFile("src/plugin/PluginWorkbenchCards.tsx", "utf8"),
+  readFile("src/styles/workbench-cards.css", "utf8"),
   readFile("src/plugin/workbenchEditSession.ts", "utf8"),
   readFile("src/plugin/PluginWorkbenchInlineEditor.tsx", "utf8"),
   readFile("src/plugin/PluginWorkbenchView.tsx", "utf8"),
@@ -209,6 +267,19 @@ assert.match(cardsSource, /data-qx-masonry-down/);
 assert.match(cardsSource, /data-qx-masonry-left/);
 assert.match(cardsSource, /data-qx-masonry-right/);
 assert.match(cardsSource, /ResizeObserver/);
+assert.match(cardsSource, /workbenchMasonryEditAnchor/);
+assert.match(cardsSource, /restoreWorkbenchMasonryEditAnchor/);
+assert.match(cardsSource, /event\.stopPropagation\(\)/);
+assert.match(cardsSource, /"h1", "h2", "h3", "h4", "h5", "h6"/);
+assert.match(cardsSource, /contenteditable='true'/);
+assert.match(cardsSource, /remarkGfm/);
+assert.match(cardsSource, /remarkWorkbenchUnderline/);
+assert.match(cardsSource, /qx-workbench-note-task-marker/);
+assert.doesNotMatch(cardsSource, /rehypeRaw/);
+assert.match(cardsStylesSource, /list-style-type: disc/);
+assert.match(cardsStylesSource, /list-style-type: decimal/);
+assert.match(cardsStylesSource, /task-list-item/);
+assert.match(cardsStylesSource, /\.qx-workbench-note-body h1/);
 assert.doesNotMatch(cardsSource, /defaultRangeExtractor/);
 assert.doesNotMatch(cardsSource, /useVirtualizer/);
 assert.match(sessionSource, /!current\.ready/);

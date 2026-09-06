@@ -9,6 +9,8 @@
 export const MAX_WORKBENCH_EDITOR_BYTES = 65_536;
 
 export interface PluginWorkbenchEditor {
+  /** Opt in to host Markdown editing; omitted/unknown formats remain plain text. */
+  format?: "plaintext" | "markdown";
   /** Initial authoritative value when the plugin already has it in memory. */
   initialValue?: string;
   placeholder?: string;
@@ -132,6 +134,7 @@ export function normalizePluginWorkbenchEditor(value: unknown): PluginWorkbenchE
   // a partial card value into a successful save.
   if (initialValue != null && workbenchUtf8ByteLength(initialValue) > limit) return undefined;
   return {
+    format: raw.format === "markdown" ? "markdown" : "plaintext",
     initialValue,
     placeholder: shortText(raw.placeholder, 500),
     rows: Math.max(3, Math.min(24, Math.round(Number(raw.rows) || 8))),
