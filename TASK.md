@@ -1,6 +1,6 @@
 # Qx 当前任务与验证状态
 
-> 状态：Current · 基线：v0.6.106 · 最后整理：2026-09-06
+> 状态：Current · 基线：v0.6.107 · 最后整理：2026-09-07
 >
 > 本文件只保留正在进行、明确阻塞或下一次必须复核的工作。已完成记录、旧实现计划和未重新确认的历史验收项保存在 [`docs/archive/task-ledger-through-v0.6.101.md`](docs/archive/task-ledger-through-v0.6.101.md)，不会自动作为当前待办继续累积。
 
@@ -19,11 +19,11 @@
 - Launcher 打开应用/文件后改为 `floating_hide`，不再把焦点还回召唤前的应用。
 - 几何平移有单元测试；真实双屏激活与 Windows 安装态待验。
 
-### Release — v0.6.106 搜索选择与截图输入法（2026-09-06）
+### Release — v0.6.107 应用窗口跟随当前物理显示器（2026-09-07）
 
-- 用户要求全部 diff 提交、推送及 tag 发布。本批次包含下述 Launcher 默认选择和截图 IME 修复；插件 gitlink 仍为已推送的 `bd92c90`，两个插件工作区均干净。
-- 发布前完整 `npm run check`、版本同步后的 docs check、TypeScript/Vite build、cargo fmt/check 全部通过。搜索交互沿用本任务已取得的生产列表浏览器回归；平台安装态边界见各条目。
-- 相对 v0.6.105 复核全部 tracked 与新增源码/文档/配置；构建输出不入库。桌面包由 tag 工作流构建，Windows 只确认一次触发状态，不将进行中构建视为可下载资产。
+- 用户要求全部代码、插件商店维护和 tag 推送。本客户端批次包含上面的跨显示器应用窗口放置与 Launcher 隐藏语义；插件 gitlink 保持在已推送的 `bd92c90`，市场包发布仍受 BluePrint 真实读写接口门禁约束。
+- 相对 v0.6.106 的源码、文档与配置累计 1509 行变更，超过 1200 行发布阈值。完整 `npm run check`、版本同步后的 docs check、TypeScript/Vite build、`cargo fmt --check` 和 `cargo check` 通过；Rust 仅保留既有 warning。
+- 几何平移单元测试随全量门禁通过；真实双屏激活与 Windows 安装态仍待验。桌面包由 tag 工作流构建，只确认一次触发状态，不将进行中构建视为可下载资产。
 
 ### Feature — Markdown 卡片原位编辑（2026-09-06）
 
