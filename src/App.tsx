@@ -2568,7 +2568,9 @@ function App() {
     // Record launch history (fire-and-forget)
     invoke("record_launch", { path: item.path, name: item.name }).catch(() => {});
     if (isTauriRuntime()) {
-      await invoke("floating_hide_restore_focus").catch(() => getCurrentWindow().hide());
+      // Launch/open must not restore the previous app — that steals focus
+      // from the just-opened target and can yank it back to another display.
+      await invoke("floating_hide").catch(() => getCurrentWindow().hide());
     }
   }, [setTab]);
 

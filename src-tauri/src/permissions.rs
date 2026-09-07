@@ -230,7 +230,7 @@ fn all_permission_statuses() -> Vec<MacPermissionStatus> {
         permission(
             "accessibility",
             "Accessibility",
-            "Required for clipboard auto-paste, macro playback, and system automation (Cmd+V simulation).",
+            "Required for clipboard auto-paste, launching apps onto the current display, macro playback, and system automation (Cmd+V simulation).",
             accessibility_granted(),
             ACCESSIBILITY_SETTINGS,
             false,

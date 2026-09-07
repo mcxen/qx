@@ -268,6 +268,7 @@ Windows 主窗口保持无边框并使用 DWM 原生阴影。Windows 11 的非�
 | 失焦自动隐藏 | 同上 |
 | 启动 App / 粘贴后隐藏 | 同上（需还焦点给目标 App 时） |
 | 仅收起、不必还焦点 | `invoke("floating_hide")` |
+| Launcher 打开应用 / 文件 / 文件夹 | `open_app` 或 `plugin_system_open_path` 之后 `floating_hide`。禁止 `floating_hide_restore_focus`：那会激活召唤前的应用，把刚启动的窗口留在另一块显示器上 |
 | 关窗口按钮（close requested） | Rust `floating_panel::hide` |
 
 **反模式**：业务路径长期裸调 `getCurrentWindow().hide()` —— 会导致 `PANEL_OPEN` 与可见性脱节，快捷键切换异常。

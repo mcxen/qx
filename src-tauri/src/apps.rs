@@ -9,6 +9,9 @@ use tauri::{AppHandle, Emitter};
 
 mod catalog_refresh;
 mod icons;
+pub(crate) mod launch;
+
+pub(crate) use launch::{spawn_launch_on_active_display, validate_open_app_path};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct AppEntry {

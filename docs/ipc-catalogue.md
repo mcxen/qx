@@ -17,6 +17,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前命令数由 `npm 
 | 命令 | 签名 | 用途 |
 |---|---|---|
 | `search_apps` | `(query: String) -> Vec<AppEntry>` | 已安装 `.app` 打分排序，空 query 返回前 20 |
+| `open_app` | `(path: String)` | 启动应用；多显示器时把窗口放到 Qx 所在物理屏，失败不阻止启动 |
 | `refresh_apps_if_changed` | `() -> bool` | 主窗口激活后的非阻塞应用目录对账；轻量签名未变化时立即结束，新增、删除或原位替换时只刷新变化的应用并发出 `apps:updated` |
 | `search_files` | `(query: String, pass?: u32, categories?: FileSearchCategory[], category_id?: String, request_id?: u64) -> Vec<AppEntry>` | Cardinal / Everything 文件名搜索；Launcher 显式传 `pass=0/1/2` 获得渐进批次并自行合并，QxAI / 插件等省略 `pass` 的调用方由后端执行并去重全部三轮，不能退化为仅 quick pass；`request_id` 使旧查询失效；所有平台统一 leaf-name 后置匹配，短 ASCII 查询不做松散逐字符召回；返回可选 `modified_at`，同分类先按名称相关性、再按修改时间倒序；Spotlight 作为 macOS 补充回退 |
 
@@ -247,7 +248,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 ## 存储 / 权限 / 杂项
 
 - `get_file_size(path)`
-- `open_app(path)` — 仅允许 `/Applications` 或 `~/Applications`
+- `open_app(path)` — 启动已安装应用。多显示器时把该应用的可见窗口放到 Qx 当前所在物理显示器的工作区（macOS 需辅助功能；单屏或无法枚举窗口时仍只负责启动）。macOS 仅允许 `/Applications`、`/System/Applications` 或 `~/Applications`；Windows 仅允许开始菜单快捷方式或应用目录中的 `.exe`。启动后前端必须 `floating_hide`，不得 `floating_hide_restore_focus`，以免把焦点抢回召唤前的应用。
 - `set_window_size(width, height)`
 - `qx_storage_overview` — 返回总占用、可回收模块缓存、manifest 登记的插件缓存目标与受保护分桶
 - `qx_storage_clear_cache_target(target_id)` — 只清理注册表中的单个可重建缓存；插件目标格式 `plugin:<id>:<cache-id>` 并只删除声明的 persist key

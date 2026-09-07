@@ -304,7 +304,8 @@ fn launch_application(application: &str) -> Result<(), String> {
             "Google Chrome was not found in the standard Windows install locations".to_string()
         })?;
 
-    crate::launch_app_path(&executable).map_err(|error| format!("launch Google Chrome: {error}"))
+    crate::apps::launch::launch_app_path(&executable)
+        .map_err(|error| format!("launch Google Chrome: {error}"))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]

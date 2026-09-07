@@ -23,7 +23,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `apps.rs` + `apps/catalog_refresh.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，并在 Launcher 激活后通过轻量候选签名增量发现新装、删除或原位替换的应用；无变化不解析 plist/写库，有变化只刷新受影响条目并发出 `apps:updated`。macOS 用 `sips` 生成最长边 128px 的紧凑 icon PNG（并迁移旧超尺寸缓存），中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`) |
+| `apps.rs` + `apps/catalog_refresh.rs` + `apps/launch.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，并在 Launcher 激活后通过轻量候选签名增量发现新装、删除或原位替换的应用；无变化不解析 plist/写库，有变化只刷新受影响条目并发出 `apps:updated`。macOS 用 `sips` 生成最长边 128px 的紧凑 icon PNG（并迁移旧超尺寸缓存），中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`)。`open_app` / 全局应用快捷键经 `launch.rs` 启动，多显示器时把窗口交给 `desktop_windows::place` 放到 Qx 所在物理屏 |
 | `apps_zh_dict.rs` | 常见 macOS app 的中文别名 → pinyin 词典 |
 | `file_search.rs` + `file_search/platform_{macos,windows}.rs` | 共享文件分类、去重、排序与 latest-wins 调度；macOS Cardinal/Spotlight 和 Windows Everything 分别封装在平台适配器中。Windows 使用 Qx 私有命名实例与 LocalAppData 下的私有后台配置，不读取或拉起用户 Everything 界面；ES 结果通过 UTF-8 文本导出读取，不依赖控制台代码页 |
 | `history.rs` | `launch_history` / `search_history` / `search_click_events` SQLite 表；`record_*` 后台写入，`get_*` 批量读取；搜索结果 30 天点击量聚合供推荐加权 |
@@ -33,7 +33,7 @@
 | `apps.rs` + `apps/icons.rs` | Windows 从开始菜单快捷方式枚举应用，以 Shell `HICON` 栅格化为 `%LOCALAPPDATA%/Qx/icons` 下的紧凑 PNG；该目录由 Tauri `$LOCALDATA/Qx/**` asset scope 放行，前端只通过 `convertFileSrc()` 加载绝对路径。 |
 | `runtime/` | **线程调度系统能力**：主线程 UI 事务（`ui`/`run_ui`）、blocking 算力池、跨平台主线程 id，以及仅在异常/恢复时写诊断的低频 event-loop health probe；所有窗口/剪贴板操作必须经此层。见 [runtime-threading.md](./runtime-threading.md) |
 | `display.rs` / `display/capture_macos.rs` / `display/brightness_windows.rs` / `display_windows.rs` / `display_macos.m` | Qx 系统级显示器服务：统一枚举、捕获映射与显示器控制；macOS 静态帧从完整 display framebuffer 读取并按 Retina 比例裁剪，保留菜单栏、窗口标题栏与 Dock，Windows still-frame 使用 WGC/GDI 兼容层；macOS 另内嵌 DisplayServices 与 DDC/CI I2C/IOAVService，Windows 显示控制使用 WMI + Win32 Monitor Configuration。公共 `display_brightness_*` 覆盖内置屏与外接屏并返回原始值及发现/读写诊断，不启动外部显示器工具。 |
-| `desktop_windows.rs` | Qx 系统级顶层窗口清单：可见窗枚举、几何、z 序、按显示器裁剪与逻辑坐标换算；公共 IPC `desktop_windows_list`；截图窗选等只消费该服务，禁止 feature 内直接 `xcap::Window` |
+| `desktop_windows.rs` + `desktop_windows/place.rs` | Qx 系统级顶层窗口清单：可见窗枚举、几何、z 序、按显示器裁剪与逻辑坐标换算；公共 IPC `desktop_windows_list`；截图窗选等只消费该服务，禁止 feature 内直接 `xcap::Window`。`place` 把已启动应用的可见窗口平移到指定物理显示器工作区（macOS Accessibility / Windows `SetWindowPos`），不处理虚拟桌面 |
 | `display_monitor.rs` | 复用系统级显示器服务监听插拔并发出 `display:changed`；常驻轮询只读轻量 topology count（macOS CoreGraphics active IDs），仅变化时刷新完整 xcap capture inventory，不得每轮重建捕获对象 |
 
 ## 数据模块

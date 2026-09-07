@@ -1,13 +1,25 @@
-//! System-level desktop window inventory.
+//! System-level desktop window inventory and launch placement.
 //!
 //! Enumerates visible top-level windows with stable geometry for any feature
 //! that needs window targeting (capture hover-select, layout tools, etc.).
-//! Feature modules must not call `xcap::Window` directly.
+//! Feature modules must not call `xcap::Window` directly. Launching an app
+//! onto the current physical display goes through [`place`].
 
 use serde::{Deserialize, Serialize};
 use tauri::command;
 
 use crate::display::capture_monitor;
+
+mod place;
+#[cfg(target_os = "macos")]
+mod place_macos;
+#[cfg(target_os = "windows")]
+mod place_win;
+
+pub(crate) use place::{
+    app_has_placeable_windows, capture_qx_launch_display, place_launched_app, NativeWorkArea,
+    PlaceResult,
+};
 
 /// Visible desktop window in capture-backend pixel space (monitor-absolute).
 #[derive(Debug, Clone, Serialize)]

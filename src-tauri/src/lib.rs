@@ -74,132 +74,6 @@ fn get_file_size(path: String) -> Result<u64, String> {
 }
 
 #[tauri::command]
-fn open_app(path: String) -> Result<(), String> {
-    let app_path = validate_open_app_path(&path)?;
-    launch_app_path(&app_path)
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn launch_app_path(app_path: &std::path::Path) -> Result<(), String> {
-    std::process::Command::new("open")
-        .arg(app_path)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("Failed to open app: {e}"))
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn launch_app_path(app_path: &std::path::Path) -> Result<(), String> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::UI::Shell::ShellExecuteW;
-    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
-
-    let path = app_path
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    let result = unsafe {
-        ShellExecuteW(
-            std::ptr::null_mut(),
-            std::ptr::null(),
-            path.as_ptr(),
-            std::ptr::null(),
-            std::ptr::null(),
-            SW_SHOWNORMAL,
-        )
-    } as isize;
-    if result <= 32 {
-        Err(format!(
-            "Failed to open Windows app (ShellExecuteW code {result})"
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub(crate) fn launch_app_path(app_path: &std::path::Path) -> Result<(), String> {
-    std::process::Command::new(app_path)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("Failed to open app: {e}"))
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, String> {
-    let raw_path = std::path::Path::new(path);
-    if raw_path.extension().and_then(|value| value.to_str()) != Some("app") {
-        return Err("open_app only accepts .app bundles".to_string());
-    }
-
-    let app_path = raw_path
-        .canonicalize()
-        .map_err(|e| format!("Invalid app path: {e}"))?;
-    if app_path.extension().and_then(|value| value.to_str()) != Some("app") {
-        return Err("open_app only accepts .app bundles".to_string());
-    }
-
-    let home_applications = std::env::var("HOME")
-        .ok()
-        .map(|home| std::path::PathBuf::from(home).join("Applications"));
-    let allowed_roots = [
-        Some(std::path::PathBuf::from("/Applications")),
-        Some(std::path::PathBuf::from("/System/Applications")),
-        home_applications,
-    ];
-
-    let allowed = allowed_roots
-        .iter()
-        .flatten()
-        .filter_map(|root| root.canonicalize().ok())
-        .any(|root| app_path.starts_with(root));
-    if !allowed {
-        return Err("open_app path must be inside /Applications or ~/Applications".to_string());
-    }
-
-    Ok(app_path)
-}
-
-#[cfg(target_os = "windows")]
-pub(crate) fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, String> {
-    let raw_path = std::path::Path::new(path);
-    let extension = raw_path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default();
-    if !extension.eq_ignore_ascii_case("lnk") && !extension.eq_ignore_ascii_case("exe") {
-        return Err("open_app only accepts Windows shortcuts or executables".to_string());
-    }
-    let app_path = raw_path
-        .canonicalize()
-        .map_err(|e| format!("Invalid app path: {e}"))?;
-    let allowed = [
-        "APPDATA",
-        "PROGRAMDATA",
-        "LOCALAPPDATA",
-        "ProgramFiles",
-        "ProgramFiles(x86)",
-    ]
-    .into_iter()
-    .filter_map(|name| std::env::var_os(name))
-    .map(std::path::PathBuf::from)
-    .filter_map(|root| root.canonicalize().ok())
-    .any(|root| app_path.starts_with(root));
-    if !allowed {
-        return Err("open_app path must be inside a Windows application directory".to_string());
-    }
-    Ok(app_path)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub(crate) fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, String> {
-    std::path::Path::new(path)
-        .canonicalize()
-        .map_err(|e| format!("Invalid app path: {e}"))
-}
-
-#[tauri::command]
 fn set_window_size(app: tauri::AppHandle, width: u32, height: u32) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.set_size(LogicalSize::new(width, height));
@@ -671,7 +545,7 @@ pub fn run() {
             apps::search_apps,
             apps::refresh_apps_if_changed,
             apps::search_files,
-            open_app,
+            apps::launch::open_app,
             set_window_size,
             clipboard::history::get_clipboard_history,
             file_manager::file_manager_get_selection,

@@ -490,7 +490,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
             eprintln!("skip invalid app shortcut id {id}");
             continue;
         };
-        let app_path = match crate::validate_open_app_path(path) {
+        let app_path = match crate::apps::validate_open_app_path(path) {
             Ok(path) => path,
             Err(error) => {
                 eprintln!("skip app shortcut {id}: {error}");
@@ -499,8 +499,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         };
         collect_registration!(
             format!("register app shortcut {id}"),
-            register_shortcut(app, key.as_str(), move |_app| {
-                let _ = crate::launch_app_path(&app_path);
+            register_shortcut(app, key.as_str(), move |app| {
+                crate::apps::spawn_launch_on_active_display(&app, &app_path);
             })
         );
     }
