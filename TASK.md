@@ -1,6 +1,6 @@
 # Qx 当前任务与验证状态
 
-> 状态：Current · 基线：v0.6.107 · 最后整理：2026-09-07
+> 状态：Current · 基线：v0.6.108 · 最后整理：2026-09-07
 >
 > 本文件只保留正在进行、明确阻塞或下一次必须复核的工作。已完成记录、旧实现计划和未重新确认的历史验收项保存在 [`docs/archive/task-ledger-through-v0.6.101.md`](docs/archive/task-ledger-through-v0.6.101.md)，不会自动作为当前待办继续累积。
 
@@ -19,10 +19,10 @@
 - Launcher 打开应用/文件后改为 `floating_hide`，不再把焦点还回召唤前的应用。
 - 几何平移有单元测试；真实双屏激活与 Windows 安装态待验。
 
-### Release — v0.6.107 应用窗口跟随当前物理显示器（2026-09-07）
+### Release — v0.6.108 应用窗口与插件商店同步（2026-09-07）
 
-- 用户要求全部代码、插件商店维护和 tag 推送。本客户端批次包含上面的跨显示器应用窗口放置与 Launcher 隐藏语义；插件 gitlink 保持在已推送的 `bd92c90`，市场包发布仍受 BluePrint 真实读写接口门禁约束。
-- 相对 v0.6.106 的源码、文档与配置累计 1509 行变更，超过 1200 行发布阈值。完整 `npm run check`、版本同步后的 docs check、TypeScript/Vite build、`cargo fmt --check` 和 `cargo check` 通过；Rust 仅保留既有 warning。
+- 用户要求全部代码、插件商店维护、Cloudflare 落地页内容和 tag 推送。本客户端批次包含上面的跨显示器应用窗口放置与 Launcher 隐藏语义，并把插件 gitlink 更新到已发布的 `qx-plugins v1.8.8` 提交 `63ccfd1`。
+- 相对 v0.6.106 的源码、文档与配置累计超过 1500 行，超过 1200 行发布阈值。`v0.6.107` 已先发布功能提交；因 tag 不可移动，插件市场完成后以 `v0.6.108` 同步最终插件 revision。完整 `npm run check`、版本同步后的 docs check、TypeScript/Vite build、`cargo fmt --check` 和 `cargo check` 通过；Rust 仅保留既有 warning。
 - 几何平移单元测试随全量门禁通过；真实双屏激活与 Windows 安装态仍待验。桌面包由 tag 工作流构建，只确认一次触发状态，不将进行中构建视为可下载资产。
 
 ### Feature — Markdown 卡片原位编辑（2026-09-06）
