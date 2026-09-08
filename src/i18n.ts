@@ -98,6 +98,7 @@ const zh: Record<string, string> = {
   "shortcuts.group.capture": "屏幕捕获",
   "shortcuts.group.tray": "托盘操作",
   "tray.brightness": "显示器亮度",
+  "display.software": "软件调光",
   "tray.title": "Qx 控制中心",
   "tray.actions": "快捷操作",
   "tray.status": "系统状态",

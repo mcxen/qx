@@ -14,7 +14,12 @@ export const Slider = React.forwardRef<
     <SliderPrimitive.Track className="qx-shadcn-slider-track">
       <SliderPrimitive.Range className="qx-shadcn-slider-range" />
     </SliderPrimitive.Track>
-    <SliderPrimitive.Thumb className="qx-shadcn-slider-thumb" />
+    <SliderPrimitive.Thumb
+      className="qx-shadcn-slider-thumb"
+      aria-label={props["aria-label"]}
+      aria-labelledby={props["aria-labelledby"]}
+      aria-valuetext={props["aria-valuetext"]}
+    />
   </SliderPrimitive.Root>
 ));
 Slider.displayName = SliderPrimitive.Root.displayName;

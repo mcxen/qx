@@ -113,7 +113,7 @@
 | **qxweibo** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + detail island** + http/open-url/system | persist SWR + session image proxy | 指定用户与受控聚合关注流；多游客 Cookie 轮换，API 串行限速、完整图片集合四路有界并发且按源顺序整组提交；相邻正文/评论低优先级预取到持久缓存但不预取整组原图；微博图床走会话代理，原图下载由宿主保存到 Downloads |
 | **brew** | ✅ | ✅ | **host Workbench List** + cli/open-url | — | 全宽 List → 宿主左集合/右详情；原生 tabs/Actions；`panel.render` 快返回 |
 | **unsplash** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist last search | 全宽 Gallery → 宿主左图库/右详情；item/panel Actions；与 Bing 复用宿主壁纸端口 |
-| **external-display-control** | ✅ | ✅ | `context.system.displayBrightness()` / `setDisplayBrightness()`；macOS 使用 DisplayServices + DDC/CI，Windows 使用 WMI + Win32 Monitor Configuration | — | 无 |
+| **external-display-control** | ✅ | ✅ | `context.system.displayBrightness()` / `setDisplayBrightness()`；Workbench slider + 硬件/软件页签；宿主适配 DisplayServices / IOAV / Intel I2C / WMI / VCP / gamma | — | 2.0.0 需要 Qx 0.6.109；外接 DDC 与 Windows 真机待验 |
 | **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench List（缩略图）** + http/system wallpaper/file ports | persist SWR + 宿主 Workbench 图片磁盘缓存 + 20 槽壁纸文件环 | 宿主左侧缩略图列表/右侧稳定 landscape 高清详情；重复设置同一张壁纸复用本地文件；每日任务声明 `backgroundCategory: wallpaper`，由宿主统一暂停/恢复；item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
 | **raycast-calendar** | ✅ | ✅ | 原生 Qx `mountActions` + locale/clipboard/openUrl；Main Area 专用七列月历 | 离线农历与官方年度数据 | 月历显示农历（含闰月）及休/班标记，下方全年调休表；已收录 2026 中国大陆安排，其他年份明确缺失。保留原插件 ID/偏好，不再依赖 Raycast shim |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island + tray | persist SWR | 不用 api.github.com；解析 actions/releases 网页；活跃部署以原生托盘子菜单显示预计百分比与用时 |

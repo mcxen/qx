@@ -18,6 +18,8 @@ fn main() {
         }
         println!("cargo:rustc-link-search=framework=/System/Library/PrivateFrameworks");
         println!("cargo:rerun-if-changed=src/display_macos.m");
+        println!("cargo:rerun-if-changed=src/display/ddc_intel.h");
+        println!("cargo:rerun-if-changed=src/display/ddc_protocol.h");
     }
     tauri_build::build()
 }

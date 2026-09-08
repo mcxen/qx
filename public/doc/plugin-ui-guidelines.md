@@ -350,6 +350,8 @@ filters: [
 - 使用 Qx 语义 token，不硬编码业务颜色作为容器背景。
 - 支持浅色、深色和透明主题；低透明度下仍满足正文和次要文字对比。
 - 使用宿主控件，不显示原生 `<select>`、range、checkbox 或 radio 外观。
+- 连续数值通过 Workbench `detail.form.controls[].type="slider"`、`min/max/step` 声明，
+  值由 `onInput` 回传；宿主统一负责 Radix 手柄、键盘和辅助功能标签。
 - 动效只表达状态变化，尊重减少动态效果设置。插件不要引入 `framer-motion`；
   岛与菜单动画由宿主统一处理。
 - 错误、空状态、加载和局部刷新不得替换仍可安全使用的缓存内容。

@@ -22,6 +22,7 @@ import {
   DialogTitle,
   Input,
   Select,
+  Slider,
   Textarea,
 } from "../components/ui";
 import type {
@@ -469,6 +470,16 @@ function WorkbenchDetail({
             onChange={(value) => onInput(control.id, value)}
           />
         )
+      ) : control.type === "slider" ? (
+        <Slider
+          value={Number(control.value)}
+          min={control.min ?? 0}
+          max={control.max ?? 100}
+          step={control.step ?? 1}
+          disabled={control.disabled}
+          ariaLabel={control.label}
+          onChange={(value) => onInput(control.id, String(value))}
+        />
       ) : control.type === "textarea" ? (
         <Textarea
           value={control.value}

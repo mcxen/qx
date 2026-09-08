@@ -49,6 +49,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include "display/ddc_protocol.h"
 
 typedef CFTypeRef IOAVServiceRef;
 
@@ -163,7 +164,7 @@ static size_t qx_online_displays(QxDisplayInfo *out, size_t capacity) {
             written++;
             continue;
         }
-        io_service_t adapter = IORegistryEntryCopyFromPath(kIOMainPortDefault, location);
+        io_service_t adapter = IORegistryEntryCopyFromPath(MACH_PORT_NULL, location);
         if (adapter == MACH_PORT_NULL) {
             out[written].discovery_stage = QX_DDC_STAGE_NO_ADAPTER;
             CFRelease(info);
@@ -301,7 +302,7 @@ static bool qx_name_is_framebuffer(const char *name) {
 static size_t qx_collect_ioreg_ddc_candidates(QxIoregDdcCandidate *out, size_t capacity) {
     if (!out || capacity == 0 || !IOAVServiceCreateWithService) return 0;
 
-    io_registry_entry_t root = IORegistryGetRootEntry(kIOMainPortDefault);
+    io_registry_entry_t root = IORegistryGetRootEntry(MACH_PORT_NULL);
     if (root == MACH_PORT_NULL) return 0;
 
     io_iterator_t iterator = MACH_PORT_NULL;
@@ -507,7 +508,7 @@ static void qx_match_services_to_displays(const CGDirectDisplayID *display_ids, 
             scores[d][c] = qx_ioreg_match_score(display_ids[d], &candidates[c]);
             // Sole external candidate: allow weak match so a single panel still binds
             // when CoreDisplay paths diverge from the framebuffer path.
-            if (scores[d][c] == 0 && cand_count == 1) scores[d][c] = 1;
+            if (scores[d][c] == 0 && cand_count == 1 && display_count == 1) scores[d][c] = 1;
         }
     }
 
@@ -520,6 +521,8 @@ static void qx_match_services_to_displays(const CGDirectDisplayID *display_ids, 
             for (size_t c = 0; c < cand_count; c++) {
                 if (taken_cand[c] || !candidates[c].service) continue;
                 if (scores[d][c] != want) continue;
+                if (!qx_ddc_unique_match(&scores[0][0], QX_DDC_MAX_CANDIDATES, n_disp, cand_count,
+                    taken_display, taken_cand, d, c)) continue;
                 // Transfer service ownership to the display slot.
                 out_services[d] = candidates[c].service;
                 candidates[c].service = NULL;
@@ -543,7 +546,20 @@ static IOAVServiceRef qx_ddc_service_for_display(CGDirectDisplayID display_id, u
 
     IOAVServiceRef matched = NULL;
     uint32_t match_stage = QX_DDC_STAGE_OK;
-    qx_match_services_to_displays(&display_id, 1, &matched, &match_stage);
+    CGDirectDisplayID ids[32] = {0}, external[32] = {0};
+    CGDisplayCount count = 0;
+    size_t external_count = 0;
+    if (CGGetOnlineDisplayList(32, ids, &count) != kCGErrorSuccess) return NULL;
+    for (size_t i = 0; i < count; i++) {
+        if (!CGDisplayIsBuiltin(ids[i])) external[external_count++] = ids[i];
+    }
+    IOAVServiceRef services[32] = {0};
+    uint32_t stages[32] = {0};
+    qx_match_services_to_displays(external, external_count, services, stages);
+    for (size_t i = 0; i < external_count; i++) {
+        if (external[i] == display_id) { matched = services[i]; match_stage = stages[i]; }
+        else if (services[i]) CFRelease(services[i]);
+    }
     if (!matched) {
         if (stage) *stage = match_stage ? match_stage : QX_DDC_STAGE_NO_EXTERNAL_PROXY;
         return NULL;
@@ -655,14 +671,10 @@ static bool qx_ddc_packet_read_at_chip(IOAVServiceRef service, uint32_t chip, ui
     if (!qx_ddc_communicate(service, chip, send, 1, reply, sizeof(reply), stage, error_code)) {
         return false;
     }
-    uint16_t maxValue = ((uint16_t)reply[6] << 8) | reply[7];
-    uint16_t currentValue = ((uint16_t)reply[8] << 8) | reply[9];
-    if (maxValue == 0 || currentValue > maxValue) {
+    if (!qx_ddc_decode(reply, sizeof(reply), current, max)) {
         if (stage) *stage = QX_DDC_STAGE_INVALID_RESPONSE;
         return false;
     }
-    *max = maxValue;
-    *current = currentValue;
     return true;
 }
 
@@ -702,34 +714,9 @@ static bool qx_ddc_packet_write_at_chip(IOAVServiceRef service, uint32_t chip, u
     return qx_ddc_communicate(service, chip, send, 3, NULL, 0, stage, error_code);
 }
 
-static bool qx_ddc_packet_write(IOAVServiceRef service, uint32_t preferred_chip, uint16_t value,
-                                uint32_t *stage, int32_t *error_code) {
-    uint32_t chips[3] = {
-        QX_DDC_DEFAULT_CHIP,
-        preferred_chip,
-        QX_DDC_MCDP29XX_CHIP,
-    };
-    uint32_t last_stage = QX_DDC_STAGE_WRITE;
-    int32_t last_code = 0;
-    bool tried[256] = {0};
-    for (int i = 0; i < 3; i++) {
-        uint32_t chip = chips[i] & 0xff;
-        if (tried[chip]) continue;
-        tried[chip] = true;
-        uint32_t s = QX_DDC_STAGE_OK;
-        int32_t c = 0;
-        if (qx_ddc_packet_write_at_chip(service, chip, value, &s, &c)) {
-            if (stage) *stage = QX_DDC_STAGE_OK;
-            if (error_code) *error_code = 0;
-            return true;
-        }
-        last_stage = s;
-        last_code = c;
-    }
-    if (stage) *stage = last_stage;
-    if (error_code) *error_code = last_code;
-    return false;
-}
+#if defined(__x86_64__)
+#include "display/ddc_intel.h"
+#endif
 
 size_t qx_ddc_list(QxDdcDisplay *out, size_t capacity) {
     if (!out || capacity == 0) return 0;
@@ -748,6 +735,15 @@ size_t qx_ddc_list(QxDdcDisplay *out, size_t capacity) {
         qx_copy_string(displays[index].productName, out[written].name,
                        sizeof(out[written].name), fallback);
 
+#if defined(__x86_64__)
+        uint16_t intel_current = 0, intel_max = 0;
+        bool intel_ok = qx_intel_read(displays[index].id, &intel_current, &intel_max,
+            &out[written].error_stage, &out[written].error_code);
+        out[written].current = intel_ok ? intel_current : 0;
+        out[written].max = intel_ok ? intel_max : 0;
+        written++;
+        continue;
+#endif
         uint32_t chip = QX_DDC_DEFAULT_CHIP;
         int32_t error_code = 0;
         uint32_t stage = QX_DDC_STAGE_OK;
@@ -764,23 +760,10 @@ size_t qx_ddc_list(QxDdcDisplay *out, size_t capacity) {
         bool read_ok = qx_ddc_packet_read(service, chip, &current, &max, &stage, &error_code);
         CFRelease(service);
 
-        // MonitorControl still enables DDC write when the AV service matched even if
-        // the first VCP read fails (it falls back to prefs / defaults). Mirror that:
-        // service found ⇒ treat as controllable with max=100 when read is unusable.
-        if (read_ok) {
-            out[written].current = current;
-            out[written].max = max;
-            out[written].error_stage = QX_DDC_STAGE_OK;
-            out[written].error_code = 0;
-        } else {
-            out[written].current = 0;
-            out[written].max = 100;
-            out[written].error_stage = QX_DDC_STAGE_OK;
-            out[written].error_code = 0;
-            // Keep diagnostics in name? No — write path still works. Stage was read-only.
-            (void)stage;
-            (void)error_code;
-        }
+        out[written].current = read_ok ? current : 0;
+        out[written].max = read_ok ? max : 0;
+        out[written].error_stage = read_ok ? QX_DDC_STAGE_OK : stage;
+        out[written].error_code = read_ok ? 0 : error_code;
         written++;
     }
     qx_release_displays(displays, count);
@@ -794,6 +777,9 @@ int qx_ddc_set(uint32_t display, uint16_t value, uint32_t *error_stage) {
         return -1;
     }
 
+#if defined(__x86_64__)
+    return qx_intel_set(display, value, error_stage);
+#endif
     uint32_t chip = QX_DDC_DEFAULT_CHIP;
     int32_t error_code = 0;
     uint32_t stage = QX_DDC_STAGE_OK;
@@ -803,7 +789,16 @@ int qx_ddc_set(uint32_t display, uint16_t value, uint32_t *error_stage) {
         return error_code != 0 ? error_code : -1;
     }
 
-    bool ok = qx_ddc_packet_write(service, chip, value, &stage, &error_code);
+    uint16_t current = 0, maximum = 0;
+    bool ok = false;
+    const uint32_t addresses[] = {QX_DDC_DEFAULT_CHIP, QX_DDC_MCDP29XX_CHIP};
+    for (size_t i = 0; i < 2; i++) {
+        if (qx_ddc_packet_read_at_chip(service, addresses[i], &current, &maximum, &stage, &error_code)) {
+            if (value <= 100) ok = qx_ddc_packet_write_at_chip(service, addresses[i], ((uint32_t)value * maximum + 50) / 100, &stage, &error_code);
+            else stage = QX_DDC_STAGE_INVALID_RESPONSE;
+            break;
+        }
+    }
     CFRelease(service);
     if (error_stage) *error_stage = stage;
     return ok ? 0 : (error_code != 0 ? error_code : -1);

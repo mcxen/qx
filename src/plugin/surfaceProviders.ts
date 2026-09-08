@@ -70,19 +70,12 @@ export interface LightweightSurfaceProviderAdapter<TSnapshot, TMutation = never>
 }
 
 /**
- * Hardware brightness should not be driven by a series of large jumps while a
- * pointer is moving. The host and lightweight surfaces use this same step
- * policy; a plugin panel can mirror it inside its own runtime.
+ * Coalesce drag targets; never generate artificial intermediate DDC writes.
  */
-export const BRIGHTNESS_RAMP_INTERVAL_MS = 28;
+export const BRIGHTNESS_RAMP_INTERVAL_MS = 80;
 
-export function nextBrightnessRampValue(current: number, target: number): number {
-  const from = Math.max(0, Math.min(100, Math.round(current)));
-  const to = Math.max(0, Math.min(100, Math.round(target)));
-  const distance = Math.abs(to - from);
-  if (distance === 0) return from;
-  const step = distance > 24 ? 3 : distance > 8 ? 2 : 1;
-  return from + Math.sign(to - from) * Math.min(step, distance);
+export function nextBrightnessRampValue(_current: number, target: number): number {
+  return Math.max(0, Math.min(100, Math.round(target)));
 }
 
 export function providerKey(pluginId: string, providerId: string): string {

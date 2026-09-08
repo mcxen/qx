@@ -11,6 +11,10 @@
 | **Tokio worker** | 多数 `async fn` `#[command]` | 编排、await、轻量逻辑 |
 | **Blocking pool** | `spawn_blocking` / `runtime::blocking` | 编码、磁盘、同步 HTTP、大图处理 |
 
+显示器亮度由 async semaphore 在进入 blocking pool 前串行化原生事务，避免慢 DDC
+读写占满工作线程；前端拖动只保留最新目标。插件 URL 下载后的落盘和 URL 归档安装也必须
+进入 blocking pool，不能把同步 ZIP/文件工作留在 async command 中。
+
 宏录制的原生 hook / event tap 不属于截图的永久指针监听器。`MacroCaptureSession`
 为每次录制创建独立 native capture thread 和一个容量为 4096 的有界原始事件队列；
 OS 回调只读取必要的 raw key code / 坐标并 `try_send`，不做键盘布局转换、数据库操作

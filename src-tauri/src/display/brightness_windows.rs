@@ -13,7 +13,8 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Mutex, OnceLock};
 use windows_sys::Win32::Devices::Display::{
     DestroyPhysicalMonitors, GetMonitorBrightness, GetNumberOfPhysicalMonitorsFromHMONITOR,
-    GetPhysicalMonitorsFromHMONITOR, SetMonitorBrightness, PHYSICAL_MONITOR,
+    GetPhysicalMonitorsFromHMONITOR, GetVCPFeatureAndVCPFeatureReply, SetMonitorBrightness,
+    SetVCPFeature, PHYSICAL_MONITOR,
 };
 use windows_sys::Win32::Foundation::{BOOL, LPARAM, RECT};
 use windows_sys::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
@@ -231,6 +232,51 @@ fn wmi_brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
         .collect())
 }
 
+struct BrightnessReading {
+    minimum: u32,
+    current: u32,
+    maximum: u32,
+    vcp: bool,
+}
+
+fn read_brightness(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+) -> Result<BrightnessReading, (String, Option<i32>)> {
+    // Some monitors implement VCP 0x10 but reject the high-level capability API.
+    let (mut current, mut maximum, mut minimum) = (0, 0, 0);
+    if unsafe {
+        GetVCPFeatureAndVCPFeatureReply(
+            handle,
+            0x10,
+            std::ptr::null_mut(),
+            &mut current,
+            &mut maximum,
+        )
+    } != 0
+        && maximum > 0
+        && current <= maximum
+    {
+        return Ok(BrightnessReading {
+            minimum: 0,
+            current,
+            maximum,
+            vcp: true,
+        });
+    }
+    if unsafe { GetMonitorBrightness(handle, &mut minimum, &mut current, &mut maximum) } != 0 {
+        if maximum > minimum && current >= minimum && current <= maximum {
+            return Ok(BrightnessReading {
+                minimum,
+                current,
+                maximum,
+                vcp: false,
+            });
+        }
+        return Err(("Monitor reported an invalid brightness range".into(), None));
+    }
+    Err(last_error("VCP 0x10 and GetMonitorBrightness unavailable"))
+}
+
 fn ddc_brightness_controls(skip_builtin: bool) -> Result<Vec<DisplayBrightnessControl>, String> {
     let logical = logical_monitors()?;
     let inventory = capture_inventory();
@@ -290,33 +336,20 @@ fn ddc_brightness_controls(skip_builtin: bool) -> Result<Vec<DisplayBrightnessCo
                 value if value.is_empty() => fallback_name.clone(),
                 value => value,
             };
-            let mut minimum = 0_u32;
-            let mut current = 0_u32;
-            let mut maximum = 0_u32;
-            let success = unsafe {
-                GetMonitorBrightness(
-                    physical_handle(monitor),
-                    &mut minimum,
-                    &mut current,
-                    &mut maximum,
-                )
-            } != 0;
+            let reading = read_brightness(physical_handle(monitor));
+            let supported = reading.is_ok();
+            let (minimum, current, maximum) = reading
+                .as_ref()
+                .map(|r| (r.minimum, r.current, r.maximum))
+                .unwrap_or((0, 0, 0));
             let range = maximum.saturating_sub(minimum);
-            let supported = success && range > 0;
-            let (error, error_code) = if supported {
-                (None, None)
-            } else if success {
-                (
-                    Some("Monitor reported an invalid brightness range".to_string()),
-                    None,
-                )
-            } else {
-                let (message, code) = last_error("GetMonitorBrightness");
-                (Some(message), code)
+            let (error, error_code) = match &reading {
+                Ok(_) => (None, None),
+                Err((error, code)) => (Some(error.clone()), *code),
             };
             controls.push(DisplayBrightnessControl {
                 id: if supported {
-                    ddc_target_id(&target, physical_index, &name)
+                    ddc_target_id(&target, physical_index, &physical_name(monitor))
                 } else {
                     format!("unavailable:windows:{logical_index}:{physical_index}")
                 },
@@ -398,21 +431,18 @@ fn set_ddc_brightness(display_id: &str, value: u8) -> Result<bool, String> {
                 continue;
             }
             let handle = physical_handle(monitor);
-            let mut minimum = 0_u32;
-            let mut current = 0_u32;
-            let mut maximum = 0_u32;
-            if unsafe { GetMonitorBrightness(handle, &mut minimum, &mut current, &mut maximum) }
-                == 0
-            {
-                return Err(last_error("GetMonitorBrightness before write").0);
-            }
-            let range = maximum.saturating_sub(minimum);
-            if range == 0 {
-                return Err("Monitor reported an invalid brightness range".to_string());
-            }
-            let raw = minimum + ((value.min(100) as u64 * range as u64 + 50) / 100) as u32;
-            if unsafe { SetMonitorBrightness(handle, raw.min(maximum)) } == 0 {
-                return Err(last_error("SetMonitorBrightness").0);
+            let reading = read_brightness(handle).map_err(|(error, _)| error)?;
+            let range = reading.maximum - reading.minimum;
+            let raw = reading.minimum + ((value.min(100) as u64 * range as u64 + 50) / 100) as u32;
+            let success = unsafe {
+                if reading.vcp {
+                    SetVCPFeature(handle, 0x10, raw)
+                } else {
+                    SetMonitorBrightness(handle, raw)
+                }
+            };
+            if success == 0 {
+                return Err(last_error("Write display brightness").0);
             }
             return Ok(true);
         }

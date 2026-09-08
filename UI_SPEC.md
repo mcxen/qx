@@ -367,6 +367,10 @@ Shell 基础设施可以直接消费 shadcn primitive，但应限制在 `src/com
 - ScrollArea
 - Skeleton
 
+Workbench 表单可声明 `slider`（min/max/step），由共享 Radix Slider 绘制，沿用 `onInput`
+字符串回传。亮度插件用硬件亮度/软件调光页签区分控制方式；软件调光必须明确标注，不能
+冒充背光值。滑块名称与数值描述必须传给可聚焦 Thumb，失败保留可见错误和最后确认值。
+
 禁止产品 UI 直接出现：
 
 - `<select>`

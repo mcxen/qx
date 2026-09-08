@@ -11,6 +11,7 @@ import process from "node:process";
 const steps = [
   ["architecture", "scripts/check-architecture.mjs"],
   ["interface-protocols", "scripts/check-interface-protocols.mjs"],
+  ["native-inventory", "scripts/audit-native-capabilities.mjs"],
   ["docs", "scripts/check-docs.mjs"],
   ["i18n", "scripts/check-i18n.mjs"],
   ["shell-navigation", "scripts/check-qx-shell-navigation.mjs"],
@@ -24,6 +25,7 @@ const steps = [
   ["workbench-cards", "scripts/check-workbench-cards.mjs"],
   ["workbench-markdown", "scripts/check-workbench-markdown.mjs"],
   ["plugin-preferences", "scripts/check-plugin-preferences.mjs"],
+  ["display-brightness", "scripts/check-display-brightness.mjs"],
   ["qx-ai-agent", "scripts/check-qx-ai-agent.mjs"],
 ];
 

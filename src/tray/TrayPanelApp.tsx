@@ -476,7 +476,7 @@ function TrayContent() {
           {orderedVisibleDisplays.map((display, displayIndex) => (
             <TrayControlCard
               key={display.id}
-              title={display.name}
+              title={display.backend === "software" ? `${display.name} · ${t("display.software", "Software dimming")}` : display.name}
               value={`${Math.round(display.current ?? 0)}%`}
               current={displayIndex === 0 && focusedDisplayId != null}
             >

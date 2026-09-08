@@ -58,7 +58,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前命令数由 `npm 
 |---|---|
 | `display_list()` | 枚举显示器（稳定 ID、名称、尺寸、刷新率、缩放、旋转、主屏/内置屏，以及平台可提供的连接协议与 EDID 厂商/产品码）。**任何功能**需要显示器信息都走此命令，不得自建枚举；插件通过 `context.system.displays()` 消费。 |
 | `display_brightness_list()` | 以同一模型列出 macOS/Windows 内置屏与外接屏亮度目标；保留 `rawCurrent/rawMax`、百分比、后端和失败阶段/错误码，避免识别失败被静默丢弃；插件通过 `context.system.displayBrightness()` 消费。 |
-| `display_brightness_set(display_id, value)` | 设置统一显示器亮度目标（0–100）；macOS 内置屏走 DisplayServices、外接屏走内嵌 DDC/CI，Windows 内置屏走 WMI、物理显示器走 Win32 Monitor Configuration。 |
+| `display_brightness_set(display_id, value)` | 设置统一显示器亮度目标（0–100）；原生屏走 DisplayServices/WMI，DDC 走 IOAV/Intel I2C/Windows VCP 与高层兼容；独立 software 目标做 gamma 调光，100% 恢复色彩。详见 [亮度服务](./display-brightness.md)。 |
 | `desktop_windows_list(query?)` | 枚举可见顶层窗口；可选按 `monitorId` 裁剪、`logicalScale` 换算逻辑坐标、名称排除。截图窗选、布局工具等共用。 |
 
 前端端口：`src/system/display.ts`、`src/system/desktopWindows.ts`、`src/system/clipboard.ts`。

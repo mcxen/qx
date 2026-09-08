@@ -180,6 +180,11 @@ npm run store:build
 不支持或通信失败的外接屏仍会返回，并通过 `error/errorStage/errorCode` 说明失败阶段。
 macOS 适配使用 DisplayServices 与内嵌 DDC/CI；Windows 适配使用 WMI 与 Win32
 Monitor Configuration。两端保持同一序列化模型，插件不得按平台解析目标 ID。
+0.6.109 起额外返回 `backend="software"` 的独立软件调光目标，必须明确标识；其
+`rawCurrent/rawMax` 为 null，100% 恢复原始色彩，0% 保留最低可见强度。同一屏可能同时
+存在硬件与软件目标，不能把返回条目数作为物理显示器数量。软件调光不改变硬件背光。
+macOS DDC 按 Apple Silicon IOAV / Intel framebuffer I2C 适配，原生接口也尝试 Apple
+外接屏；Windows 优先 VCP 0x10，兼容高层 Monitor Configuration。读失败不再伪造范围。
 由于该端口位于 `context.system`，manifest 还需声明 `system`，并添加精确写权限
 `invoke:display_brightness_set`；插件不得安装、启动或解析 m1ddc/ddcctl、PowerShell
 等外部工具。
@@ -421,7 +426,10 @@ BluePrint 的权限、版本字段或 MCP 工具名称。
 与源码模式，插件仍通过 `onEdit` 交付/保存字符串。未声明的旧插件保留纯文本行为。
 首次消费者应验证自身的轻量语法与附件契约，不能直接照搬另一个服务的富文本 JSON。
 
-结构化详情的 `detail.form.controls` 支持 `text`、`number`、`select` 和 `textarea`。
+结构化详情的 `detail.form.controls` 支持 `text`、`number`、`select`、`textarea` 和 `slider`。
+`slider` 通过宿主 Radix 控件绘制，`min/max/step` 默认为 0/100/1，值保持字符串并沿用
+`onInput`；宿主归一化非有限数、错误范围和越界值。消费新滑块的插件需声明宿主最低版本
+0.6.109，插件不应自行复制指针、键盘或渐变写入实现。
 长正文使用 `textarea`，`rows` 只提示 3-24 行的可见高度，宿主最多接收 64 KiB 文本；
 值变化仍通过 `onInput` 回到插件状态源。密码和令牌应放在 Manifest 的 `password` 偏好中，
 不得发布到 Workbench state、缓存、URL 或日志。

@@ -501,7 +501,7 @@ export default function HomeDashboard({
                   id="system.display-brightness"
                   title={t("launcher.home.displayBrightness", "Display Brightness")}
                   value={primary?.current != null ? `${Math.round(primary.current)}%` : "—"}
-                  detail={primary ? `${primary.name}${supported.length > 1 ? ` · ${supported.length}` : ""}` : t("launcher.home.loading", "Reading system data")}
+                  detail={primary ? `${primary.name}${primary.backend === "software" ? ` · ${t("display.software", "Software dimming")}` : ""}` : t("launcher.home.loading", "Reading system data")}
                   progress={primary?.current}
                   icon={<Monitor size={17} strokeWidth={2} />}
                   onClick={providerFor("system.display-brightness")}

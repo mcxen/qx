@@ -1702,10 +1702,14 @@ pub async fn download_plugin(
     source_index_url: Option<String>,
 ) -> Result<String, String> {
     let bytes = http_get_plugin_asset(&url, source_index_url.as_deref()).await?;
-    let tmp = std::env::temp_dir().join(format!("qx-plugin-{}.qx", uuid_like()));
-    let mut f = fs::File::create(&tmp).map_err(|e| format!("create tmp: {e}"))?;
-    f.write_all(&bytes).map_err(|e| format!("write tmp: {e}"))?;
-    Ok(tmp.to_string_lossy().to_string())
+    crate::runtime::blocking(move || {
+        let tmp = std::env::temp_dir().join(format!("qx-plugin-{}.qx", uuid_like()));
+        let mut f = fs::File::create(&tmp).map_err(|e| format!("create tmp: {e}"))?;
+        f.write_all(&bytes).map_err(|e| format!("write tmp: {e}"))?;
+        Ok(tmp.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[command]
@@ -1716,7 +1720,9 @@ pub async fn install_plugin_from_url(url: String) -> Result<InstalledPlugin, Str
     }
     let archive_url = normalize_plugin_archive_url(trimmed);
     let bytes = http_get_with_fallbacks(&archive_url).await?;
-    install_plugin_archive(&bytes, None)
+    crate::runtime::blocking(move || install_plugin_archive(&bytes, None))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[command]

@@ -16,7 +16,7 @@ export interface DisplayDescriptor {
 export interface DisplayBrightnessControl {
   id: string;
   name: string;
-  backend: "native" | "ddc" | string;
+  backend: "native" | "ddc" | "software" | string;
   /** Normalized 0–100 percentage used by the write port and slider. */
   current: number | null;
   max: number;
@@ -35,7 +35,7 @@ export function listDisplays(): Promise<DisplayDescriptor[]> {
   return invoke<DisplayDescriptor[]>("display_list");
 }
 
-/** List native and embedded DDC/CI brightness targets. */
+/** List independent native, DDC/CI and software dimming targets (opaque ids). */
 export function listDisplayBrightnessControls(): Promise<DisplayBrightnessControl[]> {
   return invoke<DisplayBrightnessControl[]>("display_brightness_list");
 }

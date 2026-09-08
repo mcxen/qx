@@ -104,7 +104,10 @@ export interface PluginWorkbenchControl {
   id: string;
   label: string;
   value: string;
-  type?: "text" | "number" | "select" | "textarea";
+  type?: "text" | "number" | "select" | "textarea" | "slider";
+  min?: number;
+  max?: number;
+  step?: number;
   options?: Array<{ label: string; value: string }>;
   placeholder?: string;
   /** Visible rows for host-rendered long text. Clamped to 3-24. */
@@ -401,9 +404,18 @@ function normalizeForm(value: unknown): PluginWorkbenchForm | undefined {
           value: control.type === "textarea"
             ? shortUtf8Text(control.value, 65_536) || ""
             : shortText(control.value, 2_000) || "",
-          type: control.type === "number" || control.type === "select" || control.type === "textarea"
+          type: control.type === "number" || control.type === "select" || control.type === "textarea" || control.type === "slider"
             ? control.type
             : "text",
+          ...(control.type === "slider" ? (() => {
+            const min = Number.isFinite(Number(control.min)) ? Math.max(-1e6, Math.min(1e6, Number(control.min))) : 0;
+            const max = Number.isFinite(Number(control.max)) && Number(control.max) > min
+              ? Math.min(1e6 + 1, Number(control.max)) : min + 100;
+            const step = Number(control.step) > 0 && Number.isFinite(Number(control.step))
+              ? Math.min(max - min, Number(control.step)) : 1;
+            const value = Number.isFinite(Number(control.value)) ? Number(control.value) : min;
+            return { min, max, step, value: String(Math.max(min, Math.min(max, value))) };
+          })() : {}),
           options,
           placeholder: shortText(control.placeholder, 500),
           rows: control.type === "textarea"
