@@ -192,6 +192,8 @@ CNB 镜像流水线已经触发。
 
 ## GitHub Actions And Release Artifacts
 
+发布说明优先读取 `docs/releases/<tag>.md`；旧 tag 没有对应文件时使用提交信息摘要。
+
 The tag push should trigger the release workflow. If API access is available,
 check:
 

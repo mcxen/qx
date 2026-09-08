@@ -244,9 +244,14 @@ jobs:
             exit 0
           fi
 
+          NOTES_FILE="docs/releases/${RELEASE_TAG}.md"
+          if [ ! -f "$NOTES_FILE" ]; then
+            NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+            printf 'Desktop clients built from %s@%s.\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" > "$NOTES_FILE"
+          fi
           gh release create "${RELEASE_TAG}" release-assets/* \
             --title "${RELEASE_TAG}" \
-            --notes "Desktop clients built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}." \
+            --notes-file "$NOTES_FILE" \
             $([ "${PRERELEASE}" = "true" ] && echo "--prerelease" || echo "")
 
       - name: Mirror release to Gogs
