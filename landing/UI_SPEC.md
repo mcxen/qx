@@ -18,7 +18,7 @@
 | 依赖 | 允许 Google Fonts（Geist / Geist Mono）；禁止额外框架、图标包、分析脚本 |
 | 宿主语言 | 语义化 HTML + CSS 变量 + 小段原生 JS |
 
-保持**可单文件交付**。未出现多页/构建需求前，不拆 Vite 工程。若拆分，须同步更新本文与部署配置。
+页面保持单文件，不拆 Vite 工程。`functions/download/[platform].js` 提供最新版本解析与下载跳转。
 
 ---
 
@@ -232,12 +232,12 @@ Hero `#download` 与 Install 区共用同一套下载状态机：
 | 默认源 | **CNB**（国内镜像） |
 | 可切换 | **GitHub** |
 | 持久化 | `localStorage["qx-landing-download-source"]` = `cnb` \| `github` |
-| 清单 | `{source}/releases/latest/download/latest.json` |
+| 清单 | 同源 `/download/manifest?source=cnb`；服务端读取所选源的 `latest.json`，缓存 60 秒 |
 | macOS 包 | 优先 `qx_v{version}_aarch64-apple-darwin.dmg`（用户安装包） |
-| Windows 包 | `artifacts[]` 中 `platform=windows` 的 `asset_name`，通常为 `Qx_{version}_x64-setup.exe` |
-| 按钮 | **macOS** / **Windows** 分开展示；点击直达对应包 URL，开始下载 |
+| Windows 包 | 验证清单含 Windows x64 后使用 `Qx_{version}_x64-setup.exe` |
+| 按钮 | **macOS** / **Windows**；固定 `/download/macos`、`/download/windows`，无需等待 JS；默认 CNB，GitHub 使用 `?source=github` |
 | 主次 | 按 UA 高亮当前平台（Mac → macOS 为 primary；Windows → Windows 为 primary） |
-| 失败 | 文案提示；按钮退化为对应源的 Releases 列表页 |
+| 失败 | 下载入口仍可点；服务端获取失败跳到所选源 Releases，不混用不同源版本 |
 
 CNB 资产基址：
 
@@ -332,7 +332,7 @@ landing/
 本地预览：
 
 ```bash
-cd landing && python3 -m http.server 8787
+cd landing && npx wrangler pages dev . --port 8787
 # http://127.0.0.1:8787/
 ```
 

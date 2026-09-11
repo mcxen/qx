@@ -1391,8 +1391,7 @@
                 <a
                   class="btn btn--primary dl__btn"
                   data-dl-mac
-                  href="#download"
-                  aria-disabled="true"
+                  href="/download/macos"
                 >
                   <strong data-i18n="dlMac">macOS</strong>
                   <small data-i18n="dlMacMeta">Apple Silicon · .dmg</small>
@@ -1400,15 +1399,14 @@
                 <a
                   class="btn btn--ghost dl__btn"
                   data-dl-win
-                  href="#download"
-                  aria-disabled="true"
+                  href="/download/windows"
                 >
                   <strong data-i18n="dlWin">Windows</strong>
                   <small data-i18n="dlWinMeta">x64 · NSIS 安装包</small>
                 </a>
               </div>
               <p class="dl__hint" data-i18n="dlHint">
-                默认 CNB 国内镜像，点击即可下载。可切换为 GitHub 源。
+                默认 CNB
               </p>
               <div class="dl__links">
                 <a class="btn btn--ghost" href="#features" data-i18n="heroFeatures" style="height: 32px; padding: 0 12px"
@@ -1667,8 +1665,7 @@
                 <a
                   class="btn btn--primary dl__btn"
                   data-dl-mac
-                  href="#download"
-                  aria-disabled="true"
+                  href="/download/macos"
                 >
                   <strong data-i18n="dlMac">macOS</strong>
                   <small data-i18n="dlMacMeta">Apple Silicon · .dmg</small>
@@ -1676,15 +1673,14 @@
                 <a
                   class="btn btn--ghost dl__btn"
                   data-dl-win
-                  href="#download"
-                  aria-disabled="true"
+                  href="/download/windows"
                 >
                   <strong data-i18n="dlWin">Windows</strong>
                   <small data-i18n="dlWinMeta">x64 · NSIS 安装包</small>
                 </a>
               </div>
               <p class="dl__hint" data-i18n="dlHint">
-                默认 CNB 国内镜像，点击即可下载。可切换为 GitHub 源。
+                默认 CNB
               </p>
             </div>
             <div class="install__row" style="margin-top: 18px">
@@ -1828,13 +1824,13 @@
             heroHotkey: "唤起 / 隐藏（macOS 默认）",
             sourceLabel: "下载源",
             dlLoading: "正在获取版本…",
-            dlError: "清单暂不可用，请打开 Releases",
+            dlError: "最新版本",
             dlVersion: "v{v}",
             dlMac: "macOS",
             dlMacMeta: "Apple Silicon · .dmg",
             dlWin: "Windows",
             dlWinMeta: "x64 · NSIS 安装包",
-            dlHint: "默认 CNB 国内镜像，点击即可下载。可切换为 GitHub 源。",
+            dlHint: "默认 CNB",
             dlMoreInstall: "安装说明",
             cnbReleases: "CNB Releases",
             ghReleases: "GitHub Releases",
@@ -1937,13 +1933,13 @@
             heroHotkey: "Show / hide (macOS default)",
             sourceLabel: "Download source",
             dlLoading: "Fetching version…",
-            dlError: "Manifest unavailable — open Releases",
+            dlError: "Latest release",
             dlVersion: "v{v}",
             dlMac: "macOS",
             dlMacMeta: "Apple Silicon · .dmg",
             dlWin: "Windows",
             dlWinMeta: "x64 · NSIS setup",
-            dlHint: "CNB is the default mirror. Switch to GitHub anytime. Click a platform to download.",
+            dlHint: "CNB by default",
             dlMoreInstall: "Install notes",
             cnbReleases: "CNB Releases",
             ghReleases: "GitHub Releases",
@@ -2040,23 +2036,6 @@
           winUrl: "",
         };
 
-        const SOURCES = {
-          cnb: {
-            id: "cnb",
-            manifest: "https://cnb.cool/v.ip/Qx/-/releases/latest/download/latest.json",
-            asset: (tag, name) =>
-              `https://cnb.cool/v.ip/Qx/-/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(name)}`,
-            page: "https://cnb.cool/v.ip/Qx/-/releases",
-          },
-          github: {
-            id: "github",
-            manifest: "https://github.com/mcxen/qx/releases/latest/download/latest.json",
-            asset: (tag, name) =>
-              `https://github.com/mcxen/qx/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(name)}`,
-            page: "https://github.com/mcxen/qx/releases/latest",
-          },
-        };
-
         function detectLocale() {
           try {
             const saved = localStorage.getItem(localeKey);
@@ -2089,34 +2068,9 @@
           return "macos";
         }
 
-        function resolvePackageUrls(manifest, sourceId) {
-          const source = SOURCES[sourceId] || SOURCES.cnb;
-          const version = String(manifest.version || "").replace(/^v/, "");
-          const tag = manifest.tag || (version ? `v${version}` : "");
-          const artifacts = Array.isArray(manifest.artifacts) ? manifest.artifacts : [];
-          const winArt = artifacts.find((a) => a.platform === "windows");
-          const macArt = artifacts.find((a) => a.platform === "macos");
-          const winName = winArt?.asset_name || (version ? `Qx_${version}_x64-setup.exe` : "");
-          // Prefer the user-facing DMG; fall back to the updater app.zip from the manifest.
-          const dmgName = version ? `qx_v${version}_aarch64-apple-darwin.dmg` : "";
-          const macName = dmgName || macArt?.asset_name || "";
-          if (!version || !tag || !macName || !winName) {
-            throw new Error("incomplete manifest");
-          }
-          return {
-            version,
-            tag,
-            macUrl: source.asset(tag, macName),
-            winUrl: source.asset(tag, winName),
-            macName,
-            winName,
-          };
-        }
-
         function applyDownloadUi() {
           const prefer = preferredPlatform();
-          const ready = downloadState.status === "ready";
-          const page = SOURCES[downloadSource]?.page || SOURCES.cnb.page;
+          const query = downloadSource === "github" ? "?source=github" : "";
 
           document.querySelectorAll("[data-source]").forEach((btn) => {
             btn.setAttribute(
@@ -2140,94 +2094,42 @@
             els.forEach((el) => {
               el.classList.toggle("btn--primary", isPrimary);
               el.classList.toggle("btn--ghost", !isPrimary);
-              if (ready) {
-                el.href = url;
-                el.removeAttribute("aria-disabled");
-                el.removeAttribute("target");
-                el.removeAttribute("rel");
-              } else if (downloadState.status === "error") {
-                el.href = page;
-                el.removeAttribute("aria-disabled");
-                el.setAttribute("target", "_blank");
-                el.setAttribute("rel", "noreferrer");
-              } else {
-                el.href = "#download";
-                el.setAttribute("aria-disabled", "true");
-                el.removeAttribute("target");
-                el.removeAttribute("rel");
-              }
+              el.href = url;
+              el.removeAttribute("aria-disabled");
+              el.removeAttribute("target");
+              el.removeAttribute("rel");
             });
           };
 
           bindPkg(
             document.querySelectorAll("[data-dl-mac]"),
-            downloadState.macUrl,
+            `/download/macos${query}`,
             prefer === "macos",
           );
           bindPkg(
             document.querySelectorAll("[data-dl-win]"),
-            downloadState.winUrl,
+            `/download/windows${query}`,
             prefer === "windows",
           );
         }
 
+        let downloadGeneration = 0;
         async function loadDownloads(sourceId) {
           downloadSource = sourceId === "github" ? "github" : "cnb";
-          downloadState = { status: "loading", version: "", tag: "", macUrl: "", winUrl: "" };
+          const generation = ++downloadGeneration;
+          downloadState = { status: "loading", version: "" };
           applyDownloadUi();
-          const source = SOURCES[downloadSource];
           try {
-            const res = await fetch(`${source.manifest}?t=${Date.now()}`, {
-              cache: "no-cache",
+            const res = await fetch(`/download/manifest?source=${downloadSource}`, {
+              signal: AbortSignal.timeout(10000),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const manifest = await res.json();
-            const resolved = resolvePackageUrls(manifest, downloadSource);
-            downloadState = {
-              status: "ready",
-              version: resolved.version,
-              tag: resolved.tag,
-              macUrl: resolved.macUrl,
-              winUrl: resolved.winUrl,
-            };
+            const result = await res.json();
+            if (generation !== downloadGeneration) return;
+            downloadState = { status: "ready", version: result.version };
           } catch {
-            // CNB first, then GitHub as a soft fallback when default source fails.
-            if (downloadSource === "cnb") {
-              try {
-                const res = await fetch(`${SOURCES.github.manifest}?t=${Date.now()}`, {
-                  cache: "no-cache",
-                });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const manifest = await res.json();
-                // Keep selected source as CNB for asset URLs if we can map tag,
-                // otherwise surface GitHub package URLs so the user still gets a file.
-                const resolved = resolvePackageUrls(manifest, "github");
-                downloadState = {
-                  status: "ready",
-                  version: resolved.version,
-                  tag: resolved.tag,
-                  macUrl: SOURCES.cnb.asset(resolved.tag, resolved.macName),
-                  winUrl: SOURCES.cnb.asset(resolved.tag, resolved.winName),
-                };
-                // Probe CNB assets; if both fail later user can switch. Keep CNB URLs.
-              } catch {
-                downloadState = {
-                  status: "error",
-                  version: "",
-                  tag: "",
-                  macUrl: "",
-                  winUrl: "",
-                };
-              }
-            } else {
-              downloadState = {
-                status: "error",
-                version: "",
-                tag: "",
-                macUrl: "",
-                winUrl: "",
-              };
-            }
+            if (generation !== downloadGeneration) return;
+            downloadState = { status: "error", version: "" };
           }
           applyDownloadUi();
         }

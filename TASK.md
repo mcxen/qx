@@ -13,6 +13,20 @@
 
 ## 当前工作
 
+### UI — Qxpicture 新增 API 与管理表单（2026-09-09）
+
+- 基线：旧新增页重复展示参数摘要、参数组套卡片，类型 Select 铺满整行；API 仅覆盖 GET、直接图片和 JSON URL，无法提交 FastAPI 常见 JSON 请求体或读取 Base64 图片。
+- 独立 UI：新增页仅保留必要字段和准确提示；Workbench 用分隔线、112px 标签轨道和标准 Button，`group.layout: "columns"` 在宽栏排两列、窄栏回单列，组内 Select 按内容适宽。
+- 独立能力：Qxpicture 0.5.5 支持 GET 查询或 POST JSON、直接图片/JSON URL/JSON Base64、文本/数字/选项/开关参数，并提供 Stable Diffusion WebUI FastAPI 模板；草稿阶段即可添加参数。
+- 组合验收：生产 Workbench 组件在 318px 表单宽度无横向溢出，参数类型 Select 为 112px 且左对齐，主动作统一 32px、组删除 28px；插件 baseline、草稿、FastAPI Base64 与直接图片 POST smoke 通过。插件包已生成并安装到本机插件目录；原生 Qx 安装态和市场发布未验收。
+
+### Landing — CNB 最新版本直达下载（2026-09-08）
+
+- macOS / Windows 按钮固定为 `/download/macos`、`/download/windows`，默认 CNB。
+  Pages Function 解析同源版本清单，切换源不会混用版本；按钮无需等待 JS。
+- 门禁、浏览器源切换、平台/失败回归通过；CNB 当前 0.6.108 的 DMG / EXE 均返回 200。
+- Wrangler 未登录，本轮尚未部署；部署须从 `landing/` 运行以包含 Functions。
+
 ### Release — v0.6.109（2026-09-08）
 
 - 发布亮度服务重构、共享滑块、安装线程修复与原生能力消融检查。
