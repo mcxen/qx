@@ -18,7 +18,7 @@
 - 基线：旧新增页重复展示参数摘要、参数组套卡片，类型 Select 铺满整行；API 仅覆盖 GET、直接图片和 JSON URL，无法提交 FastAPI 常见 JSON 请求体或读取 Base64 图片。
 - 独立 UI：新增页仅保留必要字段和准确提示；Workbench 用分隔线、112px 标签轨道和标准 Button，`group.layout: "columns"` 在宽栏排两列、窄栏回单列，组内 Select 按内容适宽。
 - 独立能力：Qxpicture 0.5.5 支持 GET 查询或 POST JSON、直接图片/JSON URL/JSON Base64、文本/数字/选项/开关参数，并提供 Stable Diffusion WebUI FastAPI 模板；草稿阶段即可添加参数。
-- 组合验收：生产 Workbench 组件在 318px 表单宽度无横向溢出，参数类型 Select 为 112px 且左对齐，主动作统一 32px、组删除 28px；插件 baseline、草稿、FastAPI Base64 与直接图片 POST smoke 通过。插件包已生成并安装到本机插件目录；原生 Qx 安装态和市场发布未验收。
+- 组合验收：生产 Workbench 组件在 318px 表单宽度无横向溢出，参数类型 Select 为 112px 且左对齐，主动作统一 32px、组删除 28px；插件 baseline、草稿、FastAPI Base64 与直接图片 POST smoke 通过。插件包已生成并安装到本机插件目录。2026-09-11：本机宿主从 0.6.105 替换为含 `group.layout: "columns"` 渲染的本地构建（版本串 0.6.109，未打 tag，Apple Development 签名，旧包备份于 `~/.qx/local-backups/workbench-columns-20260911`），用户确认参数组样式正常；期间磁盘写满（os error 28）经清理 41GB 旧构建产物解除。市场发布仍未验收。
 
 ### Landing — CNB 最新版本直达下载（2026-09-08）
 
