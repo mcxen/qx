@@ -121,6 +121,8 @@ export interface PluginWorkbenchControl {
     id: string;
     label?: string;
     action?: PluginWorkbenchAction;
+    /** Compact two-column field layout for repeated records such as API parameters. */
+    layout?: "columns";
   };
 }
 
@@ -431,6 +433,7 @@ function normalizeForm(value: unknown): PluginWorkbenchForm | undefined {
               id: groupId,
               label: shortText(group.label, 160),
               action: normalizeActions([group.action])[0],
+              layout: group.layout === "columns" ? "columns" : undefined,
             };
           })(),
         } satisfies PluginWorkbenchControl;

@@ -500,6 +500,7 @@ const normalizedWorkbench = normalizePluginWorkbenchState({
             group: {
               id: "parameter-width",
               label: "Parameter",
+              layout: "columns",
               action: { id: "delete-width", label: "Delete", tone: "danger" },
             },
           }],
@@ -540,6 +541,7 @@ assert.deepEqual(
   ],
 );
 assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.controls[0]?.group?.id, "parameter-width");
+assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.controls[0]?.group?.layout, "columns");
 assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.controls[0]?.group?.action?.id, "delete-width");
 assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.actions?.[0]?.id, "add-parameter");
 assert.equal(normalizedWorkbench.items?.length, 2);

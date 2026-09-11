@@ -352,6 +352,9 @@ filters: [
 - 使用宿主控件，不显示原生 `<select>`、range、checkbox 或 radio 外观。
 - 连续数值通过 Workbench `detail.form.controls[].type="slider"`、`min/max/step` 声明，
   值由 `onInput` 回传；宿主统一负责 Radix 手柄、键盘和辅助功能标签。
+- 重复记录（如参数名、类型、值）用同一 `group.id` 归组，在首个控件声明
+  `group.layout: "columns"`；宿主负责紧凑两列与窄详情栏回落单列，插件不得注入 CSS
+  或自绘网格模拟。
 - 动效只表达状态变化，尊重减少动态效果设置。插件不要引入 `framer-motion`；
   岛与菜单动画由宿主统一处理。
 - 错误、空状态、加载和局部刷新不得替换仍可安全使用的缓存内容。

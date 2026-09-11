@@ -1314,11 +1314,10 @@
 }
 
 .qx-host-workbench-form {
+  container-type: inline-size;
+  container-name: qx-workbench-form;
   margin: 0 0 16px;
-  padding: 12px;
-  border: 1px solid var(--qx-border-1);
-  border-radius: var(--qx-radius);
-  background: var(--qx-bg-component-2);
+  padding: 0;
 }
 
 .qx-host-workbench-form h3 {
@@ -1329,22 +1328,22 @@
 
 .qx-host-workbench-form p {
   margin: 0 0 10px;
-  color: var(--qx-text-tertiary);
+  color: var(--qx-text-secondary);
   font-size: 12px;
+  line-height: 1.5;
 }
 
 .qx-host-workbench-form-controls {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
 
 .qx-host-workbench-form-group {
   min-width: 0;
   margin: 2px 0;
-  padding: 10px;
-  border: 1px solid var(--qx-border-1);
-  border-radius: var(--qx-control-radius);
-  background: var(--qx-bg-component-1);
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--qx-border-1);
 }
 
 .qx-host-workbench-form-group-header,
@@ -1360,6 +1359,8 @@
 }
 
 .qx-host-workbench-form-group-header > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 0;
   color: var(--qx-text-primary);
   font-size: 12px;
@@ -1378,24 +1379,55 @@
   border-top: 1px solid var(--qx-border-1);
 }
 
+.qx-host-workbench-form-group-header .qx-shadcn-button {
+  flex-shrink: 0;
+}
+
+.qx-host-workbench-form-group-controls.is-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+
+.qx-host-workbench-form-group-controls.is-columns label {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 4px;
+}
+
+.qx-host-workbench-form-group-controls.is-columns label .qx-select {
+  width: auto;
+  max-width: 100%;
+  justify-self: start;
+}
+
+.qx-host-workbench-form-group-controls.is-columns label .qx-shadcn-select-trigger {
+  width: auto;
+  min-width: 112px;
+  max-width: 100%;
+}
+
+.qx-host-workbench-form-group-controls.is-columns label:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
 .qx-host-workbench-form-controls label {
   display: grid;
-  grid-template-columns: minmax(88px, 30%) minmax(0, 1fr);
+  grid-template-columns: 112px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   color: var(--qx-text-secondary);
   font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .qx-host-workbench-form-controls input,
-.qx-host-workbench-form-controls textarea,
-.qx-host-workbench-form-controls select,
-.qx-host-workbench-form-controls .qx-select {
+.qx-host-workbench-form-controls textarea {
   min-width: 0;
   height: var(--qx-control-height);
   padding: 0 var(--qx-control-padding-x);
   border: 1px solid var(--qx-border-1);
-  border-radius: 6px;
+  border-radius: var(--qx-control-radius);
   outline: none;
   background: var(--qx-bg-component-1);
   color: var(--qx-text-primary);
@@ -1416,6 +1448,10 @@
 .qx-host-workbench-form-controls .qx-shadcn-select-trigger {
   width: 100%;
   max-width: 100%;
+}
+
+.qx-host-workbench-form-controls .qx-select {
+  min-width: 0;
 }
 
 .qx-host-workbench-form-controls input:focus,
@@ -1466,14 +1502,24 @@
     display: none;
   }
 
-  .qx-host-workbench-form-controls label,
   .qx-host-workbench-fields > div {
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;
   }
+}
 
-  .qx-host-workbench-form-group {
-    padding: 8px;
+@container qx-workbench-form (max-width: 360px) {
+  .qx-host-workbench-form-controls label {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .qx-host-workbench-form-group-controls.is-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qx-host-workbench-form-group-controls.is-columns label {
+    grid-column: auto;
   }
 }
 

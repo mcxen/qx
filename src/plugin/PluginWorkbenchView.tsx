@@ -438,6 +438,7 @@ function WorkbenchDetail({
     id: string;
     label?: string;
     action?: NonNullable<PluginWorkbenchControl["group"]>["action"];
+    layout?: NonNullable<PluginWorkbenchControl["group"]>["layout"];
     controls: PluginWorkbenchControl[];
     grouped: boolean;
   }> = [];
@@ -452,6 +453,7 @@ function WorkbenchDetail({
       id: groupId || control.id,
       label: control.group?.label,
       action: control.group?.action,
+      layout: control.group?.layout,
       controls: [control],
       grouped: Boolean(groupId),
     });
@@ -593,7 +595,7 @@ function WorkbenchDetail({
                     </Button>
                   ) : null}
                 </div>
-                <div className="qx-host-workbench-form-group-controls">
+                <div className={`qx-host-workbench-form-group-controls${row.layout === "columns" ? " is-columns" : ""}`}>
                   {row.controls.map(renderControl)}
                 </div>
               </fieldset>
@@ -606,7 +608,6 @@ function WorkbenchDetail({
                   key={action.id}
                   type="button"
                   variant={action.tone === "danger" ? "destructive" : action.primary ? "default" : "outline"}
-                  size="sm"
                   disabled={action.disabled}
                   onClick={() => onAction(action.id)}
                 >

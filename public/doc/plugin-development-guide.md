@@ -434,6 +434,10 @@ BluePrint 的权限、版本字段或 MCP 工具名称。
 值变化仍通过 `onInput` 回到插件状态源。密码和令牌应放在 Manifest 的 `password` 偏好中，
 不得发布到 Workbench state、缓存、URL 或日志。
 
+连续控件使用同一 `group.id` 时可在首个控件声明 `group.layout: "columns"`。宿主把该组绘制为
+紧凑两列，并在窄详情栏自动回落为单列；适合参数名、类型和值等重复记录。组内删除仍通过
+`group.action` 发布。插件不得为此注入 CSS，也不得覆盖宿主 Button 的尺寸或颜色。
+
 社区回复统一发布为 `detail.replies.items[]` 纯数据树，插件不得自行绘制 Reddit/Tieba
 评论 DOM：
 
