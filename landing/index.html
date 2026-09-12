@@ -48,16 +48,19 @@
         --text-tertiary: #8f8f8f;
         --border: #eaeaea;
         --border-strong: #d4d4d4;
-        --accent: #171717;
-        --accent-fg: #fafafa;
+        --accent: #2563eb;
+        --accent-hover: #1d4ed8;
+        --accent-soft: rgba(37, 99, 235, 0.12);
+        --accent-fg: #ffffff;
         --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.04);
         --header-bg: rgba(250, 250, 250, 0.86);
-        --demo-bg: #f4f4f4;
+        --demo-bg: #fafafa;
         --demo-surface: #ffffff;
-        --demo-border: #e5e5e5;
-        --demo-text: #171717;
-        --demo-muted: #737373;
-        --demo-active: #f0f0f0;
+        --demo-border: rgba(10, 10, 10, 0.10);
+        --demo-border-strong: rgba(10, 10, 10, 0.16);
+        --demo-text: #0a0a0a;
+        --demo-muted: #555555;
+        --demo-active: rgba(232, 232, 232, 0.6);
         --radius: 8px;
         --radius-sm: 6px;
         --radius-lg: 12px;
@@ -81,16 +84,19 @@
         --text-tertiary: #6b6b6b;
         --border: #1f1f1f;
         --border-strong: #2e2e2e;
-        --accent: #ededed;
-        --accent-fg: #0a0a0a;
+        --accent: #3b82f6;
+        --accent-hover: #60a5fa;
+        --accent-soft: rgba(59, 130, 246, 0.16);
+        --accent-fg: #ffffff;
         --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px rgba(0, 0, 0, 0.35);
         --header-bg: rgba(10, 10, 10, 0.82);
-        --demo-bg: #111111;
-        --demo-surface: #0f0f0f;
-        --demo-border: #242424;
+        --demo-bg: #0a0a0a;
+        --demo-surface: #1a1a1a;
+        --demo-border: #292929;
+        --demo-border-strong: #333333;
         --demo-text: #ededed;
         --demo-muted: #6b6b6b;
-        --demo-active: #1a1a1a;
+        --demo-active: rgba(41, 41, 41, 0.72);
         color-scheme: dark;
       }
 
@@ -105,16 +111,19 @@
           --text-tertiary: #6b6b6b;
           --border: #1f1f1f;
           --border-strong: #2e2e2e;
-          --accent: #ededed;
-          --accent-fg: #0a0a0a;
+          --accent: #3b82f6;
+          --accent-hover: #60a5fa;
+          --accent-soft: rgba(59, 130, 246, 0.16);
+          --accent-fg: #ffffff;
           --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px rgba(0, 0, 0, 0.35);
           --header-bg: rgba(10, 10, 10, 0.82);
-          --demo-bg: #111111;
-          --demo-surface: #0f0f0f;
-          --demo-border: #242424;
+          --demo-bg: #0a0a0a;
+          --demo-surface: #1a1a1a;
+          --demo-border: #292929;
+          --demo-border-strong: #333333;
           --demo-text: #ededed;
           --demo-muted: #6b6b6b;
-          --demo-active: #1a1a1a;
+          --demo-active: rgba(41, 41, 41, 0.72);
           color-scheme: dark;
         }
 
@@ -404,7 +413,7 @@
 
       .hero__grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+        grid-template-columns: minmax(0, 1fr);
         gap: clamp(36px, 6vw, 72px);
         align-items: center;
       }
@@ -646,159 +655,6 @@
         margin-top: 20px;
         color: var(--text-tertiary);
         font-size: 12px;
-      }
-
-      /* —— Product demo —— */
-      .demo {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        background: var(--bg-elevated);
-        box-shadow: var(--shadow);
-        overflow: hidden;
-      }
-
-      .demo__bar {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        height: 36px;
-        padding: 0 12px;
-        border-bottom: 1px solid var(--border);
-        background: var(--bg-muted);
-      }
-
-      .demo__dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        border: 1px solid var(--border-strong);
-        background: transparent;
-      }
-
-      .demo__title {
-        margin-left: 6px;
-        color: var(--text-tertiary);
-        font-family: var(--mono);
-        font-size: 11px;
-        letter-spacing: -0.02em;
-      }
-
-      .demo__body {
-        padding: 12px;
-        background: var(--demo-bg);
-        color: var(--demo-text);
-      }
-
-      .demo__search {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        height: 42px;
-        padding: 0 12px;
-        border: 1px solid var(--demo-border);
-        border-radius: var(--radius);
-        background: var(--demo-surface);
-      }
-
-      .demo__search-icon {
-        color: var(--demo-muted);
-        font-size: 14px;
-      }
-
-      .demo__search strong {
-        font-size: 14px;
-        font-weight: 500;
-        letter-spacing: -0.02em;
-      }
-
-      .demo__search-hint {
-        margin-left: auto;
-        color: var(--demo-muted);
-        font-family: var(--mono);
-        font-size: 10px;
-      }
-
-      .demo__list {
-        margin-top: 10px;
-        display: grid;
-        gap: 2px;
-      }
-
-      .demo__row {
-        display: grid;
-        grid-template-columns: 28px minmax(0, 1fr) auto;
-        gap: 10px;
-        align-items: center;
-        width: 100%;
-        min-height: 44px;
-        padding: 6px 10px;
-        border: 1px solid transparent;
-        border-radius: var(--radius-sm);
-        text-align: left;
-        color: var(--demo-text);
-        transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease);
-      }
-
-      .demo__row:hover,
-      .demo__row.is-active {
-        border-color: var(--demo-border);
-        background: var(--demo-active);
-      }
-
-      .demo__row-icon {
-        display: grid;
-        place-items: center;
-        width: 24px;
-        height: 24px;
-        border-radius: 5px;
-        border: 1px solid var(--demo-border);
-        background: var(--demo-surface);
-        color: var(--demo-muted);
-        font-size: 11px;
-        font-weight: 600;
-      }
-
-      .demo__row strong,
-      .demo__row small {
-        display: block;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .demo__row strong {
-        font-size: 13px;
-        font-weight: 520;
-        letter-spacing: -0.015em;
-      }
-
-      .demo__row small {
-        margin-top: 1px;
-        color: var(--demo-muted);
-        font-size: 11px;
-      }
-
-      .demo__row-type {
-        color: var(--demo-muted);
-        font-family: var(--mono);
-        font-size: 10px;
-        letter-spacing: -0.02em;
-      }
-
-      .demo__footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid var(--demo-border);
-        color: var(--demo-muted);
-        font-size: 11px;
-      }
-
-      .demo__footer strong {
-        color: var(--demo-text);
-        font-weight: 520;
       }
 
       /* —— Sections —— */
@@ -1300,6 +1156,8 @@
         }
       }
     </style>
+    <link rel="stylesheet" href="./demo.css">
+    <script src="./demo.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main" data-i18n="skip">跳到主要内容</a>
@@ -1374,9 +1232,9 @@
               <span>macOS · Windows</span>
               <span>Tauri 2</span>
             </p>
-            <h1 id="hero-title" data-i18n="heroTitle">键盘优先的桌面启动器</h1>
+            <h1 id="hero-title" data-i18n="heroTitle">唤起 Qx，找到并完成</h1>
             <p class="hero__lede" data-i18n="heroLede">
-              一次快捷键唤起 Qx。搜索应用、文件、剪贴板、截图录屏、RSS、AI 与插件，执行后收起。
+              应用、文件、剪贴板、截图录屏、RSS、AI 与插件，都从一次搜索开始。
             </p>
             <div class="dl" id="download" data-download-root>
               <div class="dl__bar">
@@ -1409,8 +1267,8 @@
                 默认 CNB
               </p>
               <div class="dl__links">
-                <a class="btn btn--ghost" href="#features" data-i18n="heroFeatures" style="height: 32px; padding: 0 12px"
-                  >查看功能</a
+                <a class="btn btn--ghost" href="#try-qx" data-i18n="heroTry" style="height: 32px; padding: 0 12px"
+                  >在线体验</a
                 >
                 <a href="#install" data-i18n="dlMoreInstall">安装说明</a>
               </div>
@@ -1420,79 +1278,41 @@
             </p>
           </div>
 
-          <div class="demo" data-i18n-aria="demoLabel">
-            <div class="demo__bar">
-              <span class="demo__dot"></span>
-              <span class="demo__dot"></span>
-              <span class="demo__dot"></span>
-              <span class="demo__title">Qx · launcher</span>
+          <div class="demo-stage" id="try-qx">
+            <div class="demo-heading">
+              <div>
+                <h2 data-i18n="demoTitle">现在就试试 Qx</h2>
+                <p data-i18n="demoLede">选择一个场景，或直接输入关键词。这里的布局和键盘路径与客户端一致。</p>
+              </div>
+              <span data-i18n="demoSample">公开示例数据</span>
             </div>
-            <div class="demo__body">
-              <div class="demo__search">
-                <span class="demo__search-icon" aria-hidden="true">⌕</span>
-                <strong id="demo-query">settings</strong>
-                <span class="demo__search-hint">⌥ Space</span>
+            <div class="demo-scenes" role="tablist" data-i18n-aria="demoScenesLabel">
+              <button type="button" role="tab" data-demo-scene="home" aria-selected="true" data-i18n="sceneHome">主页</button>
+              <button type="button" role="tab" data-demo-scene="apps" aria-selected="false" data-i18n="sceneApps">启动应用</button>
+              <button type="button" role="tab" data-demo-scene="files" aria-selected="false" data-i18n="sceneFiles">搜索文件</button>
+              <button type="button" role="tab" data-demo-scene="clipboard" aria-selected="false" data-i18n="sceneClipboard">剪贴板</button>
+              <button type="button" role="tab" data-demo-scene="rss" aria-selected="false" data-i18n="sceneRss">RSS 阅读器</button>
+              <button type="button" role="tab" data-demo-scene="v2ex" aria-selected="false" data-i18n="sceneV2ex">V2EX</button>
+            </div>
+            <div class="demo-window">
+              <div class="demo-windowbar" aria-hidden="true">
+                <span></span><span></span><span></span><strong>Qx</strong><small>⌥ Space</small>
               </div>
-              <div class="demo__list" role="list">
-                <button
-                  class="demo__row is-active"
-                  type="button"
-                  data-query-key="demoQ1"
-                  role="listitem"
-                >
-                  <span class="demo__row-icon">⚙</span>
-                  <span
-                    ><strong data-i18n="demoR1t">Qx 设置</strong
-                    ><small data-i18n="demoR1s">外观、快捷键、扩展</small></span
-                  >
-                  <span class="demo__row-type" data-i18n="demoT1">内置</span>
-                </button>
-                <button
-                  class="demo__row"
-                  type="button"
-                  data-query-key="demoQ2"
-                  role="listitem"
-                >
-                  <span class="demo__row-icon">⌘</span>
-                  <span
-                    ><strong>skills-lock.json</strong
-                    ><small data-i18n="demoR2s">最近文件 · Code</small></span
-                  >
-                  <span class="demo__row-type" data-i18n="demoT2">文件</span>
-                </button>
-                <button
-                  class="demo__row"
-                  type="button"
-                  data-query-key="demoQ3"
-                  role="listitem"
-                >
-                  <span class="demo__row-icon">▣</span>
-                  <span
-                    ><strong data-i18n="demoR3t">剪贴板历史</strong
-                    ><small data-i18n="demoR3s">文本 · 图片 · 文件</small></span
-                  >
-                  <span class="demo__row-type" data-i18n="demoT3">模块</span>
-                </button>
-                <button
-                  class="demo__row"
-                  type="button"
-                  data-query-key="demoQ4"
-                  role="listitem"
-                >
-                  <span class="demo__row-icon">✦</span>
-                  <span
-                    ><strong data-i18n="demoR4t">打开 QxAI</strong
-                    ><small data-i18n="demoR4s">继续最近的对话</small></span
-                  >
-                  <span class="demo__row-type">AI</span>
-                </button>
-              </div>
-              <div class="demo__footer">
-                <span data-i18n="demoF1">Esc 返回</span>
-                <span data-i18n="demoF2"><strong>↵</strong> 运行</span>
-                <span data-i18n="demoF3">⌘K 操作</span>
+              <div class="demo" role="region" data-i18n-aria="demoLabel">
+                <div class="demo-topbar">
+                  <label class="demo-search"><span aria-hidden="true">⌕</span><input id="demo-query" type="search" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-controls="demo-results" aria-expanded="false"></label>
+                  <div class="demo-scope"><button id="demo-scope" type="button" aria-expanded="false" aria-controls="demo-scopes"></button><div id="demo-scopes" class="demo-menu" hidden></div></div>
+                </div>
+                <div class="demo-main"><div id="demo-content"></div><aside id="demo-context"></aside></div>
+                <div class="demo-bottom"><button id="demo-home" type="button">⌂</button><div id="demo-island" role="status" aria-live="polite"></div><div class="demo-actions"><button id="demo-open" type="button"></button><button id="demo-action" type="button" aria-expanded="false" aria-controls="demo-menu"></button><button id="demo-back" type="button"></button></div></div>
+                <div id="demo-menu" class="demo-menu demo-action-menu" hidden></div>
               </div>
             </div>
+            <div class="demo-foot">
+              <div id="demo-examples" class="demo-examples"></div>
+              <span>↑ ↓ &nbsp; ↵ &nbsp; <span class="desktop-only">⌘K &nbsp;</span> Esc</span>
+            </div>
+            <noscript>JavaScript is required for the interactive demo. Downloads work without JavaScript.</noscript>
           </div>
         </div>
       </section>
@@ -1817,10 +1637,9 @@
             themeToggle: "切换明暗主题",
             menu: "菜单",
             metaOpen: "开源",
-            heroTitle: "键盘优先的桌面启动器",
-            heroLede:
-              "一次快捷键唤起 Qx。搜索应用、文件、剪贴板、截图录屏、RSS、AI 与插件，执行后收起。",
-            heroFeatures: "查看功能",
+            heroTitle: "唤起 Qx，找到并完成",
+            heroLede: "应用、文件、剪贴板、截图录屏、RSS、AI 与插件，都从一次搜索开始。",
+            heroTry: "在线体验",
             heroHotkey: "唤起 / 隐藏（macOS 默认）",
             sourceLabel: "下载源",
             dlLoading: "正在获取版本…",
@@ -1834,24 +1653,17 @@
             dlMoreInstall: "安装说明",
             cnbReleases: "CNB Releases",
             ghReleases: "GitHub Releases",
-            demoLabel: "Qx 启动器示意",
-            demoQ1: "Qx 设置",
-            demoQ2: "skills-lock.json",
-            demoQ3: "剪贴板",
-            demoQ4: "打开 QxAI",
-            demoR1t: "Qx 设置",
-            demoR1s: "外观、快捷键、扩展",
-            demoT1: "内置",
-            demoR2s: "最近文件 · Code",
-            demoT2: "文件",
-            demoR3t: "剪贴板历史",
-            demoR3s: "文本 · 图片 · 文件",
-            demoT3: "模块",
-            demoR4t: "打开 QxAI",
-            demoR4s: "继续最近的对话",
-            demoF1: "Esc 返回",
-            demoF2: "<strong>↵</strong> 运行",
-            demoF3: "⌘K 操作",
+            demoLabel: "交互演示 · 示例数据",
+            demoTitle: "现在就试试 Qx",
+            demoLede: "选择一个场景，或直接输入关键词。这里的布局和键盘路径与客户端一致。",
+            demoSample: "公开示例数据",
+            demoScenesLabel: "演示场景",
+            sceneHome: "主页",
+            sceneApps: "启动应用",
+            sceneFiles: "搜索文件",
+            sceneClipboard: "剪贴板",
+            sceneRss: "RSS 阅读器",
+            sceneV2ex: "V2EX",
             featuresLabel: "功能",
             featuresTitle: "每天会用到的能力，放在同一入口",
             featuresAside: "6 modules",
@@ -1926,10 +1738,9 @@
             themeToggle: "Toggle color theme",
             menu: "Menu",
             metaOpen: "Open source",
-            heroTitle: "A keyboard-first desktop launcher",
-            heroLede:
-              "Summon Qx with one shortcut. Search apps, files, clipboard, capture, RSS, AI, and plugins. Run what you need, then hide.",
-            heroFeatures: "Browse features",
+            heroTitle: "Summon Qx. Find it. Get it done.",
+            heroLede: "Apps, files, clipboard, capture, RSS, AI, and plugins all begin with one search.",
+            heroTry: "Try it here",
             heroHotkey: "Show / hide (macOS default)",
             sourceLabel: "Download source",
             dlLoading: "Fetching version…",
@@ -1943,24 +1754,17 @@
             dlMoreInstall: "Install notes",
             cnbReleases: "CNB Releases",
             ghReleases: "GitHub Releases",
-            demoLabel: "Qx launcher preview",
-            demoQ1: "Qx Settings",
-            demoQ2: "skills-lock.json",
-            demoQ3: "Clipboard",
-            demoQ4: "Open QxAI",
-            demoR1t: "Qx Settings",
-            demoR1s: "Appearance, shortcuts, extensions",
-            demoT1: "Built-in",
-            demoR2s: "Recent · Code",
-            demoT2: "File",
-            demoR3t: "Clipboard history",
-            demoR3s: "Text · Image · Files",
-            demoT3: "Module",
-            demoR4t: "Open QxAI",
-            demoR4s: "Continue the latest chat",
-            demoF1: "Esc back",
-            demoF2: "<strong>↵</strong> Run",
-            demoF3: "⌘K actions",
+            demoLabel: "Interactive demo · Sample data",
+            demoTitle: "Try Qx now",
+            demoLede: "Choose a scene or type a query. The layout and keyboard path match the desktop client.",
+            demoSample: "Public sample data",
+            demoScenesLabel: "Demo scenes",
+            sceneHome: "Home",
+            sceneApps: "Launch apps",
+            sceneFiles: "Find files",
+            sceneClipboard: "Clipboard",
+            sceneRss: "RSS reader",
+            sceneV2ex: "V2EX",
             featuresLabel: "Features",
             featuresTitle: "Everyday tools, one entry point",
             featuresAside: "6 modules",
@@ -2188,11 +1992,7 @@
             btn.setAttribute("aria-pressed", String(btn.getAttribute("data-locale") === locale));
           });
 
-          const active = document.querySelector(".demo__row.is-active");
-          const query = document.querySelector("#demo-query");
-          if (query && active) {
-            query.textContent = active.getAttribute("data-query") || "settings";
-          }
+          document.dispatchEvent(new Event("qx-demo-locale"));
 
           applyDownloadUi();
         }
@@ -2272,15 +2072,7 @@
           }),
         );
 
-        const query = document.querySelector("#demo-query");
-        document.querySelectorAll(".demo__row").forEach((row) =>
-          row.addEventListener("click", () => {
-            document
-              .querySelectorAll(".demo__row")
-              .forEach((item) => item.classList.toggle("is-active", item === row));
-            if (query) query.textContent = row.getAttribute("data-query") || "settings";
-          }),
-        );
+
       })();
     </script>
   </body>

@@ -4,7 +4,7 @@
 
 > **范围**：对外营销 / 下载落地页（Cloudflare Pages 等静态托管）。
 > **不在此范围**：桌面应用壳与模块 UI → 根目录 [`UI_SPEC.md`](../UI_SPEC.md)。
-> **近亲参考**：插件商店 [`qx-plugins/store/src`](../qx-plugins/store/src) 的克制表面；Vercel design / Geist 的层次与克制原则。
+> **近亲参考**：插件商店 [`qx-plugins/store/src`](../qx-plugins/store/src) 的克制表面；Qoder 产品页的 Hero → 完整应用窗口叙事节奏。只借鉴信息层级，不复制品牌视觉、素材或文案。
 
 ---
 
@@ -12,13 +12,13 @@
 
 | 项 | 约定 |
 | --- | --- |
-| 入口 | 单页 `landing/index.html`（CSS + i18n + 交互内联） |
+| 入口 | 单页 `landing/index.html`；客户端演示独立为 `demo.css` + `demo.js` |
 | 部署 | `wrangler.toml` → `pages_build_output_dir = "."` |
 | 品牌资源 | `qx-tray.svg`；概念图在 `assets/`（非必须上屏） |
 | 依赖 | 允许 Google Fonts（Geist / Geist Mono）；禁止额外框架、图标包、分析脚本 |
 | 宿主语言 | 语义化 HTML + CSS 变量 + 小段原生 JS |
 
-页面保持单文件，不拆 Vite 工程。`functions/download/[platform].js` 提供最新版本解析与下载跳转。
+页面保持原生静态站点，不拆 Vite 工程。演示样式、示例数据与交互独立维护，下载状态机继续由页面负责。`functions/download/[platform].js` 提供最新版本解析与下载跳转。
 
 ---
 
@@ -44,7 +44,7 @@
 
 - 全大写 / 宽字距 **eyebrow / kicker / 装饰编号标签**（如 `01 / PRODUCT SURFACE`）。
 - 装饰性渐变、光晕、blob、玻璃拟态、无意义大阴影。
-- 居中营销 Hero + 大卡片墙的默认 SaaS 模板感。
+- 与产品演示脱节的居中营销 Hero，或用大卡片墙代替真实产品表面。
 - 嵌套卡片、用边框补救层级。
 - 彩色 icon 方块装饰、混搭图标风格。
 - 假截图、库存图、AI 插画充当证据。
@@ -61,12 +61,13 @@
 | 顺序 | 区块 | 职责 |
 | --- | --- | --- |
 | 0 | Header | 品牌、锚点导航、商店/GitHub、下载、语言、主题 |
-| 1 | Hero | 主张、lede、下载/功能 CTA、热键提示、启动器 demo |
-| 2 | Features | 6 项能力网格（细线 1px 分隔） |
-| 3 | Workflow | 键盘四步：唤起 → 搜索 → 执行 → 返回 |
-| 4 | Install | 平台 / 技术栈 / 许可 + Homebrew + Releases / CNB |
-| 5 | Extensions | 插件商店与开发文档 callout |
-| 6 | Footer | 版权、外链、回顶 |
+| 1 | Hero | 居中主张、lede、平台下载、在线体验 CTA |
+| 2 | Interactive demo | 紧随 Hero 的全宽 Qx 客户端窗口与场景切换 |
+| 3 | Features | 6 项能力网格（细线 1px 分隔） |
+| 4 | Workflow | 键盘四步：唤起 → 搜索 → 执行 → 返回 |
+| 5 | Install | 平台 / 技术栈 / 许可 + Homebrew + Releases / CNB |
+| 6 | Extensions | 插件商店与开发文档 callout |
+| 7 | Footer | 版权、外链、回顶 |
 
 锚点 id：`#top` `#features` `#workflow` `#install` `#extensions`。
 
@@ -76,7 +77,8 @@
 
 | Token / 规则 | 值 |
 | --- | --- |
-| 内容最大宽 | `--max: 1080px` |
+| 页面内容最大宽 | `--max: 1180px` |
+| 演示窗桌面宽度 | `920px`，居中；主内容区最高 `470px` |
 | 水平 padding | `--pad: clamp(20px, 4vw, 32px)`（窄屏 18px） |
 | Header 高度 | `--header-h: 56px`，sticky + 毛玻璃底 |
 | Section 纵向 | `padding: clamp(56px, 9vw, 96px) 0` |
@@ -90,7 +92,7 @@
 | --- | --- |
 | ≥ 960px | Features 三列 |
 | ≥ 720px | Features 两列；Install strip 三列 |
-| ≤ 880px | Hero 单列；Workflow 单列 |
+| ≤ 880px | Demo 隐藏辅助 Context；Features / Workflow 单列 |
 | ≤ 640px | 导航收入菜单；步骤 kbd 折行；callout 单列 |
 
 网格子项一律 `min-width: 0`，优先 reflow，禁止横向撑破。
@@ -112,10 +114,10 @@
 | `--text-tertiary` | `#8f8f8f` | `#6b6b6b` |
 | `--border` | `#eaeaea` | `#1f1f1f` |
 | `--border-strong` | `#d4d4d4` | `#2e2e2e` |
-| `--accent` | `#171717` | `#ededed` |
-| `--accent-fg` | `#fafafa` | `#0a0a0a` |
+| `--accent` | `#2563eb` | `#3b82f6` |
+| `--accent-fg` | `#ffffff` | `#ffffff` |
 
-Demo 窗体另有 `--demo-*` 一套，跟随主题，保持「产品内表面」与页面背景可区分。
+Demo 窗体另有 `--demo-*` 一套，直接对齐客户端 `src/styles/base.css` 的 Qx 表面、边框、文字与蓝色强调色；选择行使用蓝色弱背景与半透明蓝色边框，搜索焦点和主动作使用 Qx accent。
 
 ### 5.2 主题行为
 
@@ -186,9 +188,16 @@ Demo 窗体另有 `--demo-*` 一套，跟随主题，保持「产品内表面」
 
 ### 7.5 启动器 Demo
 
-- 静态示意即可：搜索条 + 可选中的结果行 + 底栏快捷键提示。
-- 行点击更新 query 文案；选中态用边框 + active 底，**不要**彩色高亮条。
-- 文案与 `data-query` 走 i18n。
+- Hero 居中并压缩在第一屏上半部；全宽可操作客户端演示紧随其后，桌面首屏必须露出真实窗口上沿。
+- Demo 标题和场景导航在桌面同排：主页、启动应用、搜索文件、剪贴板、RSS 阅读器、V2EX；移动端水平滚动。
+- Demo 桌面窗口以 `920px × 约 600px` 为视觉上限，主内容区最高 `470px`；到 `880px` 以下占满容器并隐藏右侧 Context Panel。
+- RSS 与 V2EX 使用 2026-09-12 从真实客户端读取的公开数据快照：RSS 展示订阅分组并可进入 IT之家文章列表、阅读详情；V2EX 展示 41 条最新主题中的示例并可进入详情。快照不包含私密令牌或本地文件数据。
+- 对齐客户端 Top Bar / Main Area / Bottom Bar、主页置顶入口、搜索结果和右侧 Context。54px 搜索栏、52px 底栏、280px Context；880px 以下隐藏辅助栏。
+- 示例集合支持中英文、已登记的拼音/首字母、扩展名和多词交集搜索；范围筛选与关键词共同生效，结果按名称相关性排序。演示算法不宣称与原生索引器等价。
+- 点击选择、双击/Enter 预览、上下/Page 键导航、Cmd/Ctrl+K 操作、Esc 按菜单 → 预览 → 查询 → 范围逐层返回；事件限于演示内部，保留 IME 和原生编辑键。
+- 操作支持复制示例内容与本次页面会话内置顶。复制失败必须显示真实反馈；不模拟启动本机应用、系统指标、网络请求或文件访问。
+- 页面明确标注「交互演示 · 示例数据」；禁止使用本机私人文件、剪贴板历史或最近搜索作为发布数据。
+- 演示文案由 `demo.js` 双语字典维护，监听页面 `qx-demo-locale` 事件；主题继承页面 `--demo-*` 令牌。
 
 ### 7.6 Install / Callout
 
@@ -211,7 +220,7 @@ Demo 窗体另有 `--demo-*` 一套，跟随主题，保持「产品内表面」
 | 控件 | `.lang-toggle`：`中文` / `EN`，`aria-pressed` |
 | DOM | `data-i18n` 文本 · `data-i18n-html` 含标签 · `data-i18n-aria` · `data-i18n-title` · `data-query-key` |
 | 同步 | `document.title`、`meta description`、`og:*` 随 locale |
-| 字典 | 内联于 `index.html` 的 `dict`；**新增字符串必须双语同时加** |
+| 字典 | 页面使用 `index.html` 的 `dict`，交互演示使用 `demo.js` 的双语词条；**新增字符串必须双语同时加** |
 
 ### 文案语气
 
@@ -302,7 +311,9 @@ Install 区在下载按钮下方固定展示简短说明，不得省略：
 ```text
 landing/
   UI_SPEC.md          ← 本文
-  index.html          ← 唯一页面实现
+  index.html          ← 页面与下载状态机
+  demo.css            ← 客户端演示样式
+  demo.js             ← 示例搜索、预览、操作与双语词条
   qx-tray.svg
   wrangler.toml
   assets/             ← 可选素材，默认不上屏
