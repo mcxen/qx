@@ -662,6 +662,14 @@
 
 .qx-region-picker-annotations { touch-action: none; }
 
+.qx-region-picker-hint.is-top-right,
+.qx-region-picker-hint.is-tool-hint.is-top-right {
+  top: 16px;
+  right: 16px;
+  bottom: auto;
+  left: auto;
+}
+
 .qx-region-picker-error {
   position: absolute;
   z-index: 7;

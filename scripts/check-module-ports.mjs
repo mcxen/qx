@@ -464,7 +464,21 @@ if (unprotectMainAt < 0 || showPickerAt < 0 || unprotectMainAt > showPickerAt) {
 if (!screencapSelectionSource.includes("picker_window::reassert_interactive(&app)")) {
   fail("self-capture must reassert picker focus after main/control window mutations");
 }
-for (const token of ["DWMWA_CLOAK", "DwmFlush", "prepare_for_show"]) {
+const windowCompositionSource = read("src-tauri/src/window_composition.rs");
+const floatingCompositionSource = read("src-tauri/src/floating_panel.rs");
+const mainHideSource = floatingCompositionSource.split("pub fn hide(app:")[1]?.split("pub fn hide_and_restore_focus")[0] ?? "";
+const mainShowSource = floatingCompositionSource.split("pub(crate) fn show_floating_now")[1]?.split("pub fn hide(app:")[0] ?? "";
+if (!mainHideSource.includes("window_composition::hide(&win)") ||
+    !mainShowSource.includes("window_composition::show(&win)") ||
+    !mainShowSource.includes(".unminimize()") ||
+    !/set_cloaked_native\(&window, true\)[\s\S]*window.hide\(\)/.test(windowCompositionSource)) {
+  fail("Windows main window must stay cloaked from hide until explicit show, including capture cleanup");
+}
+if (!windowCompositionSource.includes("DWMWA_CLOAK") ||
+    !screencapPickerWindowSource.includes("crate::window_composition::set_cloaked")) {
+  fail("Windows picker must use the shared native window cloak port");
+}
+for (const token of ["DwmFlush", "prepare_for_show"]) {
   if (!screencapPickerWindowSource.includes(token)) {
     fail(`Windows picker teardown must exclude and flush reusable WebView surfaces: ${token}`);
   }

@@ -326,20 +326,18 @@ pub fn show_window(app: &AppHandle, version: Option<&str>) -> Result<ProgressRep
     reporter.emit_phase("preparing", "Preparing update…");
     let window = ensure_window(app)?;
     place_window(app, &window);
-    window
-        .show()
-        .map_err(|error| format!("show update progress window: {error}"))?;
     // Never steal key focus from the main launcher while downloading — only the
     // helper-install/restart phase ends the host process.
-    let _ = crate::auxiliary_window::make_non_activating(&window);
+    crate::auxiliary_window::make_non_activating(&window)?;
+    crate::window_composition::show(&window)
+        .map_err(|error| format!("show update progress window: {error}"))?;
     let _ = window.set_always_on_top(true);
     Ok(reporter)
 }
 
 pub fn hide_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(LABEL) {
-        window
-            .hide()
+        crate::window_composition::hide(&window)
             .map_err(|error| format!("hide update progress window: {error}"))?;
     }
     Ok(())

@@ -75,7 +75,7 @@ fn show_now(app: &AppHandle) -> Result<(), String> {
 
     for window in app.webview_windows().into_values() {
         if is_surface(window.label()) && !desired.contains(window.label()) {
-            let _ = window.hide();
+            let _ = crate::window_composition::hide(&window);
         }
     }
 
@@ -130,8 +130,7 @@ fn show_now(app: &AppHandle) -> Result<(), String> {
             ))
             .map_err(|error| format!("size macro cursor overlay: {error}"))?;
         if !window.is_visible().unwrap_or(false) {
-            window
-                .show()
+            crate::window_composition::show(&window)
                 .map_err(|error| format!("show macro cursor overlay: {error}"))?;
         }
         #[cfg(target_os = "macos")]
@@ -162,7 +161,7 @@ pub(crate) fn hide(app: &AppHandle) -> Result<(), String> {
     crate::runtime::run_ui(app, move || {
         for window in ui_app.webview_windows().into_values() {
             if is_surface(window.label()) {
-                let _ = window.hide();
+                let _ = crate::window_composition::hide(&window);
             }
         }
         Ok::<(), String>(())

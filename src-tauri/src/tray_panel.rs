@@ -92,8 +92,7 @@ pub fn toggle_at(app: &AppHandle, click_x: f64, click_y: f64) -> Result<(), Stri
     // the panel on that same display.
     let window = ensure_window(app)?;
     if window.is_visible().unwrap_or(false) {
-        return window
-            .hide()
+        return crate::window_composition::hide(&window)
             .map_err(|error| format!("hide tray panel: {error}"));
     }
 
@@ -112,11 +111,10 @@ pub fn toggle_at(app: &AppHandle, click_x: f64, click_y: f64) -> Result<(), Stri
     // underneath and look like a second "open Qx" action.
     if let Some(main) = app.get_webview_window(crate::floating_panel::MAIN_LABEL) {
         if main.is_visible().unwrap_or(false) {
-            let _ = main.hide();
+            crate::floating_panel::hide(app);
         }
     }
-    window
-        .show()
+    crate::window_composition::show(&window)
         .map_err(|error| format!("show tray panel: {error}"))?;
     window
         .set_focus()
@@ -141,8 +139,7 @@ pub fn tray_panel_get_focus_display() -> Option<u32> {
 #[tauri::command]
 pub fn tray_panel_hide(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(LABEL) {
-        window
-            .hide()
+        crate::window_composition::hide(&window)
             .map_err(|error| format!("hide tray panel: {error}"))?;
     }
     Ok(())

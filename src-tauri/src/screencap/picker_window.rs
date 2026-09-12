@@ -1,9 +1,12 @@
 use tauri::utils::config::Color;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
+};
 
 use super::geometry::covers_full_display;
 use super::types::PickerSession;
 use crate::display::{all_capture_monitors, capture_monitor, tauri_monitor_for_capture};
+use crate::window_composition::set_cloaked as set_windows_cloaked;
 
 pub(super) const PICKER_LABEL: &str = "region-picker";
 const SHADE_PREFIX: &str = "region-picker-shade-";
@@ -12,35 +15,31 @@ pub(super) fn shade_label(monitor_id: u32) -> String {
     format!("{SHADE_PREFIX}{monitor_id}")
 }
 
+/// Late WebView readiness must never revive a cancelled picker or turn a
+/// passive recording frame back into a fullscreen keyboard/pointer trap.
+pub(super) fn screencap_region_picker_ready(
+    app: AppHandle,
+) -> Result<Option<super::PickerStatus>, String> {
+    let ui_app = app.clone();
+    crate::runtime::run_ui(&app, move || {
+        let Some(picker) = ui_app.get_webview_window(PICKER_LABEL) else {
+            return Ok(None);
+        };
+        if !picker.is_visible().unwrap_or(false) || super::commands::is_recording() {
+            return Ok(None);
+        }
+        let status = super::selection::screencap_region_select_status_with_restore(false);
+        if let Some(payload) = status.as_ref() {
+            reassert_interactive(&ui_app)?;
+            let _ = ui_app.emit("screencap:picker", payload);
+        }
+        Ok(status)
+    })?
+}
+
 pub(crate) fn is_picker_surface(label: &str) -> bool {
     label == PICKER_LABEL || label.starts_with(SHADE_PREFIX)
 }
-
-#[cfg(target_os = "windows")]
-fn set_windows_cloaked(window: &tauri::WebviewWindow, cloaked: bool) {
-    use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CLOAK};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, GA_ROOT};
-
-    let Ok(webview_hwnd) = window.hwnd() else {
-        return;
-    };
-    let hwnd = unsafe { GetAncestor(webview_hwnd.0, GA_ROOT) };
-    if hwnd.is_null() {
-        return;
-    }
-    let value: i32 = i32::from(cloaked);
-    let _ = unsafe {
-        DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_CLOAK as u32,
-            std::ptr::from_ref(&value).cast(),
-            std::mem::size_of_val(&value) as u32,
-        )
-    };
-}
-
-#[cfg(not(target_os = "windows"))]
-fn set_windows_cloaked(_window: &tauri::WebviewWindow, _cloaked: bool) {}
 
 #[cfg(target_os = "macos")]
 fn promote_macos_capture_surface(window: &tauri::WebviewWindow) {
@@ -103,10 +102,8 @@ fn demote_macos_recording_surface(window: &tauri::WebviewWindow) {
 fn demote_macos_recording_surface(_window: &tauri::WebviewWindow) {}
 
 /// Prepare a reusable transparent picker surface before restoring its geometry.
-/// Windows keeps the HWND alive but excludes it from DWM while hidden, so it
-/// must be uncloaked before the next show.
+/// Windows reveal is owned by window_composition::show, after geometry/input.
 pub(super) fn prepare_for_show(window: &tauri::WebviewWindow) {
-    set_windows_cloaked(window, false);
     promote_macos_capture_surface(window);
 }
 
@@ -120,7 +117,7 @@ fn hide_surface(window: &tauri::WebviewWindow) {
         let _ = window.set_size(PhysicalSize::new(1, 1));
         let _ = window.set_position(PhysicalPosition::new(-32_000, -32_000));
     }
-    let _ = window.hide();
+    let _ = crate::window_composition::hide(window);
 }
 
 /// Hide every outer multi-display shade surface (kept alive for reuse).
@@ -212,6 +209,7 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
             // First click on an outer display must activate that picker surface.
             .accept_first_mouse(true)
             .content_protected(true)
+            .visible(false)
             .build()
             .map_err(|error| format!("open capture shade: {error}"))?
         };
@@ -231,8 +229,7 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
             .set_ignore_cursor_events(false)
             .map_err(|error| format!("capture shade input: {error}"))?;
         if !shade.is_visible().unwrap_or(false) {
-            shade
-                .show()
+            crate::window_composition::show(&shade)
                 .map_err(|error| format!("show capture shade: {error}"))?;
         }
         // AppKit/Tauri may restore the builder's floating level while ordering
@@ -284,8 +281,7 @@ pub(super) fn reassert_interactive(app: &AppHandle) -> Result<(), String> {
             .set_always_on_top(true)
             .map_err(|error| format!("picker z-order: {error}"))?;
         prepare_for_show(&picker);
-        picker
-            .show()
+        crate::window_composition::show(&picker)
             .map_err(|error| format!("show region picker: {error}"))?;
         prepare_for_show(&picker);
         picker
@@ -318,7 +314,7 @@ pub(super) fn restore_editable_selection(app: &AppHandle, session: &PickerSessio
         if show_shades(&app, monitor_id).is_err() {
             return false;
         }
-        let _ = picker.hide();
+        hide_surface(&picker);
         let _ = picker.set_content_protected(true);
         prepare_for_show(&picker);
         if picker.set_ignore_cursor_events(false).is_err()
@@ -334,9 +330,9 @@ pub(super) fn restore_editable_selection(app: &AppHandle, session: &PickerSessio
                     monitor.size().height,
                 ))
                 .is_err()
-            || picker.show().is_err()
+            || crate::window_composition::show(&picker).is_err()
         {
-            let _ = picker.hide();
+            hide_surface(&picker);
             return false;
         }
         prepare_for_show(&picker);
@@ -372,7 +368,7 @@ pub(super) fn show_recording_frame(
         let picker = app
             .get_webview_window(PICKER_LABEL)
             .ok_or_else(|| "region picker window is unavailable".to_string())?;
-        let _ = picker.hide();
+        hide_surface(&picker);
         // Full-screen capture has no exterior to dim.
         if covers_full_display(&area, logical_width, logical_height) {
             return Ok(false);
@@ -407,8 +403,7 @@ pub(super) fn show_recording_frame(
         picker
             .set_ignore_cursor_events(true)
             .map_err(|error| format!("enable recording frame mouse passthrough: {error}"))?;
-        picker
-            .show()
+        crate::window_composition::show(&picker)
             .map_err(|error| format!("show recording frame: {error}"))?;
         Ok(true)
     })?

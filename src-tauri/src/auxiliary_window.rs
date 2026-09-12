@@ -9,8 +9,14 @@ use tauri::WebviewWindow;
 pub(crate) fn make_non_activating(window: &WebviewWindow) -> Result<(), String> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetAncestor, GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GA_ROOT, GWL_EXSTYLE,
-        SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_NOACTIVATE,
+        SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_NOACTIVATE,
     };
+
+    // Keep Tao's own flags in sync. A raw WS_EX_NOACTIVATE mutation alone is
+    // overwritten by its next Show/Hide/always-on-top style projection.
+    window
+        .set_focusable(false)
+        .map_err(|error| format!("disable auxiliary window activation: {error}"))?;
 
     let webview_hwnd = window
         .hwnd()
@@ -34,7 +40,7 @@ pub(crate) fn make_non_activating(window: &WebviewWindow) -> Result<(), String> 
             0,
             0,
             0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE,
         );
     }
     Ok(())

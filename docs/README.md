@@ -32,6 +32,8 @@
 
 ### Shell、模块与系统表面
 
+- [窗口生命周期与 Windows 消融](./window-lifecycle-validation.md)：窗口清单、显隐/焦点协议和原生消融。
+
 - [显示器亮度服务](./display-brightness.md)：原生 / DDC / 软件调光的接口、匹配和恢复。
 - [原生能力盘点与消融验证](./native-capability-validation.md)：全部命令清单、基线和设备验证边界。
 

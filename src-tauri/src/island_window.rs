@@ -25,7 +25,10 @@ pub struct IslandWindowSnapshot {
     pub position_y: Option<i32>,
 }
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+
+static VISIBILITY_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 static SNAPSHOT: Mutex<IslandWindowSnapshot> = Mutex::new(IslandWindowSnapshot {
     sessions_json: None,
@@ -156,7 +159,7 @@ fn prepare_hidden_island(app: &AppHandle, always_on_top: bool) -> Result<(), Str
         };
         let _ = win.set_size(LogicalSize::new(width, ISLAND_HEIGHT));
         position_island(app, compact);
-        let _ = win.hide();
+        crate::window_composition::hide(&win)?;
     }
     Ok(())
 }
@@ -179,7 +182,7 @@ fn show_island(app: &AppHandle, always_on_top: bool) -> Result<(), String> {
     if win.is_visible().unwrap_or(false) {
         return Ok(());
     }
-    win.show()
+    crate::window_composition::show(&win)
         .map_err(|error| format!("show island window: {error}"))?;
     #[cfg(target_os = "macos")]
     promote_without_focus(&win);
@@ -209,6 +212,26 @@ where
     }
 }
 
+async fn update_visibility(app: &AppHandle, aot: bool, visible: bool) -> Result<(), String> {
+    let generation = VISIBILITY_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let worker_app = app.clone();
+    run_webview_creation(app, move || {
+        ensure_island_window(&worker_app, aot)?;
+        let ui_app = worker_app.clone();
+        crate::runtime::run_ui(&worker_app, move || {
+            if VISIBILITY_GENERATION.load(Ordering::SeqCst) != generation {
+                return Ok(());
+            }
+            if visible {
+                show_island(&ui_app, aot)
+            } else {
+                prepare_hidden_island(&ui_app, aot)
+            }
+        })?
+    })
+    .await
+}
+
 /// Pre-create the hidden WebView during Tauri setup, which is a documented
 /// safe creation point on Windows. Runtime commands remain an async fallback
 /// for users who enable the floating island after startup.
@@ -228,8 +251,7 @@ pub async fn island_window_ensure(
     if let Ok(mut snap) = SNAPSHOT.lock() {
         snap.always_on_top = aot;
     }
-    let worker_app = app.clone();
-    run_webview_creation(&app, move || prepare_hidden_island(&worker_app, aot)).await
+    update_visibility(&app, aot, false).await
 }
 
 #[tauri::command]
@@ -253,8 +275,7 @@ pub async fn island_window_show(
             snapshot.position_y = None;
         }
     }
-    let worker_app = app.clone();
-    run_webview_creation(&app, move || show_island(&worker_app, aot)).await
+    update_visibility(&app, aot, true).await
 }
 
 #[tauri::command]
@@ -282,9 +303,13 @@ pub fn island_window_set_compact(app: AppHandle, compact: bool) -> Result<(), St
 
 #[tauri::command]
 pub fn island_window_hide(app: AppHandle) -> Result<(), String> {
+    let generation = VISIBILITY_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     crate::runtime::run_ui(&app.clone(), move || {
+        if VISIBILITY_GENERATION.load(Ordering::SeqCst) != generation {
+            return Ok(());
+        }
         if let Some(win) = app.get_webview_window(ISLAND_LABEL) {
-            let _ = win.hide();
+            crate::window_composition::hide(&win)?;
         }
         Ok::<(), String>(())
     })?

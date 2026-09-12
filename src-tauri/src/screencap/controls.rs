@@ -135,7 +135,7 @@ fn show_now(app: &AppHandle) -> Result<(), String> {
         .focused(false)
         .accept_first_mouse(true)
         .content_protected(true)
-        .visible(true)
+        .visible(false)
         .build()
         .map_err(|error| format!("open recording controls: {error}"))?;
     }
@@ -150,8 +150,7 @@ fn show_now(app: &AppHandle) -> Result<(), String> {
     let _ = controls.set_always_on_top(true);
     let _ = controls.set_ignore_cursor_events(false);
     position(app);
-    controls
-        .show()
+    crate::window_composition::show(&controls)
         .map_err(|error| format!("show recording controls: {error}"))?;
     #[cfg(target_os = "macos")]
     promote_now(&controls);
@@ -163,7 +162,7 @@ pub(super) fn hide(app: &AppHandle) {
     let app = app.clone();
     let _ = crate::main_thread::run_on_main(&app.clone(), move || {
         if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
-            let _ = controls.hide();
+            let _ = crate::window_composition::hide(&controls);
         }
     });
 }
@@ -175,7 +174,7 @@ pub(super) fn reassert(app: &AppHandle) {
             return;
         };
         position(&app);
-        let _ = controls.show();
+        let _ = crate::window_composition::show(&controls);
         #[cfg(target_os = "macos")]
         promote_now(&controls);
     });
@@ -190,7 +189,7 @@ pub(super) fn restore_surface(app: &AppHandle, suppress_ms: u64) -> Result<(), S
             show_now(&app)
         } else {
             if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
-                let _ = controls.hide();
+                let _ = crate::window_composition::hide(&controls);
             }
             crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(
                 suppress_ms,

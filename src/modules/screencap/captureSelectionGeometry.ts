@@ -5,6 +5,13 @@ import type { Point, Rect } from "./useCaptureAnnotations";
 // logical/CSS affordance rather than an artificial screenshot limit.
 export const MIN_CAPTURE_SIZE = 4;
 
+export type CaptureHintPlacement = "bottom-left" | "top-right" | "hidden";
+
+const CAPTURE_HINT_INSET = 16;
+const CAPTURE_HINT_MAX_WIDTH = 560;
+const CAPTURE_HINT_AVOIDANCE_HEIGHT = 48;
+const FULL_VIEWPORT_EDGE_TOLERANCE = 4;
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -34,4 +41,33 @@ export function clampRectToViewport(rect: Rect): Rect {
     w,
     h,
   };
+}
+
+/** Keep picker instructions out of the selected pixels they describe. */
+export function resolveCaptureHintPlacement(
+  selection: Rect,
+  viewport: { width: number; height: number },
+): CaptureHintPlacement {
+  const right = selection.x + selection.w;
+  const bottom = selection.y + selection.h;
+  const coversViewport = selection.x <= FULL_VIEWPORT_EDGE_TOLERANCE
+    && selection.y <= FULL_VIEWPORT_EDGE_TOLERANCE
+    && right >= viewport.width - FULL_VIEWPORT_EDGE_TOLERANCE
+    && bottom >= viewport.height - FULL_VIEWPORT_EDGE_TOLERANCE;
+  if (coversViewport) return "hidden";
+
+  const hintRight = Math.min(
+    viewport.width - CAPTURE_HINT_INSET,
+    CAPTURE_HINT_INSET + CAPTURE_HINT_MAX_WIDTH,
+  );
+  const hintTop = Math.max(
+    CAPTURE_HINT_INSET,
+    viewport.height - CAPTURE_HINT_INSET - CAPTURE_HINT_AVOIDANCE_HEIGHT,
+  );
+  const overlapsBottomLeftHint = selection.x < hintRight
+    && right > CAPTURE_HINT_INSET
+    && selection.y < viewport.height - CAPTURE_HINT_INSET
+    && bottom > hintTop;
+
+  return overlapsBottomLeftHint ? "top-right" : "bottom-left";
 }

@@ -19,6 +19,7 @@ const steps = [
   ["plugin-search", "scripts/check-plugin-search.mjs"],
   ["island", "scripts/check-qx-island.mjs"],
   ["module-ports", "scripts/check-module-ports.mjs"],
+  ["window-lifecycle", "scripts/check-window-lifecycle.mjs"],
   ["plugin-shortcuts", "scripts/smoke-plugin-shortcuts.mjs"],
   ["workbench-html-export", "scripts/check-workbench-html-export.mjs"],
   ["workbench-edit-bridge", "scripts/check-workbench-edit-bridge.mjs"],

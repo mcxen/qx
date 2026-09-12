@@ -184,12 +184,18 @@ pub fn request_auto_hide_after_focus_settles(app: &AppHandle) {
 
         let auto_hide_enabled =
             crate::settings::read_settings().appearance.window_behavior == "auto-hide";
-        let suppressed = auto_hide_suppressed();
         let app_for_ui = app.clone();
-        let focus = crate::main_thread::ui(&app, move || {
+        let _ = crate::main_thread::ui(&app, move || {
+            // Validate and hide in the same UI transaction. A summon or focus
+            // change between a snapshot and a second UI hop must win.
+            if AUTO_HIDE_BLUR_GENERATION.load(Ordering::SeqCst) != generation {
+                return;
+            }
             let main = app_for_ui.get_webview_window(MAIN_LABEL);
             let island = app_for_ui.get_webview_window("island");
-            (
+            if should_hide_after_focus_settles(
+                auto_hide_enabled,
+                auto_hide_suppressed(),
                 main.as_ref()
                     .and_then(|window| window.is_visible().ok())
                     .unwrap_or(false),
@@ -200,24 +206,11 @@ pub fn request_auto_hide_after_focus_settles(app: &AppHandle) {
                     .as_ref()
                     .and_then(|window| window.is_focused().ok())
                     .unwrap_or(false),
-            )
+            ) {
+                hide_and_restore_focus(&app_for_ui);
+            }
         })
         .await;
-
-        let Ok((main_visible, main_focused, island_focused)) = focus else {
-            return;
-        };
-        if AUTO_HIDE_BLUR_GENERATION.load(Ordering::SeqCst) == generation
-            && should_hide_after_focus_settles(
-                auto_hide_enabled,
-                suppressed,
-                main_visible,
-                main_focused,
-                island_focused,
-            )
-        {
-            hide_and_restore_focus(&app);
-        }
     });
 }
 
@@ -262,7 +255,10 @@ pub fn floating_set_external_interaction_active(app: AppHandle, active: bool) {
 /// Prefer our open flag; fall back to OS visibility for paths that only called
 /// `Window::hide` without going through this module.
 fn panel_appears_open(win: &WebviewWindow) -> bool {
-    PANEL_OPEN.load(Ordering::SeqCst) || win.is_visible().unwrap_or(false)
+    // Windows retains WS_VISIBLE while minimized. A summon must restore it,
+    // rather than interpret that first shortcut as a request to hide.
+    !win.is_minimized().unwrap_or(false)
+        && (PANEL_OPEN.load(Ordering::SeqCst) || win.is_visible().unwrap_or(false))
 }
 
 fn accepts_key_window_request(panel_open: bool, native_visible: bool) -> bool {
@@ -712,6 +708,11 @@ pub fn install(app: &AppHandle, window_behavior: &str, show_in_app_list: bool) {
     }
     #[cfg(target_os = "windows")]
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        // Also protect the initial hidden window before any capture-affinity
+        // changes. A hidden WebView2 can otherwise leave a white DWM surface.
+        if matches!(win.is_visible(), Ok(false)) {
+            crate::window_composition::set_cloaked(&win, true);
+        }
         // Keep the native four-sided shadow, then suppress Windows 11's
         // separately rendered one-pixel non-client border.
         if let Err(error) = win.set_shadow(true) {
@@ -761,6 +762,7 @@ pub fn apply_app_list_presence(app: &AppHandle, show_in_app_list: bool) {
 /// Project the three-way appearance preference onto the native window layer.
 /// The frontend controls remain drawn by Qx; this only changes z-order.
 pub fn apply_window_behavior(app: &AppHandle, behavior: &str) {
+    cancel_pending_auto_hide();
     let always_on_top = behavior != "normal";
     WINDOW_ALWAYS_ON_TOP.store(always_on_top, Ordering::SeqCst);
     let app = app.clone();
@@ -789,7 +791,7 @@ pub(crate) fn show_floating_now(app: &AppHandle) {
     // Focused(false) while show + focus settle. The native window listener is
     // broader than the frontend's focus guard, so protect every summon here.
     suppress_auto_hide(Duration::from_millis(500));
-    mark_panel_open();
+    cancel_pending_auto_hide();
     #[cfg(target_os = "macos")]
     {
         // Must run *before* show/orderFront so AppKit places the window on the
@@ -798,9 +800,25 @@ pub(crate) fn show_floating_now(app: &AppHandle) {
         macos::reassert_space_behavior(app);
         macos::remember_foreground_application();
     }
-    let _ = center_on_cursor(app);
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-        let _ = win.show();
+        // Show alone leaves a minimized HWND minimized on Windows.
+        let result = win
+            .unminimize()
+            .map_err(|error| error.to_string())
+            .and_then(|_| {
+                let _ = center_on_cursor(app);
+                crate::window_composition::show(&win)
+            });
+        if let Err(error) = result {
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Warn,
+                "floating_panel",
+                "failed to show main window",
+                serde_json::json!({ "error": error }),
+            );
+            return;
+        }
+        mark_panel_open();
     }
     // A hidden window can report its creation display's DPI during the very
     // first summon. Re-resolve after `show` so the initial placement uses the
@@ -832,9 +850,22 @@ pub(crate) fn show_floating_now(app: &AppHandle) {
 pub fn hide(app: &AppHandle) {
     let app = app.clone();
     let _ = crate::main_thread::run_on_main(&app.clone(), move || {
-        mark_panel_closed();
+        cancel_pending_auto_hide();
         if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-            let _ = win.hide();
+            // Keep the hidden main surface cloaked even when capture cleanup
+            // changes its display affinity after the picker has disappeared.
+            let result = crate::window_composition::hide(&win);
+            if matches!(win.is_visible(), Ok(false)) {
+                mark_panel_closed();
+            }
+            if let Err(error) = result {
+                crate::diagnostics::log(
+                    crate::diagnostics::LogLevel::Warn,
+                    "floating_panel",
+                    "failed to hide main window",
+                    serde_json::json!({ "error": error }),
+                );
+            }
         }
     });
 }

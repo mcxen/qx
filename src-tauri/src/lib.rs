@@ -56,6 +56,7 @@ mod updater;
 mod v2ex;
 mod watchdog;
 mod weather;
+mod window_composition;
 #[cfg(target_os = "windows")]
 mod windows_process;
 
@@ -220,21 +221,40 @@ pub fn run() {
             if screencap::is_pin_surface(label) {
                 return;
             }
-            if screencap::is_picker_surface(label)
-                || label == "recording-controls"
-                || macro_cursor_overlay::is_surface(label)
-            {
+            if screencap::is_picker_surface(label) || label == "recording-controls" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
-                    let _ = window.hide();
+                    screencap::close_surface(window.app_handle(), label);
                 }
                 return;
             }
             if label == "island" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = island_window::island_window_hide(window.app_handle().clone());
+                    let _ = window.app_handle().emit(
+                        "island:intent",
+                        serde_json::json!({ "type": "close-float" }),
+                    );
+                }
                 if matches!(event, tauri::WindowEvent::Focused(true)) {
                     floating_panel::cancel_pending_auto_hide();
                 } else if matches!(event, tauri::WindowEvent::Focused(false)) {
                     floating_panel::request_auto_hide_after_focus_settles(&window.app_handle());
+                }
+                return;
+            }
+            if macro_cursor_overlay::is_surface(label)
+                || label == "tray-panel"
+                || label == "update-progress"
+            {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    if label == "update-progress" {
+                        let _ = updater::qx_update_progress_cancel(window.app_handle().clone());
+                    } else if let Some(webview) = window.app_handle().get_webview_window(label) {
+                        let _ = window_composition::hide(&webview);
+                    }
                 }
                 return;
             }

@@ -158,7 +158,9 @@ pub(crate) fn on_display_topology_changed(app: &AppHandle, force_refresh: bool) 
     );
 }
 
-fn screencap_region_select_status_with_restore(restore_selection: bool) -> Option<PickerStatus> {
+pub(super) fn screencap_region_select_status_with_restore(
+    restore_selection: bool,
+) -> Option<PickerStatus> {
     picker_session()
         .lock()
         .ok()
@@ -329,6 +331,7 @@ fn show_region_picker_internal(
             .accept_first_mouse(true)
             // Picker must never end up in the recording itself.
             .content_protected(true)
+            .visible(false)
             .build()
             .map_err(|error| format!("open region picker: {error}"))?;
         }
@@ -344,8 +347,7 @@ fn show_region_picker_internal(
         // monitor framebuffer; CSS clientX/Y stay in logical points (DPR scaled).
         let _ = picker.set_position(PhysicalPosition::new(pos_x, pos_y));
         let _ = picker.set_size(PhysicalSize::new(size_w, size_h));
-        picker
-            .show()
+        crate::window_composition::show(&picker)
             .map_err(|error| format!("show region picker: {error}"))?;
         picker_window::prepare_for_show(&picker);
         let _ = picker.set_ignore_cursor_events(false);
@@ -690,43 +692,18 @@ pub fn screencap_picker_snapshot(
         .ok_or_else(|| "Frozen desktop frame is unavailable".to_string())
 }
 
-/// Picker-webview readiness handshake. WebView2 may finish mounting after the
-/// native transparent window was first shown, especially through Remote
-/// Desktop. Reassert input/focus only after React has installed its listeners,
-/// then replay the current session so the first event cannot be lost.
 #[command]
 pub fn screencap_region_picker_ready(app: AppHandle) -> Result<Option<PickerStatus>, String> {
-    let status = screencap_region_select_status_with_restore(false);
-    if status.is_none() {
-        return Ok(None);
-    }
-    let app_for_ui = app.clone();
-    crate::main_thread::run_on_main(&app_for_ui.clone(), move || {
-        let picker = app_for_ui
-            .get_webview_window(PICKER_LABEL)
-            .ok_or_else(|| "region picker window is unavailable".to_string())?;
-        picker
-            .set_ignore_cursor_events(false)
-            .map_err(|error| format!("picker input: {error}"))?;
-        #[cfg(not(target_os = "macos"))]
-        let _ = picker.set_always_on_top(true);
-        picker_window::prepare_for_show(&picker);
-        picker
-            .show()
-            .map_err(|error| format!("show region picker: {error}"))?;
-        picker_window::prepare_for_show(&picker);
-        let _ = picker.set_focus();
-        picker_window::prepare_for_show(&picker);
-        Ok::<(), String>(())
-    })??;
-    if let Some(payload) = status.clone() {
-        let _ = app.emit("screencap:picker", payload);
-    }
-    Ok(status)
+    picker_window::screencap_region_picker_ready(app)
 }
 
 #[command]
 pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String> {
+    let ui_app = app.clone();
+    crate::runtime::ui(&app, move || cancel_region_select_now(&ui_app)).await?
+}
+
+pub(crate) fn cancel_region_select_now(app: &AppHandle) -> Result<(), String> {
     let main_was_visible = picker_session()
         .lock()
         .ok()
@@ -734,17 +711,17 @@ pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String
         .unwrap_or(false);
     end_picker_session();
     crate::floating_panel::set_capture_main_visible_active(false);
-    hide_region_picker_internal(&app);
+    hide_region_picker_internal(app);
     if let Ok(mut session) = picker_session().lock() {
         *session = None;
     }
     super::snapshot::clear();
-    set_recording_ui_protected(&app, false);
-    hide_recording_controls_internal(&app);
+    set_recording_ui_protected(app, false);
+    hide_recording_controls_internal(app);
     if main_was_visible {
-        restore_capture_surface(&app, 800)
+        restore_capture_surface(app, 800)
     } else {
-        crate::floating_panel::hide(&app);
+        crate::floating_panel::hide(app);
         Ok(())
     }
 }

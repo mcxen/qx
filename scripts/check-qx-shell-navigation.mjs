@@ -36,6 +36,7 @@ import {
   captureNumberForeground,
   captureNumberOutline,
 } from "../src/modules/screencap/captureColor.ts";
+import { resolveCaptureHintPlacement } from "../src/modules/screencap/captureSelectionGeometry.ts";
 import {
   captureTextOutsideDismissId,
   measureCaptureTextBox,
@@ -237,6 +238,35 @@ assert.deepEqual(
     { width: 800, height: 600 },
   ),
   { left: 470, top: 10 },
+);
+assert.equal(
+  resolveCaptureHintPlacement(
+    { x: 12, y: 500, w: 420, h: 100 },
+    { width: 800, height: 600 },
+  ),
+  "top-right",
+);
+assert.equal(
+  resolveCaptureHintPlacement(
+    { x: 250, y: 120, w: 300, h: 240 },
+    { width: 800, height: 600 },
+  ),
+  "bottom-left",
+);
+assert.equal(
+  resolveCaptureHintPlacement(
+    { x: 0, y: 0, w: 800, h: 600 },
+    { width: 800, height: 600 },
+  ),
+  "hidden",
+);
+// Manual edge drags can stop a CSS pixel short of the picker bounds.
+assert.equal(
+  resolveCaptureHintPlacement(
+    { x: 1, y: 2, w: 798, h: 597 },
+    { width: 800, height: 600 },
+  ),
+  "hidden",
 );
 assert.equal(captureNumberForeground("#ffffff"), "#111111");
 assert.equal(captureNumberForeground("#fff"), "#111111");

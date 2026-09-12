@@ -60,7 +60,10 @@ export default function IslandFloatBridge({
 
   useEffect(() => {
     let visibilityTimer: number | undefined;
+    let disposed = false;
+    let visibilityRevision = 0;
     const sync = () => {
+      const revision = ++visibilityRevision;
       const sessions = getSnapshot();
       const sessionsJson = JSON.stringify(sessions);
       void invoke("island_sessions_publish", { sessionsJson }).catch(() => {});
@@ -73,6 +76,7 @@ export default function IslandFloatBridge({
           .isVisible()
           .catch(() => mainVisible)
           .then((windowVisible) => {
+            if (disposed || revision !== visibilityRevision) return;
             const requestedSession = sessions.find(
               (session) => session.id === requestedSessionId,
             );
@@ -153,6 +157,7 @@ export default function IslandFloatBridge({
       },
     );
     return () => {
+      disposed = true;
       unsubscribe();
       if (visibilityTimer !== undefined) window.clearTimeout(visibilityTimer);
       void unlisten.then((stop) => stop());

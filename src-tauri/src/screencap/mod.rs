@@ -24,6 +24,20 @@ pub(crate) fn is_pin_surface(label: &str) -> bool {
     pin::is_pin_surface(label)
 }
 
+/// Native close must use the same session teardown as the picker's Esc.
+pub(crate) fn close_surface(app: &tauri::AppHandle, label: &str) {
+    if picker_window::is_picker_surface(label) {
+        if commands::is_recording() {
+            picker_window::hide(app);
+        } else {
+            let _ = selection::cancel_region_select_now(app);
+        }
+    } else if !commands::is_recording() {
+        // During recording the controls are the user's stop affordance.
+        controls::hide(app);
+    }
+}
+
 /// Hot-plug / topology change while the region picker is open.
 /// Prefer `force_refresh=false` when the caller already refreshed inventory.
 pub(crate) fn on_display_topology_changed(app: &tauri::AppHandle, force_refresh: bool) {

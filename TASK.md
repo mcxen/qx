@@ -13,6 +13,23 @@
 
 ## 当前工作
 
+### Audit — Windows 窗口管理与消融（2026-09-12）
+
+- 全部原生窗口所有者完成代码盘点，契约与矩阵见 [窗口生命周期验证](docs/window-lifecycle-validation.md)。主窗口、picker/shade、录制控制栏、island、宏指针层、Tray、更新进度与一次性 pin 分别维护领域关闭语义；可复用表面共用有序呈现端口。
+- 修复录屏开始裸隐藏、前端停止裸显示、最小化召唤、延迟 blur/readiness/island 复活和辅助窗口原生关闭。真实消融进一步发现原生 `WS_EX_NOACTIVATE` 被 Tao 样式投影覆盖，现同步 `focusable=false`；更新窗口先设置非激活再显示。
+- MSVC 真实 WebView2 消融 A–H 全部通过，包含 12 次隐藏/内容保护/复用、前台保持、鼠标穿透、最小化与关闭重开。第一次 D 项失败后修正生产端口再通过；程序失败已显式返回非零码。退出时 WebView2 有 `Chrome_WidgetWin_0` unregister 1412 日志，不影响断言，但不记作零诊断运行。
+- 恢复本地缺失的插件依赖至宿主固定 revision `e02ed03`，未修改插件内容；完整 `npm run check`、TypeScript、MSVC `cargo check` / `cargo fmt --check` 通过。最终 Tauri release 与 MSI/NSIS 重建通过，包含工作区原有截图提示改动，未覆盖安装目录。
+- 实际运行新构建验证：主窗口 Esc 收起、全局召回同一 HWND、Alt+F4 收起且后台存活；桌面快捷键启动截图，Esc 取消后主窗口保持隐藏；同一 picker HWND 再次复用，Alt+F4 正确清理且不召唤 main。测试后恢复原安装版后台进程。复制完成、录屏、全部辅助窗口产品交互仍需进一步验收，不由独立消融替代。
+- 本机 computer-use 画面接口返回 `SetIsBorderRequired / E_NOINTERFACE`；辅助功能可读，视觉残影、多屏和 IME 不以空白窗口消融代替。未运行 macOS 原生或远端 Windows Action。
+- 收尾按 v0.6.110 到工作区累计 915 行增删（含新增验证源码/文档和既有改动，排除生成物）；插件固定 revision 工作区干净。本轮未提交、推送或发布。
+
+### Fix — Windows 截图后隐藏主窗口白框（2026-09-12）
+
+- 本机原生窗口检查：picker 已隐藏、cloak 且缩至屏外 1×1，主窗口隐藏但未 cloak；截图完成仍会更新主窗口内容保护，与残留框比例及再次召唤后消失的现象吻合，尚待安装态复现确认。
+- 主窗口初始隐藏、每次收起与再次召唤接入共享 `window_composition` 端口；隐藏期间维持 cloak，show 后解除。picker 复用同一实现，原生调用失败记录窗口标签和错误。
+- Windows MSVC `cargo check`、`cargo fmt --check`、TypeScript/Vite build 与窗口端口检查通过。全量 `npm run check` 剩余 3 组受本机 `qx-plugins` 缺失影响（文档链接、插件搜索、亮度）；未把它们记为通过。
+- 本地 Tauri release 构建及 MSI/NSIS 打包通过（0.6.110 本地修复包，包含工作区已有截图提示改动）；未替换运行中的安装版，截图确认/复制/取消及再次召唤的安装态验收、远端 Windows Action 尚未执行。本轮相对 v0.6.110 的聚合改动约 190 行，低于发布阈值。
+
 ### UI — Qxpicture 新增 API 与管理表单（2026-09-09）
 
 - 基线：旧新增页重复展示参数摘要、参数组套卡片，类型 Select 铺满整行；API 仅覆盖 GET、直接图片和 JSON URL，无法提交 FastAPI 常见 JSON 请求体或读取 Base64 图片。

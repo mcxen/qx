@@ -259,6 +259,12 @@ useEffect(() => {
 
 ## 4. 隐藏窗口的正确入口
 
+Windows 主窗口与所有可复用辅助窗口共用 `window_composition::show/hide` 原生呈现端口；
+完整清单与消融方法见 [窗口生命周期验证](./window-lifecycle-validation.md)。
+主窗口初始隐藏和每次隐藏前都必须 cloak，直到显式 show 后才解除；隐藏期间截图完成/取消
+修改内容保护不能解除 cloak。仅隐藏 picker 无法防止隐藏主 WebView2 留下白色窗口边界。
+该端口只控制 DWM 呈现，不改变窗口尺寸、焦点或 `PANEL_OPEN`，原生失败写入诊断日志。
+
 Windows 主窗口保持无边框并使用 DWM 原生阴影。Windows 11 的非客户区边框与阴影是两个独立属性：宿主必须在启用阴影后将 `DWMWA_BORDER_COLOR` 设置为 `DWMWA_COLOR_NONE`，只移除一像素黑色/强调色边框，不得为隐藏黑框而关闭四边阴影或在 WebView 内伪造无法越过窗口边界的 CSS 阴影。
 
 | 场景 | 应调用 |

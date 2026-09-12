@@ -175,11 +175,7 @@ pub async fn start_recording(
         // same WebView only after shrinking it to the selected rectangle.
         // Hide the active picker and every passive per-display shade before
         // recording. A region recording may re-show only its protected frame.
-        for window in ui_app.webview_windows().into_values() {
-            if picker_window::is_picker_surface(window.label()) {
-                let _ = window.hide();
-            }
-        }
+        picker_window::hide(&ui_app);
         if let Some(main) = ui_app.get_webview_window(crate::floating_panel::MAIN_LABEL) {
             let _ = main.set_content_protected(true);
         }

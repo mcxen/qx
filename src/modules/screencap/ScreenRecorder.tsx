@@ -264,9 +264,7 @@ export default function ScreenRecorder() {
   const handleStop = async () => {
     if (isTauriRuntime()) {
       try {
-        const win = getCurrentWindow();
-        await win.show();
-        await win.setFocus().catch(() => {});
+        await invoke("floating_show");
       } catch {
         // ignore
       }
