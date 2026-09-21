@@ -366,6 +366,8 @@ export interface PluginAiBashResult {
 }
 
 export interface PluginAiMemoryEntry {
+  scope?: string;
+  originConversationId?: string;
   id: string;
   text: string;
   tags: string[];
@@ -373,6 +375,8 @@ export interface PluginAiMemoryEntry {
   type: "core" | "episodic";
   importance: number;
   supersedes: string[];
+  category: "user" | "feedback" | "project" | "reference";
+  active: boolean;
   createdAt: number;
   updatedAt: number;
 }

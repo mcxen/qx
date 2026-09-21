@@ -140,10 +140,54 @@ Skills 位于 `~/.qx/skills`，frontmatter mode 为 `fixed | smart | disabled`�
 长期记忆使用 `~/.qx/memories/memory.db`（SQLite + FTS5）：
 
 - cold archive 保留原始与派生记录；
-- active core records 进入有字符预算的 prompt snapshot；
+- active core records 只把简短索引放入有界 prompt snapshot，全文按 id 读取；
 - episodic 与 superseded records 不自动注入，但可搜索；
 - derived record 保存 source/type/importance/supersedes lineage，提取不删除源记录；
 - Manual / Smart / Off 分别表示显式写入、选择性提取、保留数据库但停止 recall/capture；Smart 返回零候选是有效结果。
+
+记忆内容另按 `user / feedback / project / reference` 分类，分别表示用户画像、用户反馈、
+项目背景和外部资源；分类与 `core / episodic` 的常驻策略独立。分类以保留标签
+`category:<name>` 存储，不改写旧库；无标签的旧记录按 target 回退为 user 或 project。
+设置页可选择分类，插件仍通过原有 tags 参数写入，返回项带 category、active 和完整来源元数据。
+
+Settings → AI Agent → Memory Management 提供“压缩记忆”，复用
+`qxai_memory_dream(mode="compress")`。它按同一 target 和分类合并 active core，保留事实、
+否定条件、原因与适用范围；只接受比来源正文总字符数更短、且单条可放入对应热区的结果，空候选/无收益时保持原样。
+每次最多提供 64 条、约 24000 Unicode 字符（含每条预留开销）的来源输入，返回
+`processedCount/hasMore` 明确有限批次，不声称全库已完成。
+`beforeChars/afterChars/savedChars` 统计所有 active core 正文的 Unicode 字符数，
+不包含分隔符/标题，也不表示磁盘占用变小。原始记录保留在 FTS，可检索；设置页标出已归档原文。
+
+提取与压缩 single-flight；模型调用不持有存储锁。写入前逐条核对来源内容和 active 状态，
+拒绝跨 target、跨分类、未知或重叠来源；全部候选验证后，在一个 SQLite 事务中写记录及 FTS。
+并发编辑、删除或替代的来源不会被旧摘要重新激活。模型失败、校验失败与 SQL 失败均保留原库。
+摘要日记和 Markdown 镜像是 best-effort 投影，不决定已提交事务的成败。客户端在写入/压缩完成后
+失效快照缓存，进行中的旧读取不得回填失效后的缓存；当轮 prompt 仍保持冻结。
+兼容 Markdown 镜像预算仍为通用 2200 / 用户 1375 字符；实际 prompt 改为总计 3575 字符、
+最多 32 项的简短索引（每项 100 字摘要）。索引明确标记为非可信参考数据，不提升为系统指令。
+
+### 范围、增量整理与来源
+
+- 会话可持久化 `memoryScope`，空值表示全局；非空是用户显式命名的项目标识（大小写敏感）。
+  Context 和窄窗 Actions 的记忆范围入口修改后续 turn，不迁移已有记录，也不重新归类旧数据。
+  范围通过保留标签 `scope:<identity>` 存储，与 `category:project` 独立。旧记录保持全局。
+- Agent snapshot / search / read 只包含全局与当前项目；add / replace / remove / dream 只操作
+  当前范围。工具执行上下文由宿主注入，模型不能在工具参数中任意切换项目。
+  此处是召回隔离，不是文件权限沙箱；旧插件 memory list/delete 仍是已授权的全库管理端口。
+- search 默认排除被替代原文，在 SQL LIMIT 之前统一应用 scope/target/active 过滤，中文
+  LIKE 回退使用相同规则；返回短摘要，`action=read, oldText=id` 返回全文。
+  `includeArchived=true` 显式找旧版本；直接按已知 id 读取允许查看原文。
+- 自动整理只提交本次成功 user/assistant turn，不重复发送最近八轮；内容与 provider/model、
+  scope、conversationId 在调度时冻结。长 turn 按 6000 Unicode 字符分批，不截断尾部。
+  手动、工具和自动整理共享最多 32 项的前端 FIFO；失败不阻塞后续任务。每个 turn 的游标
+  只在成功或有效空候选后推进；失败从当前批次重试，不重做已完成前缀。
+- 后端以 scope/conversation/boundary 的 SHA-256 保存处理回执；回执与候选/FTS 原子提交，
+  同一批次重放不再调用模型，失败不保存回执。此回执持久化不等于持久任务队列：尚未完成
+  的请求及至多 32 个失败任务只在当前应用进程内保留，退出后不自动补跑。
+- 错误通过独立 Island 显示并提供重试；管理页提供待整理重试入口。旁路失败不改变聊天
+  结果。关闭 Smart 后禁止尚未提交的自动整理写入；清空期间的在途模型结果不得回写。
+- 派生记录以 `origin:<conversationId>` 保存来源，压缩继续保留 supersedes 原文链。
+  管理页可打开仍存在的来源会话、查看直接原文；已删除来源明确显示不可用，不伪造恢复。
 
 所有命令走 blocking worker。snapshot 只获取一次 memory lock，不能在持锁时调用另一个加锁 wrapper。Settings 的明确清理操作才可删除数据库；普通 cache cleanup 不得触碰会话或 memory。
 

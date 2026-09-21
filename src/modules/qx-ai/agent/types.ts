@@ -34,7 +34,7 @@ export interface ToolSpec {
    * omitted the same way as a disabled module.
    */
   isAvailable?: (settings: import("../../settings/store").Settings) => boolean;
-  run: (input: unknown) => Promise<string | ToolExecutionResult>;
+  run: (input: unknown, context?: import("./memory").MemoryContext) => Promise<string | ToolExecutionResult>;
 }
 
 export interface AgentRunOptions {
@@ -55,6 +55,7 @@ export interface AgentRunOptions {
   maxIterations?: number;
   /** Frozen Hermes-style memory block for this session (prefix-cache friendly). */
   memorySnapshot?: string;
+  memoryScope?: string;
   /** Optional conversation id for hooks / telemetry (never required for tools). */
   conversationId?: string;
   /** Latest user text for before_turn hooks (skill matching, guards). */

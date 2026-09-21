@@ -6,8 +6,15 @@
 字段全集与底层实现不在这里重复：UI、CLI、Manifest、Tray 和运行时分别由对应协议文档负责。
 
 AI 记忆兼容性：`context.ai.memory.list()` 返回项包含宿主管理的
+`scope`（空值为全局）与 `originConversationId`（可缺省），以及下述元数据。
+`tags` 可用单个 `scope:<项目标识>` 指定范围；同一文本在不同范围与分类内独立去重。
+范围是召回边界，不是权限沙箱；插件现有 list/delete 仍为授权后的全库管理端口。
 `source`、`type`（`core|episodic`）、`importance`（0–100）和
-`supersedes` 谱系字段。插件不应改写这些元数据；用户选择 Off 时，
+`supersedes` 谱系字段，以及 `category`（`user|feedback|project|reference`）和 `active`。
+`active=false` 的 core 是可检索的归档来源，不代表已删除。添加分类沿用
+`context.ai.memory.add(text, ["category:feedback"])`，无分类标签的旧记录按存储目标回退。
+压缩保留原始行，故总归档条数可能增加；应区分 active 正文字数与归档总量。
+插件不应改写来源谱系；用户选择 Off 时，
 记忆调用暂停，但宿主保留已有数据。
 
 ## 1. 心智模型

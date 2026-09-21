@@ -74,6 +74,17 @@ pub struct PluginAiMemoryEntry {
     pub text: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    pub source: String,
+    #[serde(rename = "type")]
+    pub memory_type: String,
+    pub category: String,
+    pub importance: i64,
+    pub supersedes: Vec<String>,
+    pub active: bool,
+    #[serde(default)]
+    pub scope: String,
+    #[serde(default)]
+    pub origin_conversation_id: String,
     pub created_at: i64,
     pub updated_at: i64,
 }

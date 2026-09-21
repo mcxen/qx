@@ -156,6 +156,9 @@ blocking HTTP · filesystem · native APIs
 - **可扩展性**：新增 provider 应实现现有 normalized stream port；新增工具通过
   catalogue/permission registration；新增统计字段只能扩展事件 payload，不改变已有
   `text`/`reasoning`/`done` 语义。
+- **记忆边界**：scope 与分类独立，模型工具只接收宿主绑定的会话范围和模型快照。
+  核心索引与按需全文是非可信参考数据，不是指令；候选、FTS 与处理回执原子提交。
+  提取调度留在会话工作流，SQLite 的来源与范围校验留在共享记忆服务；失败走 Island。
 - **宿主管理**：Agent 不得直接写 settings 存储、插件目录或绕过 registry。可写设置由
   `host-management` 注册稳定 id/type/read/write adapter；插件启停/卸载复用完整 lifecycle
   port。跨插件能力（例如定时壁纸）归宿主 category policy，不为每个插件添加特例工具。

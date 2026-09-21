@@ -79,7 +79,10 @@ export async function executeToolWithHooks(
     updateActionStep(actionStep, opts, { state: "error", output: observation });
   } else {
     try {
-      const result = normalizeToolResult(await tool.run(toolInput));
+      const result = normalizeToolResult(await tool.run(toolInput, {
+        scope: opts.memoryScope, conversationId: opts.conversationId,
+        provider: opts.provider, model: opts.model,
+      }));
       observation = result.observation;
       appendAttachments(attachments, result.attachments);
       updateActionStep(actionStep, opts, { state: "completed", output: observation });

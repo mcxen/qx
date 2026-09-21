@@ -46,6 +46,7 @@ import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
 import { buildModelSelectOptions, openAgentSettingsTab } from "./AiProviderConfig";
 import { AiMessageContent } from "./message-rendering";
+import { MemoryScopeControl, MemoryScopeDialog } from "./MemoryScopeControl";
 import { QxAiMessageActions } from "./message-actions";
 import { QxAiTokenCounter } from "./token-counter";
 import QxAiConversationList from "./QxAiConversationList";
@@ -490,7 +491,10 @@ export default function QxAiChat() {
     setConversationModel(conv.id, provider.id, model);
   }, [conv, providers, canChat, setConversationModel]);
 
+  const [memoryScopeOpen, setMemoryScopeOpen] = useState(false);
   const actions = useMemo<QxShellAction[]>(() => [
+    { id: "memory-scope", label: t("agent.memory.scope", "Memory scope"), disabled: !conv,
+      onClick: () => setMemoryScopeOpen(true) },
     {
       id: "send",
       label: isCurrentConversationStreaming
@@ -690,6 +694,7 @@ export default function QxAiChat() {
             label: t("qxai.actions", "AI Actions"),
           })}
         >
+          {conv && <MemoryScopeControl key={conv.id} conversationId={conv.id} scope={conv.memoryScope} />}
           <div className="qx-action-title">{t("qxai.model", "Model")}</div>
           {providers.length > 0 && conv ? (
             <>
@@ -851,6 +856,8 @@ export default function QxAiChat() {
       actions={actions}
     >
       <div className="qx-ai-workbench">
+        {conv && <MemoryScopeDialog conversationId={conv.id} scope={conv.memoryScope}
+          open={memoryScopeOpen} onOpenChange={setMemoryScopeOpen} />}
         <QxResizableSplit
           className="qx-content-split qx-ai-split has-detail"
           storageKey={LIST_WIDTH_KEY}

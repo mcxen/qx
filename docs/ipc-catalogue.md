@@ -143,9 +143,23 @@ QxAI 内置会话存储命令：`qxai_sessions_load`、`qxai_session_save`、
 `~/.qx/QxAiSession/sessions/<id>/session.json` + `files/`；旧版
 `sessions.json` 和旧版布局不读取，缺少布局标记时一次性清理。导入在阻塞线程复制真实文件，供应商适配层再将图片/有界文本转换为
 多模态请求。长期记忆：`qxai_memory_*`（SQLite FTS `~/.qx/memories/memory.db`）；
-核心记录常驻 prompt，情景记录按需检索，派生摘要通过
+核心记录的有界索引进入 prompt，全文与情景记录按需检索，派生摘要通过
 `source/type/importance/supersedes` 保留来源谱系且不删除原始行。
-`qxai_memory_dream` 接受可选 `mode=manual|smart`，空候选是成功结果。
+`qxai_memory_mutate(action=add)` 接受可选 `category=user|feedback|project|reference`；
+`plugin_ai_memory_*` 返回完整 source/type/importance/supersedes 元数据及 category/active，
+插件写分类继续使用 `tags: ["category:<name>"]`。
+`qxai_memory_dream` 接受可选 `mode=manual|smart|compress`，空候选是成功结果；
+compress 仅缩短同 target/分类的 active core，原文保留。返回
+`candidateCount/beforeChars/afterChars/savedChars/processedCount/hasMore`，字符数仅统计 active 正文。
+提取与压缩 single-flight，来源快照校验及记录/FTS 写入为同一事务；模型调用不持锁。
+`qxai_memory_status` 增加 `activeChars/activeCount`。详见 [Memory 契约](ai-agent-runtime.md#6-memory)。
+`qxai_memory_snapshot(scope?)` 读取全局与当前项目索引；`qxai_memory_mutate` 增加
+可选 `context: {scope?, conversationId?, provider?, model?}`、`includeArchived?` 与 `read` action
+（`oldText=id`）。Agent 搜索只投影 snippet/id 等索引字段，完整文本经 read 返回 `text`；
+底层 search IPC 保留旧 `content/tags` 字段以兼容已有调用者。
+`qxai_memory_dream` 接受同一 context 和可选 `boundary`，自动提取冻结会话模型，
+有 boundary 的 smart 批次以原子处理回执防重放；省略 context 仍是全局管理行为。
+插件列表额外返回 `scope/originConversationId`；原来的 list/add/delete 方法名与参数不变。
 `qxai_memory_clear` 仅显式清空。会话保存和 memory/status/search/clear 均在
 blocking worker 执行，不能在 UI 命令路径同步访问磁盘或 SQLite。`qx_storage_overview` 将会话目录作为 durable
 bucket 报告，`qx_storage_clear_qxai_sessions` 仅在用户显式确认后清理。

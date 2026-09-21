@@ -230,6 +230,8 @@ export interface G4fConversation {
   messages: G4fMessage[];
   provider: string;
   model: string;
+  /** Explicit project identity; absent means global memory only. */
+  memoryScope?: string;
   reasoningEnabled?: boolean;
   /** Crash-safe backup while regenerate replaces the final assistant turn. */
   regenerationBackup?: QxAiRegenerationBackup;
@@ -443,6 +445,7 @@ interface G4fStore {
   renameConversation: (id: string, name: string) => void;
   selectConversation: (id: string) => void;
   setConversationModel: (id: string, provider: string, model: string) => void;
+  setConversationMemoryScope: (id: string, scope: string) => void;
   setConversationReasoning: (id: string, enabled: boolean) => void;
   loadSessions: () => Promise<void>;
 
@@ -905,6 +908,13 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     }));
   },
 
+  setConversationMemoryScope: (id, scope) => {
+    const normalized = scope.trim();
+    if (normalized.length > 80 || /[\x00-\x1f\x7f]/.test(normalized)) return;
+    set((state) => ({ conversations: state.conversations.map((c) =>
+      c.id === id ? { ...c, memoryScope: normalized || undefined } : c) }));
+  },
+
   setConversationReasoning: (id, enabled) => {
     set((state) => ({
       conversations: state.conversations.map((conversation) =>
@@ -1151,8 +1161,6 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         loadMemorySnapshot,
         runFunctionCallingAgent,
         runReactAgent,
-        runMemoryDream,
-        shouldExtractMemoryAfterTurn,
         buildQxHostSystemPrompt,
       } = await loadAgentHarness();
       const enabledTools = getEnabledTools(agentSettings, fullSettings);
@@ -1185,7 +1193,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         // Hermes frozen memory snapshot (prefix-cache friendly; live writes via tools).
         const memorySnapshot = agentSettings.memory_tool_enabled
           && agentSettings.memory_policy !== "off"
-          ? await loadMemorySnapshot()
+          ? await loadMemorySnapshot(false, titledConv.memoryScope)
           : "";
 
         const result = await runAgent({
@@ -1195,6 +1203,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           basePrompt,
           agentSettings,
           memorySnapshot,
+          memoryScope: titledConv.memoryScope,
           conversationId: currentConversationId,
           userMessage: content,
           reasoning: Boolean(titledConv.reasoningEnabled),
@@ -1375,19 +1384,14 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         // Smart memory evaluates the conversation itself. Tool count is never a
         // trigger, and the selective extractor may validly return no candidates.
         if (agentSettings.memory_tool_enabled && agentSettings.memory_policy === "smart") {
-          const transcript = [
-            ...nonSystem.slice(-8).map(
-              (message) => `${message.role}: ${String(message.content).slice(0, 400)}`,
-            ),
-            `assistant: ${result.finalAnswer.slice(0, 800)}`,
-          ].join("\n");
-          if (shouldExtractMemoryAfterTurn({ policy: "smart", transcript })) {
-            void runMemoryDream(transcript, "smart").catch(
-              () => {
-                // Extraction is best-effort; never fail the user-facing turn.
-              },
-            );
-          }
+          const { scheduleTurnMemory } = await import("./turn-memory");
+          scheduleTurnMemory({
+            user: content, assistant: result.finalAnswer,
+            turnKey: String(nonSystem[nonSystem.length - 1]?.createdAt ?? nonSystem.length),
+            name: titledConv.name,
+            context: { scope: titledConv.memoryScope, conversationId: currentConversationId,
+              provider: selection.provider, model: selection.model },
+          });
         }
 
         scheduleNext();

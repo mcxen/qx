@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
 
 const storeSource = readFileSync(
   new URL("../src/modules/qx-ai/store.ts", import.meta.url),
@@ -24,10 +26,10 @@ const settingsSource = readFileSync(
   new URL("../src/modules/settings/store.ts", import.meta.url),
   "utf8",
 );
-const memoryBackendSource = readFileSync(
-  new URL("../src-tauri/src/qx_ai_memory.rs", import.meta.url),
-  "utf8",
-);
+const memoryBackendSource = [
+  "../src-tauri/src/qx_ai_memory.rs",
+  "../src-tauri/src/qx_ai_memory/consolidation.rs",
+].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
 const memoryExtractorSource = readFileSync(
   new URL("../src-tauri/src/qx_ai_memory/extraction.rs", import.meta.url),
   "utf8",
@@ -293,6 +295,119 @@ assert.match(memoryExtractorSource, /empty candidates array/);
 assert.match(memoryBackendSource, /list_active_core/);
 assert.match(memoryBackendSource, /source: format!\("dream\.\{mode\}"\)/);
 assert.doesNotMatch(memoryBackendSource, /fn rewrite_hot_set/);
+
+// Execute the real cache adapter with deferred IPC: an old snapshot must never
+// repopulate cache after a write, or while compression completes.
+{
+  const calls = [];
+  const exported = {};
+  const source = readFileSync(new URL("../src/modules/qx-ai/agent/memory.ts", import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  runInNewContext(compiled, {
+    exports: exported,
+    require: () => ({ invoke: (command, input) => new Promise((resolve, reject) => {
+      calls.push({ command, input, resolve, reject });
+    }) }),
+  });
+  const oldRead = exported.loadMemorySnapshot();
+  exported.invalidateMemorySnapshot();
+  calls.shift().resolve("old");
+  assert.equal(await oldRead, "old"); // that turn keeps its frozen snapshot
+  const nextRead = exported.loadMemorySnapshot();
+  assert.equal(calls.length, 1, "invalidated in-flight reads cannot refill cache");
+  calls.shift().resolve("current");
+  assert.equal(await nextRead, "current");
+  assert.equal(await exported.loadMemorySnapshot(), "current");
+  assert.equal(calls.length, 0);
+
+  const compression = exported.runMemoryDream(undefined, "compress");
+  const operation = calls.shift();
+  assert.equal(operation.command, "qxai_memory_dream");
+  assert.equal(operation.input.mode, "compress");
+  const duringRead = exported.loadMemorySnapshot();
+  calls.shift().resolve("before compression");
+  await duringRead;
+  operation.resolve({ savedChars: 5 });
+  await compression;
+  const afterRead = exported.loadMemorySnapshot();
+  assert.equal(calls.length, 1, "completion invalidates snapshots read during compression");
+  calls.shift().resolve("after compression");
+  assert.equal(await afterRead, "after compression");
+
+  const mutation = exported.mutateMemory({ action: "add" });
+  calls.shift().resolve({ success: true });
+  await mutation;
+  const afterWrite = exported.loadMemorySnapshot();
+  assert.equal(calls.length, 1, "tool writes invalidate the snapshot");
+  calls.shift().resolve("after write");
+  await afterWrite;
+  const failure = exported.runMemoryDream(undefined, "compress");
+  calls.shift().reject(new Error("provider unavailable"));
+  await assert.rejects(failure, /provider unavailable/);
+
+  const frozen = { provider: "turn-provider", model: "turn-model", scope: "A" };
+  const first = exported.runMemoryDream("one", "smart", frozen, "one");
+  const firstCall = calls.shift();
+  const second = exported.runMemoryDream("two", "smart", frozen, "two");
+  frozen.model = "changed";
+  assert.equal(calls.length, 0, "busy extraction queues rather than dropping a later turn");
+  firstCall.reject(new Error("first failed"));
+  await assert.rejects(first, /first failed/);
+  await Promise.resolve();
+  const secondCall = calls.shift();
+  assert.equal(secondCall.input.context.model, "turn-model");
+  secondCall.resolve({ candidateCount: 0 });
+  await second;
+  const scopeA = exported.loadMemorySnapshot(false, "A");
+  calls.shift().resolve("scope A");
+  await scopeA;
+  const scopeB = exported.loadMemorySnapshot(false, "B");
+  assert.equal(calls.length, 1, "scope A cannot satisfy scope B's snapshot");
+  calls.shift().resolve("scope B");
+  assert.equal(await scopeB, "scope B");
+  assert.equal(await exported.loadMemorySnapshot(false, "A"), "scope A");
+}
+
+// Real turn scheduler: Unicode batches, frozen routing, successful-prefix cursor,
+// explicit retry, and no-op completion. No model calls or user database access.
+{
+  const calls = [], errors = [], exported = {};
+  const source = readFileSync(new URL("../src/modules/qx-ai/turn-memory.ts", import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  runInNewContext(compiled, { exports: exported, require: (id) => {
+    if (id.endsWith("/island")) return { islandHost: { dismiss() {}, show: (value) => errors.push(value) } };
+    if (id.endsWith("/i18n")) return { resolveLocale: () => "en", translate: (_locale, _key, fallback) => fallback };
+    if (id.endsWith("/store")) return { useSettingsStore: { getState: () => ({ settings: {
+      general: { language: "en" }, agent: { memory_tool_enabled: true, memory_policy: "smart" },
+    } }) } };
+    return { runMemoryDream: (...args) => new Promise((resolve, reject) => calls.push({ args, resolve, reject })) };
+  } });
+  const user = "中文🙂".repeat(2500);
+  const batches = exported.memoryBatches(user, "done");
+  assert.equal(batches.join(""), `user: ${user}\nassistant: done`);
+  assert.ok(batches.every((batch) => Array.from(batch).length <= 6000));
+  const context = { provider: "old", model: "old-model", conversationId: "chat", scope: "Qx" };
+  exported.scheduleTurnMemory({ user, assistant: "done", context, turnKey: "turn", name: "Test" });
+  context.model = "new-model";
+  calls.shift().resolve({ candidateCount: 0 });
+  await new Promise(setImmediate);
+  const failed = calls.shift();
+  assert.equal(failed.args[2].model, "old-model");
+  failed.reject(new Error("offline"));
+  await new Promise(setImmediate);
+  assert.equal(exported.failedMemoryCount(), 1);
+  assert.equal(errors[0].priority, "error");
+  const retry = exported.retryFailedMemories();
+  const retried = calls.shift();
+  assert.equal(retried.args[3], failed.args[3], "retry resumes the failed batch, not successful prefix");
+  retried.resolve({ candidateCount: 0 });
+  await retry;
+  assert.equal(exported.failedMemoryCount(), 0);
+}
 
 // Module Action port: discover + run stable module/plugin actions (RSS refresh, P仔, plugins).
 const moduleActionsSource = readFileSync(

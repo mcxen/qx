@@ -31,6 +31,8 @@ import {
   updateQxManageableSetting,
 } from "./host-management";
 
+import { mutateMemory, runMemoryDream } from "./memory";
+
 const hostOn = (s: AgentSettings) => s.qx_host_actions_enabled;
 
 /**
@@ -689,7 +691,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "memory",
     description:
-      "Long-term memory (SQLite + FTS archive, RLM-style). Targets: memory | user. Actions: add | replace | remove | status | search. Hot prompt window is char-capped (~2200/1375); search hits the full archive so older notes stay findable. Snapshot is frozen in the system prompt.",
+      "Long-term memory (SQLite + FTS archive, RLM-style). Targets: memory | user. Actions: add | replace | remove | status | search | read. The prompt contains a bounded index. Search returns brief hits; read with id returns the full record. Scope is bound by the host, never model-selected. Archived originals require includeArchived=true.",
     inputHint:
       '{"action":"search","content":"display brightness"} or {"action":"add","target":"user","content":"Prefers concise Chinese"}',
     parameters: {
@@ -697,9 +699,10 @@ export const TOOLS: ToolSpec[] = [
       properties: {
         action: {
           type: "string",
-          description: "add | replace | remove | status | search",
+          description: "add | replace | remove | status | search | read",
         },
         target: { type: "string", description: "memory | user (optional filter for search)" },
+        category: { type: "string", enum: ["user", "feedback", "project", "reference"], description: "Category for add" },
         content: {
           type: "string",
           description: "Entry text for add/replace, or search query for action=search",
@@ -708,6 +711,7 @@ export const TOOLS: ToolSpec[] = [
           type: "string",
           description: "Unique substring or id for replace/remove",
         },
+        includeArchived: { type: "boolean", description: "Search archived originals explicitly" },
         // aliases for older tools
         text: { type: "string" },
         query: { type: "string" },
@@ -716,7 +720,7 @@ export const TOOLS: ToolSpec[] = [
       required: ["action"],
     },
     isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
-    run: async (input) => {
+    run: async (input, context) => {
       const rec = asRecord(input);
       let action = stringField(rec, "action").trim().toLowerCase() || "status";
       // Backward-compatible shims if the model emits memory_add style fields.
@@ -729,34 +733,44 @@ export const TOOLS: ToolSpec[] = [
         || stringField(rec, "text")
         || stringField(rec, "query");
       const oldText = stringField(rec, "old_text") || stringField(rec, "oldText") || stringField(rec, "id");
-      const result = await invoke("qxai_memory_mutate", {
+      const result = await mutateMemory({
+        context,
         action,
+        includeArchived: rec.includeArchived === true,
         target: target || null,
         content: content || null,
         oldText: oldText || null,
+        category: stringField(rec, "category") || null,
       });
-      return truncate(JSON.stringify(result, null, 2));
+      if (action === "search") {
+        const response = asRecord(result);
+        if (Array.isArray(response.hits)) response.hits = response.hits.map((hit) => {
+          const { content: _fullContent, ...brief } = asRecord(hit);
+          return brief;
+        });
+        return truncate(JSON.stringify(response, null, 2));
+      }
+      return action === "read" ? JSON.stringify(result, null, 2) : truncate(JSON.stringify(result, null, 2));
     },
   },
   {
     name: "memory_dream",
     description:
-      "Run selective memory consolidation manually. Original records are preserved; any summary is stored as a derived record with source lineage.",
+      "Extract durable facts or use mode=compress to shorten existing core memories. Original records are preserved; any summary is stored as a derived record with source lineage.",
     inputHint: '{"transcript": "optional recent conversation summary"}',
     parameters: {
       type: "object",
       properties: {
         transcript: { type: "string", description: "Optional session text to distill" },
+        mode: { type: "string", enum: ["manual", "compress"], description: "compress shortens existing core memories without deleting originals" },
       },
     },
     isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
-    run: async (input) => {
+    run: async (input, context) => {
       const rec = asRecord(input);
       const transcript = stringField(rec, "transcript") || undefined;
-      const result = await invoke("qxai_memory_dream", {
-        transcript: transcript?.trim() || null,
-        mode: "manual",
-      });
+      const mode = stringField(rec, "mode") === "compress" ? "compress" : "manual";
+      const result = await runMemoryDream(transcript, mode, context);
       return truncate(JSON.stringify(result, null, 2));
     },
   },
@@ -790,8 +804,9 @@ export const TOOLS: ToolSpec[] = [
     inputHint: "{}",
     parameters: { type: "object", properties: {} },
     isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
-    run: async () => {
-      const result = await invoke("qxai_memory_mutate", {
+    run: async (_input, context) => {
+      const result = await mutateMemory({
+        context,
         action: "status",
         target: null,
         content: null,
@@ -811,11 +826,12 @@ export const TOOLS: ToolSpec[] = [
         content: { type: "string" },
         target: { type: "string" },
         tags: { type: "array", items: { type: "string" } },
+        category: { type: "string", enum: ["user", "feedback", "project", "reference"] },
       },
       required: ["text"],
     },
     isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
-    run: async (input) => {
+    run: async (input, context) => {
       const rec = asRecord(input);
       const content = stringField(rec, "content") || stringField(rec, "text");
       const tags = Array.isArray(rec.tags)
@@ -824,10 +840,12 @@ export const TOOLS: ToolSpec[] = [
       const target =
         stringField(rec, "target")
         || (tags.some((t) => /user|pref/i.test(t)) ? "user" : "memory");
-      const result = await invoke("qxai_memory_mutate", {
+      const result = await mutateMemory({
+        context,
         action: "add",
         target,
         content,
+        category: stringField(rec, "category") || tags.find((tag) => tag.startsWith("category:"))?.slice(9) || null,
         oldText: null,
       });
       return truncate(JSON.stringify(result, null, 2));
@@ -846,10 +864,11 @@ export const TOOLS: ToolSpec[] = [
       },
     },
     isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
-    run: async (input) => {
+    run: async (input, context) => {
       const rec = asRecord(input);
       const oldText = stringField(rec, "old_text") || stringField(rec, "id");
-      const result = await invoke("qxai_memory_mutate", {
+      const result = await mutateMemory({
+        context,
         action: "remove",
         target: stringField(rec, "target") || "memory",
         content: null,

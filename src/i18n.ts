@@ -12,6 +12,17 @@ export type Locale = "en" | "zh-CN";
 export type LanguagePreference = "system" | "en" | "zh-CN";
 
 const zh: Record<string, string> = {
+  "agent.memory.extract.failed": "记忆整理失败",
+  "agent.memory.retry": "重试待整理记忆（{n}）",
+  "agent.memory.scope": "记忆范围",
+  "agent.memory.scope.global": "全局",
+  "agent.memory.scope.placeholder": "项目名称（留空为全局）",
+  "agent.memory.scope.hint": "仅影响后续对话，不移动已有记忆。相同项目名称共享记忆。",
+  "agent.memory.source.view": "查看来源",
+  "agent.memory.source.open": "打开来源会话",
+  "agent.memory.source.missing": "来源会话已删除或不可用",
+  "agent.memory.search": "筛选记忆…",
+  "agent.memory.delete.confirm": "删除这条记忆？此操作无法撤销。",
   "shell.filterActions": "筛选操作…",
   "shell.menuShortcut": "操作菜单打开时可用",
   "island.errorDetails": "查看错误详情",
@@ -434,6 +445,22 @@ const zh: Record<string, string> = {
   "agent.memory.source.manual": "手动",
   "agent.memory.importance": "重要度 {n}",
   "agent.memory.untagged": "无标签",
+  "agent.memory.category": "记忆分类",
+  "agent.memory.category.user": "用户画像",
+  "agent.memory.category.feedback": "用户反馈",
+  "agent.memory.category.project": "项目背景",
+  "agent.memory.category.reference": "外部资源",
+  "agent.memory.compress": "压缩记忆",
+  "agent.memory.compress.running": "正在压缩…",
+  "agent.memory.compressed": "{before} → {after} 字符，原文已保留",
+  "agent.memory.compress.unchanged": "本批记忆无需进一步压缩",
+  "agent.memory.compress.partial": "本次处理了有限批次",
+  "agent.memory.hot": "通用热区",
+  "agent.memory.archived": "已归档原文",
+  "agent.memory.source.compressed": "压缩",
+  "agent.memory.source.smart": "智能提取",
+  "agent.memory.source.extracted": "手动提取",
+  "agent.memory.source.plugin": "插件",
   "agent.tools.search": "应用和文件搜索",
   "agent.tools.search.desc": "将 Qx 应用搜索和文件搜索暴露为 Agent 工具。",
   "agent.tools.apps": "应用",
@@ -2570,7 +2597,11 @@ export function useLocale(): Locale {
 export function useT() {
   const locale = useLocale();
   return useCallback((key: string, fallback: string): string => {
-    if (locale === "zh-CN") return zh[key] ?? fallback;
-    return fallback;
+    return translate(locale, key, fallback);
   }, [locale]);
+}
+
+/** Same dictionary for non-React background feedback. */
+export function translate(locale: Locale, key: string, fallback: string): string {
+  return locale === "zh-CN" ? zh[key] ?? fallback : fallback;
 }

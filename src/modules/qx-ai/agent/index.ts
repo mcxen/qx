@@ -95,5 +95,4 @@ export {
   invalidateMemorySnapshot,
   loadMemorySnapshot,
   runMemoryDream,
-  shouldExtractMemoryAfterTurn,
 } from "./memory";

@@ -21,6 +21,15 @@
 - 验证：生产逻辑测试、120 组浏览器消融、类型检查、前端 build 和全量 check；复现与实机待验项见 [Shell 验证记录](docs/shell-refactor-validation.md)。未替换安装版，不将 mock IPC 浏览器验证等同于 macOS/Windows 实机验收。
 - 超过 1200 行发布阈值，本轮批次使用 v0.6.114；工作区并行 QxAI 分类记忆改动不包含在本批次。
 
+### QxAI — 分类记忆与压缩（2026-09-21）
+
+- 新增用户画像、用户反馈、项目背景、外部资源四分类；设置页和 Agent 复用压缩命令，显示真实 active 正文字数变化，保留可检索原文与来源谱系。
+- 修复热区被超长记录阻断、插件 IPC 丢失记忆元数据、中文 LIKE 回退忽略 target，以及压缩完成后快照缓存未失效的问题。
+- 提取/压缩采用有界输入、single-flight、来源快照校验和记录/FTS 原子事务；拆出 consolidation/retrieval，存储入口保持 1000 行以内。
+- 后续补齐独立项目范围、冻结来源会话模型、有界 FIFO、分批游标与原子防重复回执；快照改为索引，工具按需读取全文。设置页范围筛选、搜索、来源/原文浮层与待整理重试已接入；失败只进 Island。
+- 验证：17 个 Rust 记忆测试，生产缓存/队列/游标异步回归，12 组浏览器中英/明暗/360、680、1200px（范围、来源、IME、稳定错误高度）通过。复现脚本为 `scripts/check-qx-ai-agent.mjs`、`scripts/check-memory-browser.mjs`（需 Vite）；浏览器夹具仅使用合成数据与 mock IPC。
+- 本轮纳入 v0.6.115 发布批次；`npm run check`、`npx tsc --noEmit`、`npm run build`、`cargo check`、`cargo fmt --check` 通过。未调用真实供应商验收提取质量，未替换安装版、未做原生 IME 或 Windows 安装态验收。处理回执持久化，未完成队列仍是进程级，退出后不自动恢复。桌面包由 tag 工作流构建，触发不代表产物已发布。
+
 ### Plugin — Speedtest 原生 Workbench 移植（2026-09-21）
 
 - 从固定的 Raycast 上游提交按 Qx `context.*` 端口重写，使用 Ookla 官方 CLI、归档 SHA-256 校验、JSONL 实时进度、Workbench 指标与真实带宽采样曲线；未引入 Raycast shim 或自绘仪表盘。

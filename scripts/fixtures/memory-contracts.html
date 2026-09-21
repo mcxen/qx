@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Qx memory contracts</title></head><body><div id="root"></div><script type="module">
+import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
+mockIPC((command) => command === 'plugin:event|listen' ? 1 : null);
+mockWindows('main');
+await import('./memory-contracts.tsx');
+</script></body></html>
