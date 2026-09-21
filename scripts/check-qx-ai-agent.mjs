@@ -40,6 +40,30 @@ const messageVariantsSource = readFileSync(
   new URL("../src/modules/qx-ai/message-variants.ts", import.meta.url),
   "utf8",
 );
+const messageActionsSource = readFileSync(
+  new URL("../src/modules/qx-ai/message-actions.tsx", import.meta.url),
+  "utf8",
+);
+const qxAiChatSource = readFileSync(
+  new URL("../src/modules/qx-ai/QxAiChat.tsx", import.meta.url),
+  "utf8",
+);
+const sessionBackendSource = readFileSync(
+  new URL("../src-tauri/src/qx_ai_sessions.rs", import.meta.url),
+  "utf8",
+);
+const conversationModelSource = readFileSync(
+  new URL("../src/modules/qx-ai/conversation-model.ts", import.meta.url),
+  "utf8",
+);
+const agentSettingsSource = readFileSync(
+  new URL("../src/modules/settings/AgentSettings.tsx", import.meta.url),
+  "utf8",
+);
+const memorySettingsSource = readFileSync(
+  new URL("../src/modules/qx-ai/MemorySection.tsx", import.meta.url),
+  "utf8",
+);
 const contractsSource = readFileSync(
   new URL("../src/modules/qx-ai/contracts.ts", import.meta.url),
   "utf8",
@@ -161,6 +185,9 @@ assert.match(messageSource, /aria-expanded=\{open\}/);
 assert.match(messageSource, /defaultOpen=\{false\}/);
 assert.doesNotMatch(messageSource, /defaultOpen=\{step\.state === "running"\}/);
 assert.match(messageSource, /function latestActivityLine/);
+assert.match(messageSource, /function isJsonStructureOnly/);
+assert.match(messageSource, /Array\.isArray\(parsed\) \|\| parsed === null/);
+assert.match(messageSource, /!isJsonStructureOnly\(line\)/);
 assert.match(messageSource, /function ToolCallGroupPanel/);
 assert.match(messageSource, /className="qx-ai-reasoning-summary"/);
 assert.match(messageSource, /className="qx-ai-tool-activity"/);
@@ -169,6 +196,48 @@ assert.match(qxAiCssSource, /\.qx-ai-reasoning-summary,[\s\S]*?white-space:\s*no
 assert.match(qxAiCssSource, /\.qx-ai-activity-roll-line\.is-entering/);
 assert.match(qxAiCssSource, /\.qx-ai-tool-group-body/);
 assert.match(qxAiCssSource, /prefers-reduced-motion[\s\S]*?qx-ai-activity-roll-line\.is-leaving/);
+assert.match(qxAiCssSource, /\.qx-jan-cot\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent/);
+assert.match(qxAiCssSource, /prefers-reduced-motion[\s\S]*?qx-jan-cot-title\.is-shimmer/);
+assert.doesNotMatch(messageSource, /<span className="qx-jan-shimmer">/);
+assert.match(messageActionsSource, /useLocale\(\)/);
+assert.match(messageActionsSource, /new Intl\.DateTimeFormat\(locale/);
+assert.match(messageActionsSource, /dateStyle: "short"/);
+assert.doesNotMatch(messageActionsSource, /toLocaleString\(undefined/);
+assert.match(qxAiCssSource, /\.qx-jan-message-actions\.is-user\s*\{[\s\S]*?justify-content:\s*flex-end/);
+assert.match(qxAiCssSource, /\.qx-jan-message-actions\s*\{[\s\S]*?justify-content:\s*flex-start/);
+
+// Model selection has three ownership levels: settings are only the default for
+// new chats, each conversation owns its next-turn selection, and every completed
+// assistant message/variant freezes the provider/model that actually generated it.
+assert.match(storeSource, /withMessageModelSnapshots\(repairedConversation\)/);
+assert.match(conversationModelSource, /function withMessageModelSnapshots/);
+assert.match(storeSource, /provider: selection\.provider,[\s\S]*?model: selection\.model,[\s\S]*?role: "assistant"|role: "assistant",[\s\S]*?provider: selection\.provider,[\s\S]*?model: selection\.model/);
+assert.match(messageVariantsSource, /provider: message\.provider/);
+assert.match(messageVariantsSource, /model: message\.model/);
+assert.match(qxAiChatSource, /msg\.provider \|\| conv\?\.provider/);
+assert.match(qxAiChatSource, /msg\.model \|\| conv\?\.model/);
+assert.match(sessionBackendSource, /object\.remove\("provider"\)/);
+assert.match(sessionBackendSource, /object\.remove\("model"\)/);
+
+// Model settings stay focused on providers/default selection. Memory belongs
+// with tool controls, and selected-model capabilities are not duplicated below
+// the already annotated model label.
+{
+  const modelsStart = agentSettingsSource.indexOf('{section === "agent-models"');
+  const toolsStart = agentSettingsSource.indexOf('{section === "tools-safety"');
+  const memoryStart = agentSettingsSource.indexOf("<MemorySection />");
+  assert.ok(modelsStart >= 0 && toolsStart > modelsStart);
+  assert.ok(memoryStart > toolsStart, "memory management must live under Tools & Safety");
+  assert.doesNotMatch(
+    agentSettingsSource.slice(modelsStart, toolsStart),
+    /<MemorySection\s*\/>/,
+  );
+}
+assert.doesNotMatch(agentSettingsSource, /qx-agent-model-meta/);
+assert.match(memorySettingsSource, /useT\(\)/);
+assert.match(memorySettingsSource, /useLocale\(\)/);
+assert.match(memorySettingsSource, /new Intl\.DateTimeFormat\(locale/);
+assert.match(qxAiCssSource, /\.qx-ai-memory-list\s*\{[\s\S]*?max-height:/);
 
 // Tool completion must update both the live streaming projection and the
 // durable steps returned with the finished assistant message. Otherwise the

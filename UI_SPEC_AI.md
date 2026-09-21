@@ -34,6 +34,8 @@
 | Queue | 输入上方 chips | `.qx-ai-message-queue` |
 | — | stream caret | `.qx-stream-caret` |
 
+助手消息标题显示该回复生成时持久化的模型快照；修改默认模型或切换会话后续模型，不得把历史回复统一重标为当前模型。
+
 DOM 上应同时带 **Elements 语义类** 与现有 jan 类（过渡期），例如：
 
 ```html
@@ -94,6 +96,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 - 满列、无卡片壳；markdown 代码块限制最大高度并可独立滚动，头部保留语言、复制与长行换行操作，切换换行不得改写原始代码。
 - 流式：内容末 **竖线 caret**（`.qx-stream-caret`），不用 `|` 字符硬编码。
 - 完成后可显示 tokens/sec（仅完成态）。
+- 消息日期使用 Qx resolved locale 的短格式和弱化的 10px 元信息样式；助手日期跟随左侧阅读流，用户日期贴合气泡右侧。日期常驻，操作按钮在 hover / focus 时于日期旁显示且不得引起正文或日期位移。
 - 重新生成保留旧回复为同一条助手消息的候选版本；页脚左右切换时，正文、推理、工具步骤、附件和用量必须一起切换。发送给模型的上下文只包含当前候选，不携带候选版本元数据。重新生成失败或应用在生成中退出时恢复原消息，不允许用半截分支覆盖旧回复。
 
 ### 附件
@@ -109,7 +112,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 
 1. 折叠触发：Sparkles + 标题（流式 shimmer「Thinking…」/ 完成「Thought for N seconds」）。
    完成态优先显示运行时记录的思考阶段耗时；旧消息没有该字段时才退回「Thought for a few seconds」。
-2. 流式与完成态默认收起为一行；流式行在状态标题后显示最新一行思考或工具活动，超宽时裁切并跟随最新内容。活动变化用约 300ms 的有界纵向替换动画且采用 latest-wins；`prefers-reduced-motion` 下直接替换。用户可手动展开完整时间线，状态更新不得强制改写用户的展开选择。
+2. 流式与完成态默认收起为一行；折叠行保持透明，只允许 hover / focus 出现轻量反馈；shimmer 只裁切在状态标题字形内，不得生成动画卡片背景。流式行在状态标题后显示最新一行思考或工具活动，超宽时裁切并跟随最新内容。活动变化用约 300ms 的有界纵向替换动画且采用 latest-wins；`prefers-reduced-motion` 下直接替换并停止 shimmer。用户可手动展开完整时间线，状态更新不得强制改写用户的展开选择。
 3. 展开：左侧 **1px 时间线** + 步骤行（thought / tool / observation）；active 步骤使用
    accent 脉冲，complete/error 使用稳定状态图标，并尊重 reduced-motion。
 4. 时间线内每条 thought / error 与每次 tool execution 都是独立折叠项，默认收起；
@@ -124,6 +127,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 ## 5. Tool
 
 - 收起：与思考时间线一致的一行摘要（工具类别 + 状态 + 关键参数或结果摘要），超宽单行裁切；不使用独立厚卡片或 pill。命令、搜索、文件、网页、系统和模块工具使用稳定类别图标及语义字段（如 `command`、`query`、`path`、`url`），不直接倾倒 JSON。
+- JSON 输入/结果只有在能提取语义字段时才进入折叠摘要；`{}`、`}`、`]`、逗号等结构字符不得单独显示在工具行右侧。完整结构化结果保留在展开内容中。
 - 展开：轻边框参数/结果 pre。
 - 嵌在 Reasoning 列表内时避免双重标题噪音。
 - 连续两次及以上工具调用收成单个组行；组行展示数量、综合状态和最新活动，展开后仍逐项查看。
@@ -188,7 +192,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 - [x] 工具摘要按命令/搜索/文件/网页/系统/模块分类并优先显示语义参数
 - [x] function-calling 多轮消息完整保留 `tool_calls` / `tool_call_id`，流式与兼容回退使用同一消息协议
 - [x] 消息下显示日期，并提供复制、编辑、删除；助手末条支持重新生成
-- [x] 消息日期常驻，操作图标按 hover/focus 显示；图标使用无阴影、无毛玻璃的扁平 ghost 样式
+- [x] 消息日期按 resolved locale 以弱化短格式常驻，助手左对齐、用户右对齐；操作图标按 hover/focus 显示且不造成位移，使用无阴影、无毛玻璃的扁平 ghost 样式
 - [x] 重新生成保留可切换候选；失败/中断恢复旧消息，候选元数据不发送给模型
 - [x] 代码块可复制、切换长行换行并在最大高度内独立滚动
 - [x] 已发送附件使用紧凑文件条/小缩略图，动作按 hover/focus 显示

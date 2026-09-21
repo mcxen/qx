@@ -1,17 +1,29 @@
 import { Check, ChevronLeft, ChevronRight, Copy, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "../../components/ui";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
 
-/** Jan-style local date under each message (short month + time). */
-export function formatQxAiMessageDate(timestamp: number | undefined): string {
+/** Compact local date under each message, using Qx's resolved UI locale. */
+export function formatQxAiMessageDate(
+  timestamp: number | undefined,
+  locale: string,
+): string {
   if (!timestamp || !Number.isFinite(timestamp)) return "";
-  return new Date(timestamp).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatQxAiMessageDateTitle(timestamp: number | undefined, locale: string): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return "";
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "full",
+    timeStyle: "short",
+  }).format(date);
 }
 
 interface QxAiMessageActionsProps {
@@ -52,7 +64,9 @@ export function QxAiMessageActions({
   onNextVariant,
 }: QxAiMessageActionsProps) {
   const t = useT();
-  const date = formatQxAiMessageDate(timestamp);
+  const locale = useLocale();
+  const date = formatQxAiMessageDate(timestamp, locale);
+  const dateTitle = formatQxAiMessageDateTitle(timestamp, locale);
   if (role === "system") return null;
 
   return (
@@ -65,6 +79,7 @@ export function QxAiMessageActions({
         <time
           className="qx-jan-message-date"
           dateTime={new Date(timestamp ?? 0).toISOString()}
+          title={dateTitle}
         >
           {date}
         </time>

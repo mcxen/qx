@@ -533,6 +533,8 @@ pub(crate) fn prepare_provider_messages(messages: Vec<Value>) -> Result<Vec<Valu
             object.remove("steps");
             object.remove("skill");
             object.remove("createdAt");
+            object.remove("provider");
+            object.remove("model");
             object.remove("tokenCount");
             object.remove("tokenSpeed");
             object.remove("durationMs");
@@ -643,6 +645,21 @@ mod provider_message_tests {
             messages[0]["content"][3]["image_url"]["url"],
             "data:image/jpeg;base64,AQ=="
         );
+    }
+
+    #[test]
+    fn removes_local_model_snapshots_before_provider_requests() {
+        let messages = prepare_provider_messages(vec![json!({
+            "role": "assistant",
+            "content": "done",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash"
+        })])
+        .expect("prepare assistant message");
+
+        assert_eq!(messages[0]["content"], "done");
+        assert!(messages[0].get("provider").is_none());
+        assert!(messages[0].get("model").is_none());
     }
 }
 

@@ -198,6 +198,16 @@ export default function QxAiChat() {
   );
   const activeModels = activeProvider?.models ?? [];
   const activeModel = activeModels.find((model) => model.id === conv?.model);
+  const modelLabel = useCallback(
+    (providerId?: string, modelId?: string) => {
+      if (!modelId) return "AI";
+      return providers
+        .find((provider) => provider.id === providerId)
+        ?.models.find((model) => model.id === modelId)?.name
+        || modelId;
+    },
+    [providers],
+  );
   const modelVisionState = resolveModelVisionState(
     conv?.provider ?? "",
     activeModel ?? (conv?.model ? { id: conv.model, name: conv.model } : undefined),
@@ -875,7 +885,10 @@ export default function QxAiChat() {
                           <div className="qx-ai-message-meta">
                             {msg.role === "user"
                               ? t("qxai.you", "You")
-                              : activeModel?.name || conv?.model || "AI"}
+                              : modelLabel(
+                                  msg.provider || conv?.provider,
+                                  msg.model || conv?.model,
+                                )}
                             {msg.role === "user" && msg.skill ? (
                               <span className="qx-ai-message-skill">
                                 <Sparkles size={11} />
@@ -987,7 +1000,10 @@ export default function QxAiChat() {
                     >
                       <div className="qx-ai-message-body">
                         <div className="qx-ai-message-meta">
-                          {activeModel?.name || conv?.model || "AI"}
+                          {modelLabel(
+                            run?.provider || conv?.provider,
+                            run?.model || conv?.model,
+                          )}
                         </div>
                         <div
                           className="qx-ai-message-bubble is-jan is-assistant"

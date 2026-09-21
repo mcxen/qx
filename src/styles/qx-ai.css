@@ -1268,7 +1268,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .qx-ai-message.is-jan.is-user .qx-ai-message-body {
@@ -1286,8 +1286,8 @@
 .qx-ai-message.is-jan .qx-ai-message-meta {
   margin-bottom: 0;
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--qx-text-tertiary);
   line-height: 1.25;
 }
@@ -1301,15 +1301,19 @@
 .qx-jan-message-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 5px;
-  min-height: 20px;
-  margin-top: 4px;
-  padding: 0 1px;
+  justify-content: flex-start;
+  gap: 3px;
+  min-height: 18px;
+  margin-top: 2px;
+  padding: 0;
   color: var(--qx-text-tertiary);
-  font-size: 11px;
-  line-height: 1.2;
+  font-size: 10px;
+  line-height: 18px;
   font-variant-numeric: tabular-nums;
+}
+
+.qx-jan-message-actions.is-user {
+  justify-content: flex-end;
 }
 
 .qx-jan-message-action-btns {
@@ -1335,8 +1339,23 @@
 }
 
 .qx-jan-message-date {
-  margin-right: 3px;
+  flex: 0 0 auto;
   white-space: nowrap;
+  opacity: 0.72;
+}
+
+/* Keep the user timestamp against the bubble's right edge while actions reveal
+ * to its left. Assistant metadata follows the left-aligned reading flow. */
+.qx-jan-message-actions.is-user .qx-ai-message-branches {
+  order: 1;
+}
+
+.qx-jan-message-actions.is-user .qx-jan-message-action-btns {
+  order: 2;
+}
+
+.qx-jan-message-actions.is-user .qx-jan-message-date {
+  order: 3;
 }
 
 .qx-jan-message-actions .qx-shadcn-button {
@@ -1445,7 +1464,7 @@
 }
 
 .qx-ai-message-bubble.is-jan.is-assistant .qx-md-body p {
-  margin: 0 0 0.65em;
+  margin: 0 0 0.72em;
 }
 
 .qx-ai-message-bubble.is-jan.is-assistant .qx-md-body p:last-child {
@@ -1770,7 +1789,12 @@
  */
 .qx-jan-cot {
   margin: 0 0 8px;
+  padding: 0;
+  border: 0;
   border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
   transition: none;
 }
 
@@ -1873,21 +1897,6 @@
 
 .qx-ai-tool-activity {
   text-overflow: ellipsis;
-}
-
-.qx-jan-cot-title.is-shimmer,
-.qx-jan-shimmer {
-  color: transparent !important;
-  background-image: linear-gradient(
-    90deg,
-    var(--qx-text-tertiary) 35%,
-    var(--qx-text-primary) 50%,
-    var(--qx-text-tertiary) 65%
-  );
-  background-size: 200% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  animation: qx-jan-shimmer 1.4s linear infinite;
 }
 
 .qx-jan-chevron {
@@ -2017,18 +2026,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .qx-jan-step.is-active .qx-jan-step-rail svg,
-  .qx-ai-activity-roll-line.is-entering,
-  .qx-ai-activity-roll-line.is-leaving {
-    animation: none;
-  }
-
-  .qx-ai-activity-roll-line.is-leaving {
-    opacity: 0;
-  }
-}
-
 /* Tool rows — compact timeline summaries with expandable details. */
 .qx-jan-tool {
   border-radius: 8px;
@@ -2140,6 +2137,7 @@
   opacity: 0.82;
 }
 
+.qx-jan-cot-title.is-shimmer,
 .qx-jan-shimmer {
   background: linear-gradient(
     90deg,
@@ -2157,6 +2155,26 @@
 @keyframes qx-jan-shimmer {
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qx-jan-step.is-active .qx-jan-step-rail svg,
+  .qx-ai-activity-roll-line.is-entering,
+  .qx-ai-activity-roll-line.is-leaving,
+  .qx-jan-cot-title.is-shimmer,
+  .qx-jan-shimmer {
+    animation: none;
+  }
+
+  .qx-ai-activity-roll-line.is-leaving {
+    opacity: 0;
+  }
+
+  .qx-jan-cot-title.is-shimmer,
+  .qx-jan-shimmer {
+    background: none;
+    color: var(--qx-text-secondary) !important;
+  }
 }
 
 .qx-jan-streaming-dot {
@@ -2694,11 +2712,95 @@
   font-size: 12.5px;
 }
 
-.qx-agent-model-meta {
+.qx-ai-memory-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 0 2px;
+}
+
+.qx-ai-memory-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.qx-ai-memory-textarea {
+  width: 100%;
+  min-height: 72px;
+  box-sizing: border-box;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.qx-ai-memory-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.qx-ai-memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(360px, 44vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.qx-ai-memory-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--qx-border-1) 72%, transparent);
+}
+
+.qx-ai-memory-item:last-child {
+  border-bottom: 0;
+}
+
+.qx-ai-memory-item-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.qx-ai-memory-text {
+  color: var(--qx-text-primary);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.qx-ai-memory-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 2px;
+  gap: 3px 8px;
+  margin-top: 4px;
+  color: var(--qx-text-tertiary);
+  font-size: 10.5px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-ai-memory-delete {
+  flex: 0 0 auto;
+  color: var(--qx-danger);
+}
+
+@media (max-width: 520px) {
+  .qx-ai-memory-compose {
+    grid-template-columns: 1fr;
+  }
+
+  .qx-ai-memory-compose .qx-command-button {
+    justify-self: start;
+  }
 }
 
 @media (max-width: 620px) {

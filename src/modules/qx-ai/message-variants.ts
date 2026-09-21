@@ -13,6 +13,8 @@ export function toAssistantVariant(message: G4fMessage): QxAiAssistantVariant {
   return {
     content: message.content,
     createdAt: message.createdAt,
+    provider: message.provider,
+    model: message.model,
     reasoning: message.reasoning,
     steps: message.steps,
     attachments: message.attachments,

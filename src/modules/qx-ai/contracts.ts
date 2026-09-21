@@ -22,6 +22,9 @@ export interface G4fMessage {
   role: "user" | "assistant" | "system";
   content: string;
   createdAt?: number;
+  /** Provider/model snapshot that produced this assistant message. */
+  provider?: string;
+  model?: string;
   reasoning?: string;
   steps?: AgentStep[];
   attachments?: QxAiFileAttachment[];
@@ -44,6 +47,9 @@ export interface G4fMessage {
 export interface QxAiAssistantVariant {
   content: string;
   createdAt?: number;
+  /** Provider/model snapshot that produced this regenerated candidate. */
+  provider?: string;
+  model?: string;
   reasoning?: string;
   steps?: AgentStep[];
   attachments?: QxAiFileAttachment[];

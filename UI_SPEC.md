@@ -1020,6 +1020,9 @@ Settings：
 - Extensions → Installed 的每个模块行在尾部直接显示启停 Toggle，并保留 Lucide 详情按钮；
   内置模块与外部插件使用同一交互。关闭内置模块后，Launcher、快捷入口、模块搜索和对应后台
   worker 必须共同遵循 `builtin_modules`，不能只把入口隐藏。
+- AI Agent → Agent 与模型只展示供应商和聊天/默认模型；模型能力只在选择器标签中展示一次，
+  不得在下一行重复绘制能力标签。记忆开关、策略与记忆管理归入工具与安全，记忆列表必须有
+  有界滚动区域，不得把默认模型设置推到首屏之外。
 
 - 使用 `visual="elevated"`。
 - Esc / Close → 关闭设置面板。

@@ -10,10 +10,10 @@ import {
   Toggle,
 } from "../../components/ui";
 import {
-  MemorySection,
   ProviderListSection,
   buildModelSelectOptions,
 } from "../qx-ai/AiProviderConfig";
+import { MemorySection } from "../qx-ai/MemorySection";
 import { useG4fStore } from "../qx-ai/store";
 import {
   listQxAiSkills,
@@ -27,10 +27,7 @@ import {
   type QxAiSkillSummary,
 } from "../qx-ai/skills";
 import {
-  formatContextLength,
   modelCapabilityKey,
-  resolveModelContextLength,
-  resolveModelReasoning,
   resolveModelVision,
 } from "../qx-ai/model-capabilities";
 import {
@@ -232,15 +229,6 @@ export default function AgentSettings() {
     effectiveModelMeta,
     agent.model_capabilities,
   );
-  const effectiveReasoning = resolveModelReasoning(
-    effectiveProvider,
-    effectiveModelMeta,
-    agent.model_capabilities,
-  );
-  const effectiveContext = formatContextLength(
-    resolveModelContextLength(effectiveProvider, effectiveModelMeta, agent.model_capabilities),
-  );
-
   const setDefaultModelVision = (vision: boolean) => {
     if (!effectiveProvider || !effectiveModel) return;
     const key = modelCapabilityKey(effectiveProvider, effectiveModel);
@@ -296,7 +284,6 @@ export default function AgentSettings() {
       {section === "agent-models" && <>
       <SettingsCard title={t("agent.providers.title", "Providers & Keys")}>
         <ProviderListSection />
-        <MemorySection />
       </SettingsCard>
 
       <SettingsCard title={t("agent.basics.title", "Chat & Agent")}>
@@ -342,25 +329,6 @@ export default function AgentSettings() {
                   />
                 ) : (
                   <span className="qx-settings-muted">{t("agent.noModels", "No models for this provider")}</span>
-                )}
-                {(effectiveVision || effectiveReasoning || effectiveContext) && (
-                  <div className="qx-agent-model-meta">
-                    {effectiveVision && (
-                      <span className="qx-ai-cap-badge is-vision">
-                        {t("agent.model.vision.badge", "Vision")}
-                      </span>
-                    )}
-                    {effectiveReasoning && (
-                      <span className="qx-ai-cap-badge is-reasoning">
-                        {t("agent.model.reasoning.badge", "Reasoning")}
-                      </span>
-                    )}
-                    {effectiveContext && (
-                      <span className="qx-ai-cap-badge is-context">
-                        {t("agent.model.context.badge", "Context")} {effectiveContext}
-                      </span>
-                    )}
-                  </div>
                 )}
               </>
             ) : (
@@ -425,6 +393,7 @@ export default function AgentSettings() {
           />
         </Row>
       </SettingsCard>
+
       </>}
 
       {section === "tools-safety" && <>
@@ -546,6 +515,16 @@ export default function AgentSettings() {
         <Row title={t("agent.background", "Background tasks")} description={t("agent.background.desc", "Continue agent work while Qx is hidden.")}>
           <Toggle value={agent.background_tasks_enabled} onChange={(value) => patchAgent({ background_tasks_enabled: value })} />
         </Row>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t("agent.memory.manage.title", "Memory Management")}
+        description={t(
+          "agent.memory.manage.desc",
+          "Review, add, or remove durable facts available to the memory tool.",
+        )}
+      >
+        <MemorySection />
       </SettingsCard>
       </>}
 

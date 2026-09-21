@@ -72,6 +72,10 @@ function ToolCategoryIcon({ category }: { category: ToolCategory }) {
   return <Wrench size={14} aria-hidden="true" />;
 }
 
+function isJsonStructureOnly(line: string): boolean {
+  return Boolean(line) && [...line].every((character) => "{}[],".includes(character));
+}
+
 function latestActivityLine(value?: string): string {
   if (!value) return "";
   const lines = value.replace(/\r\n?/g, "\n").split("\n");
@@ -81,7 +85,7 @@ function latestActivityLine(value?: string): string {
       .replace(/^```(?:json|text|\w+)?\s*/i, "")
       .replace(/^[-*#>]+\s*/, "")
       .replace(/\s+/g, " ");
-    if (line && line !== "```") return line;
+    if (line && line !== "```" && !isJsonStructureOnly(line)) return line;
   }
   return "";
 }
@@ -90,12 +94,16 @@ function compactToolPayload(value?: string, category: ToolCategory = "generic"):
   if (!value?.trim()) return "";
   try {
     const parsed = JSON.parse(value) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    if (Array.isArray(parsed) || parsed === null) return "";
+    if (typeof parsed === "object") {
       const record = parsed as Record<string, unknown>;
       for (const key of toolSummaryKeys(category)) {
         const candidate = record[key];
         if (typeof candidate === "string" && candidate.trim()) return latestActivityLine(candidate);
       }
+      // Structured results without a semantic field are useful in the expanded
+      // body, but their final `}` / `]` is not a meaningful collapsed summary.
+      return "";
     }
     if (typeof parsed === "string") return latestActivityLine(parsed);
   } catch {
@@ -410,11 +418,7 @@ function ReasoningPanel({
   const headerTitle = (() => {
     if (title) return title;
     if (isStreaming || durationSec === 0) {
-      return (
-        <span className="qx-jan-shimmer">
-          {streamingLabel ?? t("qxai.cot.thinking", "Thinking…")}
-        </span>
-      );
+      return streamingLabel ?? t("qxai.cot.thinking", "Thinking…");
     }
     if (completedDurationSec === undefined) {
       return t("qxai.cot.thoughtBrief", "Thought for a few seconds");
@@ -432,6 +436,7 @@ function ReasoningPanel({
       <button
         type="button"
         className="qx-ai-reasoning-header qx-jan-cot-header"
+        aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         <Sparkles size={15} strokeWidth={1.75} className="qx-jan-cot-spark" aria-hidden="true" />

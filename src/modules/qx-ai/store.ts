@@ -53,6 +53,7 @@ import {
   withAutoTitle,
 } from "./conversation-title";
 import { removeLegacySyntheticErrorMessages } from "./error-presentation";
+import { withMessageModelSnapshots } from "./conversation-model";
 
 export type { AgentStep, G4fMessage, QxAiFileAttachment } from "./contracts";
 
@@ -93,6 +94,9 @@ export interface QxAiConversationRun {
   providerTokenCount?: number;
   providerTotalTokenCount?: number;
   providerDurationMs?: number;
+  /** Immutable selection used by the active turn. */
+  provider?: string;
+  model?: string;
 }
 
 function speedFromDuration(tokenCount: number, durationMs?: number): number {
@@ -757,7 +761,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           const repairedConversation = messages === recoveredConversation.messages
             ? recoveredConversation
             : { ...recoveredConversation, messages };
-          return withAutoTitle(repairedConversation);
+          return withAutoTitle(withMessageModelSnapshots(repairedConversation));
         });
         const repaired = conversations.filter(
           (conversation, index) => conversation !== sourceConversations[index],
@@ -1103,6 +1107,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           streamingSteps: [],
           error: null,
           startedAt: Date.now(),
+          provider: selection.provider,
+          model: selection.model,
           firstTokenAt: undefined,
           lastDeltaAt: undefined,
           generationMs: 0,
@@ -1314,6 +1320,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           role: "assistant",
           content: result.finalAnswer,
           createdAt: finishedAt,
+          provider: selection.provider,
+          model: selection.model,
           reasoning: result.reasoning,
           steps: result.steps,
           attachments: result.attachments,
@@ -1463,6 +1471,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         role: "assistant",
         content: response,
         createdAt: finishedAt,
+        provider: selection.provider,
+        model: selection.model,
         tokenCount,
         tokenSpeed,
         durationMs,

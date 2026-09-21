@@ -62,7 +62,7 @@ started -> delta* -> done | error | timeout | cancelled
 
 每次变更只 debounce 保存当前 session，Rust 原子替换对应 `session.json` 并更新轻量 index。删除会话时删除该会话目录。旧 bulk save command 只用于兼容/恢复。
 
-助手消息可以持久化 `variants` 与 `activeVariant`，用于同一轮重新生成后的候选切换；消息顶层字段始终镜像当前候选，现有渲染、编辑和删除协议无需理解分支容器。重新生成开始前，会话保存带原始 transcript 的 `regenerationBackup`：成功后把新回复追加为候选并清除备份，provider/配置/运行错误或下次启动恢复时还原原 transcript。Provider 请求必须剥离 `variants`、`activeVariant` 与恢复元数据，只传当前候选，避免本地 UI 状态污染模型上下文。
+助手消息持久化生成时的 `provider` / `model` 快照；设置页只改变新会话默认值，会话内切换只改变后续 turn，不得重标历史回复。旧会话首次加载时以当前会话模型补齐缺失快照（更早已丢失的真实模型不可恢复）。助手消息还可以持久化 `variants` 与 `activeVariant`，用于同一轮重新生成后的候选切换；每个候选保留自己的 provider/model，消息顶层字段始终镜像当前候选。重新生成开始前，会话保存带原始 transcript 的 `regenerationBackup`：成功后把新回复追加为候选并清除备份，provider/配置/运行错误或下次启动恢复时还原原 transcript。Provider 请求必须剥离 `provider`、`model`、`variants`、`activeVariant` 与恢复元数据，只传当前候选，避免本地 UI 状态污染模型上下文。
 
 每个 conversation 拥有独立 run state 和 FIFO 输入队列；不同会话可并发。活动 run 发布独立的 `qxai.run.<conversation-id>` Island task，因此切换聊天或模块不会隐藏后台生成状态。
 
