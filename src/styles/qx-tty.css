@@ -1,9 +1,3 @@
-.qx-tty-shell .qx-shell-content {
-  display: flex;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .qx-tty-layout {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);

@@ -5,6 +5,7 @@ import { usePluginRegistry } from "../../plugin/registry";
 import { Button, Row, Toggle, Select, Input, SettingsCard } from "../../components/ui";
 import { useT } from "../../i18n";
 import { revealSystemPath } from "../../system";
+import { islandHost } from "../../island/session/hostApi";
 
 interface StorageClearResult {
   cleared_bytes: number;
@@ -47,8 +48,11 @@ export default function AdvancedSettings() {
   const [busy, setBusy] = useState<string | null>(null);
   const [ioPath, setIoPath] = useState("");
   const [pluginName, setPluginName] = useState("");
-  const [scaffoldMsg, setScaffoldMsg] = useState("");
-  const [clearMsg, setClearMsg] = useState("");
+  const feedback = (detail: string, failed = false) => islandHost.show({
+    id: "settings.advanced.feedback", priority: failed ? "error" : "toast", source: "module",
+    placement: "docked-or-float", ttlMs: failed ? undefined : 3000,
+    content: { primary: t("nav.advanced", "Advanced"), secondary: detail, tone: failed ? "danger" : "success" },
+  });
 
   const handleImport = async () => {
     if (!ioPath.trim()) return;
@@ -57,7 +61,7 @@ export default function AdvancedSettings() {
       await importFrom(ioPath.trim());
       setIoPath("");
     } catch (e) {
-      console.error(e);
+      feedback(String(e), true);
     } finally {
       setBusy(null);
     }
@@ -70,7 +74,7 @@ export default function AdvancedSettings() {
       await exportTo(ioPath.trim());
       setIoPath("");
     } catch (e) {
-      console.error(e);
+      feedback(String(e), true);
     } finally {
       setBusy(null);
     }
@@ -89,7 +93,7 @@ export default function AdvancedSettings() {
     }
     try {
       setBusy("clear");
-      setClearMsg("");
+      islandHost.dismiss("settings.advanced.feedback");
       const result = await invoke<StorageClearResult>("qx_storage_clear_reclaimable");
       const parts = [
         result.cleared_bytes > 0 ? formatBytes(result.cleared_bytes) : "",
@@ -100,21 +104,23 @@ export default function AdvancedSettings() {
           ? `${result.cleared_records} ${t("about.storage.records.unit", "records")}`
           : "",
       ].filter(Boolean);
-      setClearMsg(
+      feedback(
         parts.length > 0
           ? t("about.storage.clearedDetailed", "Cleared {items}.").replace("{items}", parts.join(" / "))
           : t("about.storage.clearedNothing", "Nothing to clear."),
       );
     } catch (e) {
-      setClearMsg(t("advanced.error", "Error: {message}").replace("{message}", String(e)));
+      feedback(String(e), true);
     } finally {
       setBusy(null);
     }
   };
 
   const revealDiagnosticLog = async () => {
-    const path = await invoke<string>("qx_log_path");
-    await revealSystemPath(path);
+    try {
+      const path = await invoke<string>("qx_log_path");
+      await revealSystemPath(path);
+    } catch (error) { feedback(String(error), true); }
   };
 
   const handleScaffold = async () => {
@@ -125,11 +131,11 @@ export default function AdvancedSettings() {
         name: pluginName.trim().toLowerCase().replace(/\s+/g, "-"),
         outputDir: "~/.qx/plugins",
       });
-      setScaffoldMsg(t("advanced.pluginCreated", "Plugin created at: {path}").replace("{path}", dir));
+      feedback(t("advanced.pluginCreated", "Plugin created at: {path}").replace("{path}", dir));
       setPluginName("");
       await refresh();
     } catch (e) {
-      setScaffoldMsg(t("advanced.error", "Error: {message}").replace("{message}", String(e)));
+      feedback(String(e), true);
     } finally {
       setBusy(null);
     }
@@ -311,11 +317,6 @@ export default function AdvancedSettings() {
             {busy === "clear" ? t("advanced.clearing", "Clearing...") : t("advanced.clear", "Clear")}
           </Button>
         </Row>
-        {clearMsg && (
-          <div className="qx-settings-inline-status">
-            {clearMsg}
-          </div>
-        )}
       </SettingsCard>
 
       <SettingsCard title={t("advanced.developerTools", "Developer")}>
@@ -340,11 +341,6 @@ export default function AdvancedSettings() {
             {busy === "scaffold" ? t("advanced.creating", "Creating...") : t("advanced.create", "Create")}
           </Button>
         </Row>
-        {scaffoldMsg && (
-          <div className={`qx-settings-inline-status${scaffoldMsg.startsWith("Error") ? " is-danger" : ""}`}>
-            {scaffoldMsg}
-          </div>
-        )}
 
         <Row
           title={t("advanced.reloadPlugins", "Reload Plugins")}

@@ -27,6 +27,10 @@ export function useIslandError({
   const sessionId = `feedback.error.${id}`;
   const actionRef = useRef(onAction);
   actionRef.current = onAction;
+  const targetRef = useRef(openTarget);
+  targetRef.current = openTarget;
+  const targetKey = JSON.stringify(openTarget);
+  const hasAction = Boolean(onAction);
 
   useEffect(() => {
     const message = error?.trim();
@@ -40,20 +44,20 @@ export function useIslandError({
       source: "module",
       placement: "docked-or-float",
       ttlMs: 8_000,
-      openTarget,
+      openTarget: targetRef.current,
       content: {
         primary: title,
         secondary: message,
         tone: "danger",
-        action: actionLabel && onAction
+        action: actionLabel && hasAction
           ? { id: "default", label: actionLabel }
           : undefined,
       },
-      actions: actionLabel && onAction
+      actions: actionLabel && hasAction
         ? { default: () => actionRef.current?.() }
         : undefined,
     });
-  }, [actionLabel, error, id, onAction, openTarget, sessionId, title]);
+  }, [actionLabel, error, hasAction, targetKey, sessionId, title]);
 
   useEffect(() => () => islandHost.dismiss(sessionId), [sessionId]);
 }

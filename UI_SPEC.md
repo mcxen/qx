@@ -10,7 +10,7 @@
 - File Actions 的安装默认全局快捷键为 macOS `Option+F`、Windows `Alt+F`，默认开启；设置页的重置必须恢复该平台化显示与启用状态。
 - File Actions 必须进入 Launcher 的可置顶模块目录与主页快捷入口目录。独立 QxPreview 复用同一选择快照和预览渲染器，通过 Settings → Extensions → File Actions 录制 `open:file-preview`；建议键为 macOS `Option+O`、Windows `Alt+O`，默认关闭以免未经用户确认占用额外系统键。快捷键直接打开预览态，多选时保留左侧列表并用上下键切换，Space 或再次按全局快捷键关闭。
 - QxPreview 的 PPTX 幻灯片必须根据预览区域实时适宽，可在宽窗口放大、窄窗口缩小；分栏拖动或窗口缩放后重新计算，不允许以固定幻灯片像素宽度横向溢出。
-- Enter 执行当前有效操作，Esc 经 `useQxModuleShell` 逐层返回。运行中以 Bottom Island 的真实 indeterminate 状态反馈，不造成布局跳动；错误保留在操作区，选择列表仍可使用。
+- Enter 执行当前有效操作，Esc 经 `useQxModuleShell` 逐层返回。运行中以 Bottom Island 的真实 indeterminate 状态反馈，不造成布局跳动；错误进入 Island 详情，选择列表仍可使用，操作区不新增错误行。
 - 所有参数输入使用 Qx shadcn 控件和主题变量。写操作不得静默覆盖已有目标；完成后左栏切换为宿主返回的输出项快照。
 
 > 状态：Current · 适用版本：v0.6.103 · Owner：Frontend · 最后复核：2026-08-31
@@ -274,8 +274,8 @@ Host 窗口 `keydown` 兜底覆盖第 3–5 步；第 1–2 步由模块 `useEsc
 
 禁止：
 
-- 同时传 `onBack` 与 `escapeAction`（会画出左上角箭头 + 底栏最右侧 Esc，双返回）。
-- 新代码依赖 `onBack` / `backLabel` 渲染 Top Bar 返回箭头。`onBack` 仅为历史兼容；模块应只传 `escapeAction`。
+- `onBack` / `backLabel` 已从 QxShell 接口移除；不得另加 Top Bar 返回箭头。
+- 模块使用 `useQxModuleShell().shellProps` 统一传入 Esc、键盘和 Island；返回必须有真实行为，不允许无回调的占位返回按钮。
 - 在 Context Panel 外再做一套全局返回栏或 footer。
 - 复制 Esc 监听逻辑而不走 `useEscBack`。
 
@@ -447,8 +447,8 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 
 | 条件 | 类名 / 网格 | 列含义 |
 |---|---|---|
-| 默认（无 leading / 无 `onBack`） | `.qx-shell-topbar.no-leading` → `minmax(search) 1fr · trailing` | 搜索主列 + trailing |
-| 有 `leading` 或历史 `onBack` | `.qx-shell-topbar` → `auto · minmax(search) 1fr · trailing` | leading + 搜索 + trailing |
+| 默认（无 leading） | `.qx-shell-topbar.no-leading` → `minmax(search) 1fr · trailing` | 搜索主列 + trailing |
+| 有 `leading` | `.qx-shell-topbar` → `auto · minmax(search) 1fr · trailing` | leading + 搜索 + trailing |
 | Launcher 两栏 | `.launcher-shell .qx-shell-topbar` | 搜索对齐 Content / Context 分割线 |
 
 要求：
@@ -628,7 +628,7 @@ Context Panel：
 
 ### 左侧 Home / 右侧 Actions + Esc
 
-- 最右侧渲染 `escapeAction`（或兼容路径下由 `onBack` 推导的 fallback），通过 `ShellActionButton variant="escape"`；主动作与 Actions 菜单位于它左侧。
+- 最右侧渲染 `escapeAction`，通过 `ShellActionButton variant="escape"`；主动作与 Actions 菜单位于它左侧。没有显式传入时，Launcher 真实隐藏窗口，模块真实返回 Launcher；嵌套视图仍必须传入模块阶梯。
 - escape 变体显示 **文案 + Esc 快捷键胶囊**：
   - **主搜索 Launcher**（`islandKey="launcher"`）：空查询为 **Hide / 隐藏**（隐藏主界面）；有查询为 **Back / 返回**（**整行清空**搜索框，不是只删光标处）。中文 IME 候选打开时 Esc 先取消候选；仅 `isComposing` 时让给 IME，不得用粘滞 `keyCode 229` 吞掉清行。**不显示**小房子。
   - **非主搜索**（模块 / Settings / 插件 / loading）：**Back / 返回**（与 `useEscBack.stepBack` 同语义，每按一次退一层）。
@@ -646,7 +646,10 @@ Context Panel：
 - **统一高度 `34px`**（min 32 / max 36）；docked 宽 `min(400px, calc(100% - 260px))`。
 - Chrome（尺寸、居中、玻璃/border）只在 `.qx-island-surface`；内容不得自带 absolute 外轮廓。
 - 模块 `island` prop 经 shim 写入 session store；`customIsland` 只用于无法表达为标准岛内容的
-  分类例外，并会抑制 store docked。录屏控制不属于该例外，必须使用捕获专用受保护工具栏。
+  空闲预览，不得抑制 error、task、toast。录屏控制必须使用捕获专用受保护工具栏。
+- `priority` 明确表达 error / task / location，`tone` 只决定颜色。危险色草稿不是错误，红色录制态是任务；遗留插件字段只在宿主兼容边界推导。
+- 错误在固定高度 Island 中依实际空间降级为完整摘要、紧凑摘要或最小可点击图标。点击或键盘激活打开有界可滚动详情浮层，提供原有恢复动作、打开来源和关闭；正文、表单和列表下方不得新增错误条。
+- 同一错误的普通重渲染不得重置 TTL / 排序或反复播报；完整解释在详情中，控件可保留无效样式。
 - 文本单行截断；progress 默认使用 Surface 下层的浅蓝背景从左向右填充，也可由
   生产者选择宿主图标环、Surface 环或文案列短线；任何样式都不得撑高底栏或遮挡交互。
 - `surface-fill` 使用统一的轻量点状“萤火虫”光效：粒子在当前填充区域内缓慢闪烁，滑块/填充
@@ -1348,18 +1351,20 @@ search={
   与指标列在各自边界内滚动，任何内容都不得跨入相邻组件。普通点击态只改变语义背景/边框，
   不做 translate、scale 或抖动反馈。
 - `max-width: 860px` 时通用 QxShell 隐藏 Context Panel；模块若需要保留详情，必须提供进入详情页、Dialog 或 Drawer 的明确入口，不使用未实现的“自动下移”假设。
-- `max-width: 760px` 时主从内容切换为单页模式：列表与详情任一时刻只显示一个，
+- `qx-content` 容器实际宽度 `<= 760px` 时通用主从内容切换为单页模式（包括 Context 占用空间）：列表与详情任一时刻只显示一个，
   详情页必须保留底部 Esc 返回，并保持当前选择、列表滚动与详情阅读位置。
 - Top Bar 保持单行；空间不足时压缩搜索、图标化次要动作或收进菜单，搜索框不得小于可输入宽度。
 - `681px-860px` 保留 Esc、Bottom Island 和主动作，并隐藏 Island 次级 detail。
-- `max-width: 680px` 可隐藏 Bottom Island，为 Esc 和主动作让位；进行中的任务、错误和权限问题必须在主内容内保留等价可见状态，不能因 Island 隐藏而丢失反馈。
+- `max-width: 680px` 可隐藏空闲 Island，但不得隐藏错误、任务或权限失败。主动作、Actions 和 Esc 紧凑化后仍保留快捷键与可访问名称；关键 Island 保持窗口居中、不增加底栏高度，也不把错误搬进正文。
 - 按钮文字必须截断或缩短，不溢出容器。
 
 | 宽度 | Context Panel | Bottom Island | 操作策略 |
 |---|---|---|---|
 | `> 860px` | 显示 | 完整显示 | 可显示文本动作 |
 | `681px-860px` | 隐藏 | 保留 label，隐藏 detail | 次要动作图标化或收入菜单 |
-| `<= 680px` | 隐藏 | 可隐藏 | 主内容提供关键状态，保留 Esc 与主动作 |
+| `<= 680px` | 隐藏 | 关键反馈保留，空闲可隐藏 | 压缩动作标签，保留快捷键、Esc 与错误详情入口 |
+
+Shell 内容布局通过 `contentMode="scroll" | "fill"` 声明：默认 scroll 由主区滚动，fill 由聊天、终端或分栏等子面板滚动。模块不得反复覆盖 `.qx-shell-content` 的 display/overflow/padding 来切换模式。Context 与主从分栏共用 `useResizablePane`，保留各自存储键和折叠语义，按帧拖动、结束时写入；宽度变量仅限当前 Shell，窗口缩小不覆盖保存的偏好。
 
 ## Accessibility
 

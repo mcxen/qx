@@ -1,16 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { QxShellAction } from "./ShellActionButton";
 import { Popover, PopoverAnchor, PopoverContent } from "./ui";
 import { formatQxShortcut } from "../utils/keyboard";
+import { useT } from "../i18n";
+import { useActionExecution } from "./qx-shell/ActionExecutionContext";
+import { actionHasSubmenu } from "./qx-shell/actionProtocol";
+export { actionHasSubmenu } from "./qx-shell/actionProtocol";
 
 /** Mark shell Actions buttons so outside-dismiss does not race the toggle click. */
 export const QX_ACTION_MENU_TRIGGER_ATTR = "data-qx-action-menu-trigger";
-
-export function actionHasSubmenu(action: QxShellAction): boolean {
-  return Boolean(
-    (action.children && action.children.length > 0) || action.loadChildren,
-  );
-}
 
 export default function ShellActionMenu({
   open,
@@ -47,15 +45,20 @@ export default function ShellActionMenu({
   /** Viewport coordinate for context-menu invocation; absent anchors to Bottom Bar Actions. */
   anchorPoint?: { x: number; y: number } | null;
 }) {
+  const t = useT();
+  const execution = useActionExecution();
+  const menuId = useId();
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
     itemRefs.current[activeIndex]?.scrollIntoView({
       block: "nearest",
     });
-  }, [activeIndex, open, actions]);
+    if (!searchable) itemRefs.current[activeIndex]?.focus({ preventScroll: true });
+  }, [activeIndex, open, actions, searchable]);
 
   useEffect(() => {
     if (!open || !searchable) return;
@@ -85,15 +88,20 @@ export default function ShellActionMenu({
         />
       </PopoverAnchor>
       <PopoverContent
+        ref={menuRef}
+        tabIndex={-1}
         align={anchorPoint ? "start" : "end"}
         side={anchorPoint ? "right" : "top"}
         sideOffset={anchorPoint ? 6 : 10}
         className={`qx-actions-popover${searchable ? " is-searchable" : ""}${
           canGoBack ? " is-nested" : ""
         }`}
-        role="menu"
+        role={searchable ? "dialog" : "menu"}
         aria-label={title}
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          ((searchable ? searchRef.current : itemRefs.current[activeIndex]) ?? menuRef.current)?.focus({ preventScroll: true });
+        }}
         onCloseAutoFocus={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => {
           if (isActionMenuTrigger(event.target)) {
@@ -120,7 +128,7 @@ export default function ShellActionMenu({
               type="button"
               className="qx-actions-popover-back"
               onClick={() => onBack?.()}
-              aria-label="Back"
+              aria-label={t("common.back", "Back")}
             >
               ←
             </button>
@@ -135,6 +143,13 @@ export default function ShellActionMenu({
             type="search"
             value={searchQuery}
             placeholder={searchPlaceholder}
+            aria-label={t("shell.filterActions", "Filter…")}
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={menuId}
+            aria-activedescendant={actions[activeIndex] ? `${menuId}-${activeIndex}` : undefined}
+            autoComplete="off"
+            spellCheck={false}
             onChange={(event) => onSearchQueryChange?.(event.target.value)}
             onKeyDown={(event) => {
               // Keep ↑↓/Enter on the shell handler; stop only bubble for typing keys.
@@ -155,7 +170,7 @@ export default function ShellActionMenu({
           />
         ) : null}
 
-        <div className="qx-actions-popover-scroll">
+        <div id={menuId} className="qx-actions-popover-scroll" role={searchable ? "listbox" : "group"} aria-label={title}>
           {loading ? (
             <div className="qx-actions-popover-empty">…</div>
           ) : actions.length === 0 ? (
@@ -166,16 +181,20 @@ export default function ShellActionMenu({
               return (
                 <button
                   key={action.id}
+                  id={`${menuId}-${index}`}
                   ref={(element) => {
                     itemRefs.current[index] = element;
                   }}
                   className={`qx-actions-popover-item${index === activeIndex ? " is-active" : ""}${
                     action.tone === "danger" ? " danger" : ""
                   }${nested ? " has-submenu" : ""}`}
-                  disabled={action.disabled}
+                  disabled={action.disabled || execution?.isPending(action)}
+                  aria-busy={execution?.isPending(action) || undefined}
+                  tabIndex={index === activeIndex && !searchable ? 0 : -1}
+                  aria-selected={searchable ? index === activeIndex : undefined}
                   onMouseEnter={() => onHover(index)}
                   onClick={() => onRun(action)}
-                  role="menuitem"
+                  role={searchable ? "option" : "menuitem"}
                   type="button"
                 >
                   <span className="qx-actions-popover-copy">
@@ -186,7 +205,7 @@ export default function ShellActionMenu({
                   </span>
                   <span className="qx-actions-popover-kbds">
                     {action.menuKey && (
-                      <kbd className="qx-actions-menu-key" title="While Actions is open">
+                      <kbd className="qx-actions-menu-key" title={t("shell.menuShortcut", "While Actions is open")}>
                         {action.menuKey.toUpperCase()}
                       </kbd>
                     )}

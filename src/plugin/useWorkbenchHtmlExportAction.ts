@@ -79,7 +79,7 @@ export function useWorkbenchHtmlExportAction({
       id: WORKBENCH_HTML_EXPORT_ACTION_ID,
       label: t("plugins.workbench.export.action", "Save Offline HTML"),
       menuKey: exportMenuKey(existingActions),
-      onClick: () => { void save(); },
+      onClick: save,
     };
   }, [detail, existingActions, save, t, visible]);
 }

@@ -77,8 +77,9 @@ function stickyBoost(session: IslandSession): number {
 export function resolveDockedRenderMode(input: {
   exception: boolean;
   winnerId: string | null;
+  winnerPriority?: IslandPriority;
 }): DockedRenderMode {
-  if (input.exception) return "exception";
+  if (input.exception && !["task", "error", "toast"].includes(input.winnerPriority ?? "")) return "exception";
   if (input.winnerId) return "store";
   return "empty";
 }

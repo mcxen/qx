@@ -602,7 +602,7 @@ export default function ArticleList() {
         label: t("rss.refreshAll", "Refresh All"),
         kbd: "CmdOrCtrl+Shift+R",
         disabled: refreshingFeedId != null,
-        onClick: () => void refreshAll(),
+        onClick: () => refreshAll(),
       },
     ];
     if (next) {
@@ -612,7 +612,7 @@ export default function ArticleList() {
           "{title}",
           next.title?.slice(0, 40) || t("rss.untitled", "(untitled)"),
         ),
-        onClick: () => void openArticleForReading(next.id),
+        onClick: () => openArticleForReading(next.id),
       });
     }
     if (prev) {
@@ -622,7 +622,7 @@ export default function ArticleList() {
           "{title}",
           prev.title?.slice(0, 40) || t("rss.untitled", "(untitled)"),
         ),
-        onClick: () => void openArticleForReading(prev.id),
+        onClick: () => openArticleForReading(prev.id),
       });
     }
     return list;
@@ -659,13 +659,13 @@ export default function ArticleList() {
 
   return (
     <QxShell
+      contentMode="fill"
       ref={shellRef}
       title={feed?.title || t("rss.articles", "RSS Articles")}
       islandKey="rss.article-list"
       // List browsing stays dense/solid; open article softens chrome for reading.
       visual={isReading ? "glass" : "solid"}
       className={`qx-content-shell qx-rss-shell${isReading ? " is-reading" : ""}`}
-      onKeyDown={shell.onKeyDown}
       navigation={qxMasterDetailNavigation({
         ids: MD,
         index: selectedIndex,
@@ -682,7 +682,7 @@ export default function ArticleList() {
         focusList,
         focusDetail,
       })}
-      escapeAction={shell.escapeAction}
+      {...shell.shellProps}
       search={
         <QxModuleSearch
           value={localQuery}
@@ -752,7 +752,6 @@ export default function ArticleList() {
           </aside>
         )
       }
-      island={shell.island}
       primaryActionId={primaryActionId}
       actions={actions}
     >

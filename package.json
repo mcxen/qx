@@ -1,7 +1,7 @@
 {
   "name": "qx",
   "private": true,
-  "version": "0.6.113",
+  "version": "0.6.114",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,8 @@
     "check:architecture": "node scripts/check-architecture.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
     "test:shell-navigation": "node scripts/check-qx-shell-navigation.mjs",
+    "test:shell-contracts": "node scripts/check-shell-contracts.mjs",
+    "test:shell-browser": "node scripts/check-shell-browser.mjs",
     "test:island": "node scripts/check-qx-island.mjs",
     "test:module-ports": "node scripts/check-module-ports.mjs",
     "test:plugin-search": "node scripts/check-plugin-search.mjs",
@@ -81,6 +83,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",

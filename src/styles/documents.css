@@ -1,12 +1,5 @@
 /* Text Toolbox — Notepad++ lite: file list + editor */
 
-.documents-shell .qx-shell-content {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
-}
-
 .qx-docs-split {
   flex: 1;
   min-height: 0;

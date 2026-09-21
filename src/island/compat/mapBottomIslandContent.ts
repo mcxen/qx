@@ -9,6 +9,7 @@ import type { IslandPriority, IslandSlotContent, IslandTone } from "../types";
 export function inferBottomIslandPriority(
   content: BottomIslandContent | null | undefined,
 ): IslandPriority {
+  if (content?.priority) return content.priority;
   if (content?.tone === "danger") return "error";
   if (content?.activity || typeof content?.progress === "number") return "task";
   return "location";

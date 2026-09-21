@@ -391,6 +391,27 @@ Qx 的宏录制和指针合成只依赖物理 `Key`/鼠标事件，不得为了�
 模块不得再写一份 bare Enter handler，也不得注册 `Cmd/Ctrl+K` 或 Esc 的进程级监听。
 文本编辑器和非 Shell 输入框继续保留原生编辑语义。
 
+Action 类型由 `components/qx-shell/actionProtocol.ts` 定义，按钮只渲染协议。普通动作
+`onClick: () => void | Promise<void>`、静态 `children` 和异步 `loadChildren` 三选一；
+异步调用必须返回 Promise，不要用 `void` 丢弃。Bottom Bar、Context、菜单及快捷键
+共同进入每个 Shell 的执行器，按稳定 action id 防重复（不锁整个模块），拒绝发布到
+Island 并提供重试。id 表示该 Shell 内的逻辑操作，不使用翻译后的 label 作身份。
+
+`useShellActions` 负责菜单会话、动作执行和键盘路由；`useShellBottomBar` 负责底栏测量，
+`windowChrome` 隔离原生窗口操作，QxShell 只组合 chrome。异步子菜单绑定 generation，
+关闭、返回、源动作变化、切换 route 或卸载后，迟到结果与失败均不得回写。
+菜单使用真实焦点；可搜索菜单采用 combobox/listbox，保留光标、原生编辑与 IME，
+关闭恢复触发点且不抢走新打开编辑器/弹层的焦点。Esc 每次只退出一层。
+
+模块推荐 `<QxShell {...shell.shellProps}>`，共享 Esc、onKeyDown 与 Island 接线。
+`onBack/backLabel` 已移除。插件序列化 Workbench action 协议保持兼容，由宿主适配到
+上述执行端口，无需插件同步升级。
+
+Workbench navigation guard 返回业务 Promise，只有未保存编辑确认期间串行；确认结束后
+各 command 的 pending 仍独立，异常进入 Island。遗留 iframe 的纯 action 事件没有完成
+应答，宿主只确认投递，不伪造整个插件任务已完成；插件应以原有 Workbench disabled/
+Island task 状态表达后续工作，command 路径则可由宿主完整等待。
+
 Launcher 结果右键通过 `QxShell.actionMenuRequest` 发布 viewport 坐标：宿主先更新当前选择，
 再将既有 Actions Popover 锚定到指针附近。它不得维护另一份右键动作集合。键盘
 `Cmd/Ctrl+K` 和 Bottom Bar Actions 按钮不发布坐标，继续使用右下角宿主锚点。

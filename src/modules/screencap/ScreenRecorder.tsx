@@ -348,16 +348,17 @@ export default function ScreenRecorder() {
 
   const captureIsland = useMemo<BottomIslandContent>(() => {
     return {
+      priority: displayError ? "error" : isRecording || status === "processing" ? "task" : "location",
       label: isRecording || status === "processing"
         ? t("screencap.recording", "Recording")
         : showingPreview
           ? t("screencap.ready", "Capture Ready")
           : t("screencap.readyToRecord", "Ready to Capture"),
-      detail: isRecording || status === "processing"
+      detail: displayError || (isRecording || status === "processing"
         ? formatTime(elapsedMs)
         : showingPreview
           ? lastGifPath?.split(/[\\/]/).pop()
-          : `${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps · ${delaySeconds > 0 ? `${delaySeconds}s` : t("screencap.delay.none", "No delay")}`,
+          : `${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps · ${delaySeconds > 0 ? `${delaySeconds}s` : t("screencap.delay.none", "No delay")}`),
       tone: showingPreview
         ? "success"
         : displayError
@@ -438,7 +439,7 @@ export default function ScreenRecorder() {
         id: "screenshot",
         label: t("screencap.startCapture", "Screenshot / Recording"),
         kbd: "Enter",
-        onClick: () => void beginScreenshot(),
+        onClick: () => beginScreenshot(),
       },
       {
         id: "recapture-last",
@@ -446,9 +447,9 @@ export default function ScreenRecorder() {
         kbd: settings.shortcuts.recapture_last_region?.enabled
           ? settings.shortcuts.recapture_last_region.key
           : undefined,
-        onClick: () => void handleRecaptureLast(),
+        onClick: () => handleRecaptureLast(),
       },
-      { id: "record", label: t("screencap.record", "Record"), onClick: () => void beginAreaSelect() },
+      { id: "record", label: t("screencap.record", "Record"), onClick: () => beginAreaSelect() },
       {
         id: "toggle-pinned-controls",
         label: controlsPinned
@@ -490,13 +491,13 @@ export default function ScreenRecorder() {
           ? t("common.saving", "Saving…")
           : t("screencap.preview.list.saveAs", "Save as copy"),
         disabled: !lastGifPath || saving,
-        onClick: () => void saveAsCopy(lastGifPath, t),
+        onClick: () => saveAsCopy(lastGifPath, t),
       });
       if (isImageCopyablePath(lastGifPath)) {
         actions.push({
           id: "copy-image",
           label: t("screencap.preview.list.copy", "Copy to clipboard"),
-          onClick: () => void copyImage(lastGifPath, t),
+          onClick: () => copyImage(lastGifPath, t),
         });
         actions.push({
           id: "pin-desktop",
@@ -513,18 +514,18 @@ export default function ScreenRecorder() {
         actions.push({
           id: "convert-gif",
           label: t("screencap.preview.convert", "Convert to GIF"),
-          onClick: () => void handleConvertGifAction(lastGifPath),
+          onClick: () => handleConvertGifAction(lastGifPath),
         });
       }
       actions.push({
         id: "show-in-folder",
         label: t("screencap.preview.list.reveal", "Show in folder"),
-        onClick: () => void revealInFolder(lastGifPath, t),
+        onClick: () => revealInFolder(lastGifPath, t),
       });
       actions.push({
         id: "new-capture",
         label: t("screencap.preview.list.newCapture", "New capture"),
-        onClick: () => void beginScreenshot(),
+        onClick: () => beginScreenshot(),
       });
       actions.push({
         id: "back-launcher",
@@ -539,7 +540,7 @@ export default function ScreenRecorder() {
         id: "new-capture",
         label: t("screencap.startCapture", "Screenshot / Recording"),
         kbd: "Enter",
-        onClick: () => void beginScreenshot(),
+        onClick: () => beginScreenshot(),
       });
     }
     return actions;
@@ -562,7 +563,7 @@ export default function ScreenRecorder() {
         id: "pop-out",
         label: t("screencap.popOut", "Move to Floating Controls"),
         disabled: status === "processing",
-        onClick: () => void handlePopOut(),
+        onClick: () => handlePopOut(),
       },
       {
         id: "stop",
@@ -572,7 +573,7 @@ export default function ScreenRecorder() {
         kbd: "Enter",
         disabled: status === "processing",
         tone: status === "processing" ? "normal" : "danger",
-        onClick: () => void handleStop(),
+        onClick: () => handleStop(),
       },
     ],
     [status, t],
@@ -618,6 +619,7 @@ export default function ScreenRecorder() {
   if (isRecording || status === "processing") {
     return (
       <QxShell
+      contentMode="fill"
         title={t("screencap.title", "Screenshot & Recording Module")}
         islandKey="screencap.recording"
         search={
@@ -626,8 +628,7 @@ export default function ScreenRecorder() {
             <BetaBadge />
           </div>
         }
-        onKeyDown={shell.onKeyDown}
-        escapeAction={shell.escapeAction}
+        {...shell.shellProps}
         primaryActionId="stop"
         actionTitle={t("screencap.actions", "Recording Actions")}
         actions={recordingActions}
@@ -722,6 +723,7 @@ export default function ScreenRecorder() {
 
   return (
     <QxShell
+      contentMode="fill"
       title={t("screencap.title", "Screenshot & Recording Module")}
       islandKey="screencap"
       search={
@@ -734,7 +736,6 @@ export default function ScreenRecorder() {
           <BetaBadge />
         </div>
       }
-      onKeyDown={shell.onKeyDown}
       navigation={visibleHistory.length ? {
         index: selectedHistoryIndex,
         count: visibleHistory.length,
@@ -758,8 +759,7 @@ export default function ScreenRecorder() {
           history_layout: value as CaptureHistoryLayout,
         }),
       }]}
-      island={shell.island}
-      escapeAction={shell.escapeAction}
+      {...shell.shellProps}
       primaryActionId={showingPreview ? "new-capture" : "screenshot"}
       actionTitle={t("screencap.actions", "Capture Actions")}
       actions={showingPreview ? doneActions : readyActions}

@@ -8,25 +8,26 @@ import QxIslandSurface from "./QxIslandSurface";
 export interface QxIslandDockSlotProps {
   /**
    * Classified exception custom island (e.g. ScreenRecorder RecordingTransport)
-   * or transitional home customNode. Suppresses store docked winner.
+   * or transitional home customNode. Replaces idle content only.
    */
   exception?: ReactNode;
 }
 
 /**
  * QxShell bottom-center slot.
- * Option 1: exception customIsland suppresses store winner while sessions remain.
+ * Task/error/toast sessions always take precedence over idle previews.
  */
 export default function QxIslandDockSlot({ exception }: QxIslandDockSlotProps) {
-  const winnerId = useSyncExternalStore(
+  const winner = useSyncExternalStore(
     subscribe,
-    () => getDockedWinner()?.id ?? null,
+    () => getDockedWinner() ?? null,
     () => null,
   );
 
   const mode = resolveDockedRenderMode({
     exception: Boolean(exception),
-    winnerId,
+    winnerId: winner?.id ?? null,
+    winnerPriority: winner?.priority,
   });
 
   if (mode === "exception") {

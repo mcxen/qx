@@ -1,4 +1,6 @@
 import { useCallback, useRef, useState } from "react";
+import { useIslandError } from "../island/feedback/useIslandError";
+import { useT } from "../i18n";
 
 export type WorkbenchNavigationGuard = () => Promise<boolean>;
 
@@ -10,26 +12,31 @@ export function useWorkbenchNavigationGuard() {
   const guardRef = useRef<WorkbenchNavigationGuard | null>(null);
   const busyRef = useRef(false);
   const [active, setActive] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const t = useT();
+  useIslandError({ id: "workbench.navigation", title: t("common.actions", "Actions"), error });
   const register = useCallback((guard: WorkbenchNavigationGuard | null) => {
     guardRef.current = guard;
     setActive(Boolean(guard));
   }, []);
-  const run = useCallback((action: () => void) => {
+  const run = useCallback(async (action: () => void | Promise<void>) => {
     if (busyRef.current) return;
     const guard = guardRef.current;
-    if (!guard) {
-      action();
-      return;
+    setError(null);
+    try {
+      if (guard) {
+        busyRef.current = true;
+        let allowed: boolean;
+        try { allowed = await guard(); }
+        finally { busyRef.current = false; }
+        if (!allowed) return;
+      }
+      // Only a dirty-draft decision serializes navigation. Shell isolates
+      // pending business commands by action identity instead of this guard.
+      await action();
+    } catch (failure) {
+      setError(String(failure instanceof Error ? failure.message : failure));
     }
-    busyRef.current = true;
-    void Promise.resolve(guard())
-      .then((allowed) => {
-        if (allowed) action();
-      })
-      .catch(() => {})
-      .finally(() => {
-        busyRef.current = false;
-      });
   }, []);
   return { register, run, active };
 }

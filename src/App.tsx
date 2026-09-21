@@ -251,8 +251,7 @@ function ModuleLoadingShell({
         ? { kind: "plugin", id: tab.slice("plugin:".length) }
         : { kind: "module", id: tab }}
       className="qx-module-loading-shell"
-      escapeAction={shell.escapeAction}
-      onKeyDown={shell.onKeyDown}
+      {...shell.shellProps}
       search={
         <div className="qx-search-wrap qx-module-loading-search" aria-hidden="true">
           <span className="qx-search-icon" />
@@ -266,7 +265,6 @@ function ModuleLoadingShell({
           <Skeleton className="qx-skeleton-line short" />
         </div>
       }
-      island={shell.island}
       actions={[{
         id: "loading",
         label: t("common.loading", "Loading"),
@@ -331,8 +329,7 @@ function ModuleErrorShell({
         ? { kind: "plugin", id: tab.slice("plugin:".length) }
         : { kind: "module", id: tab }}
       className="qx-module-loading-shell"
-      escapeAction={shell.escapeAction}
-      onKeyDown={shell.onKeyDown}
+      {...shell.shellProps}
       search={
         <div className="qx-rss-detail-title">
           <span>{title}</span>
@@ -346,7 +343,6 @@ function ModuleErrorShell({
           </div>
         </div>
       }
-      island={shell.island}
       actions={[{
         id: "back",
         label: t("common.back", "Back"),

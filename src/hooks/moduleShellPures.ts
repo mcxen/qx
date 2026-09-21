@@ -7,12 +7,14 @@ import type {
   IslandActivity,
   IslandProgressStyle,
   IslandTone,
+  IslandPriority,
 } from "../island/types";
 
 export type ModuleIslandTone = IslandTone | undefined;
 export type ModuleIslandActivity = IslandActivity | undefined;
 
 export type ModuleIslandState = {
+  priority?: IslandPriority;
   title: string;
   loading?: boolean;
   loadingDetail?: string;
@@ -29,6 +31,7 @@ export type ModuleIslandState = {
 };
 
 export type ModuleIslandContent = {
+  priority?: IslandPriority;
   label: string;
   detail?: string;
   tone?: IslandTone;
@@ -39,7 +42,7 @@ export type ModuleIslandContent = {
   onAction?: () => void;
 };
 
-/** Pure island builder: loading → error → idle. */
+/** Pure island builder: error → loading → idle. */
 export function buildModuleIsland(state: ModuleIslandState): ModuleIslandContent | null {
   const title = state.title.trim() || "Module";
   const error = state.error?.trim();
@@ -48,6 +51,7 @@ export function buildModuleIsland(state: ModuleIslandState): ModuleIslandContent
       label: title,
       detail: error,
       tone: "danger",
+      priority: "error",
       actionLabel: state.actionLabel,
       onAction: state.onAction,
     };
@@ -57,6 +61,7 @@ export function buildModuleIsland(state: ModuleIslandState): ModuleIslandContent
       label: title,
       detail: state.loadingDetail?.trim() || "Loading…",
       progress: state.progress,
+      priority: "task",
       progressStyle: state.progressStyle,
       activity: state.activity ?? (state.progress == null ? "wave" : undefined),
       tone: state.tone,
@@ -73,6 +78,7 @@ export function buildModuleIsland(state: ModuleIslandState): ModuleIslandContent
   if (!label && !detail) return null;
   return {
     label: label || title,
+    priority: state.priority ?? (state.activity || typeof state.progress === "number" ? "task" : "location"),
     detail,
     tone: state.tone,
     progress: state.progress,

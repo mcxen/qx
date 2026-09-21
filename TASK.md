@@ -13,6 +13,14 @@
 
 ## 当前工作
 
+### Shell — Action / 分栏 / 反馈公共协议（2026-09-21）
+
+- QxShell 收敛为 chrome 组合，提取 Action 执行/菜单、窗口操作与底栏测量；各模块和插件宿主复用 shellProps 与 scroll/fill 内容模式。
+- 同一 Action 的四入口共享异步防连击与失败反馈；子菜单具备会话过期保护、焦点恢复和重试。Context / 主从分栏共用按帧拖动、键盘、存储和卸载清理。
+- 窄窗错误保留居中单行入口，完整原因/恢复/关闭在详情浮层；设置预览不覆盖任务或错误，危险色不再决定第一方录制/草稿语义。
+- 验证：生产逻辑测试、120 组浏览器消融、类型检查、前端 build 和全量 check；复现与实机待验项见 [Shell 验证记录](docs/shell-refactor-validation.md)。未替换安装版，不将 mock IPC 浏览器验证等同于 macOS/Windows 实机验收。
+- 超过 1200 行发布阈值，本轮批次使用 v0.6.114；工作区并行 QxAI 分类记忆改动不包含在本批次。
+
 ### Plugin — Speedtest 原生 Workbench 移植（2026-09-21）
 
 - 从固定的 Raycast 上游提交按 Qx `context.*` 端口重写，使用 Ookla 官方 CLI、归档 SHA-256 校验、JSONL 实时进度、Workbench 指标与真实带宽采样曲线；未引入 Raycast shim 或自绘仪表盘。

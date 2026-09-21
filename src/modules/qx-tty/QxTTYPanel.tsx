@@ -242,21 +242,21 @@ export default function QxTTYPanel() {
       id: "new-terminal",
       label: t("tty.new", "New Terminal"),
       kbd: "CmdOrCtrl+N",
-      onClick: () => void createSession(),
+      onClick: () => createSession(),
     },
     {
       id: "clear-terminal",
       label: t("tty.clear", "Clear Terminal"),
       kbd: "CmdOrCtrl+L",
       disabled: !activeId,
-      onClick: () => void clearTerminal(),
+      onClick: () => clearTerminal(),
     },
     {
       id: "close-session",
       label: t("tty.close", "Close Session"),
       disabled: !activeId,
       tone: "danger",
-      onClick: () => activeId && void closeSession(activeId),
+      onClick: async () => { if (activeId) await closeSession(activeId); },
     },
   ], [activeId, clearTerminal, closeSession, createSession, t]);
 
@@ -264,6 +264,7 @@ export default function QxTTYPanel() {
   const shell = useQxModuleShell({
     leave,
     island: {
+      priority: error ? "error" : activeSession?.running ? "task" : "location",
       label: activeSessionTitle,
       detail: error || (activeSession
         ? `${activeSession.running ? t("tty.running", "Running") : t("tty.exited", "Exited")} · ${compactPath(activeSession.cwd)}`
@@ -274,12 +275,11 @@ export default function QxTTYPanel() {
 
   return (
     <QxShell
+      contentMode="fill"
       title={t("tty.title", "QxTTY")}
       islandKey="qx-tty"
       className="qx-tty-shell"
-      escapeAction={shell.escapeAction}
-      onKeyDown={shell.onKeyDown}
-      island={shell.island}
+      {...shell.shellProps}
       primaryActionId="new-terminal"
       actionTitle={t("tty.actions", "Terminal Actions")}
       actions={actions}

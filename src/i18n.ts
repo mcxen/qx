@@ -12,6 +12,10 @@ export type Locale = "en" | "zh-CN";
 export type LanguagePreference = "system" | "en" | "zh-CN";
 
 const zh: Record<string, string> = {
+  "shell.filterActions": "筛选操作…",
+  "shell.menuShortcut": "操作菜单打开时可用",
+  "island.errorDetails": "查看错误详情",
+  "island.dismiss": "关闭提示",
   "common.beta": "Beta",
   "common.betaWarning": "Beta 功能，可能不稳定或在后续版本中调整。",
   "loadingLab.title": "加载标志试验台",

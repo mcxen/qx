@@ -103,6 +103,10 @@ assert.equal(
   "download",
 );
 assert.equal(resolveDockedRenderMode({ exception: true, winnerId: "task" }), "exception");
+for (const priority of ["error", "task", "toast"]) {
+  assert.equal(resolveDockedRenderMode({ exception: true, winnerId: "feedback", winnerPriority: priority }), "store");
+}
+assert.equal(resolveDockedRenderMode({ exception: true, winnerId: "idle", winnerPriority: "location" }), "exception");
 assert.equal(resolveDockedRenderMode({ exception: false, winnerId: "task" }), "store");
 assert.equal(resolveDockedRenderMode({ exception: false, winnerId: null }), "empty");
 assert.deepEqual(defaultIslandOpenTarget("rss.article-detail", "module"), {
@@ -309,7 +313,7 @@ const appSource = fs.readFileSync("src/App.tsx", "utf8");
 assert.match(appSource, /recordRecentView\(String\(tab\)\)/);
 assert.match(appSource, /if \(tryCloseRecentSwitcher\(\)\) return;/);
 
-const qxShellSource = fs.readFileSync("src/components/QxShell.tsx", "utf8");
+const qxShellSource = fs.readFileSync("src/components/qx-shell/useShellActions.ts", "utf8");
 assert.match(qxShellSource, /if \(event\.key === "Escape" && tryCloseRecentSwitcher\(\)\)/);
 
 assert.match(

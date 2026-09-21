@@ -5,11 +5,13 @@ import type {
   IslandPlacement,
   IslandProgressStyle,
   IslandTone,
+  IslandPriority,
 } from "../types";
 
 export interface QxIslandSurfaceProps {
   placement: IslandPlacement;
   tone?: IslandTone;
+  priority?: IslandPriority;
   variant?: IslandChromeVariant;
   progress?: number | null;
   progressStyle?: IslandProgressStyle;
@@ -56,6 +58,7 @@ function ProgressParticles({ className = "" }: { className?: string }) {
 export default function QxIslandSurface({
   placement,
   tone = "neutral",
+  priority,
   variant = "shell",
   progress = null,
   progressStyle = "surface-fill",
@@ -122,6 +125,7 @@ export default function QxIslandSurface({
       data-placement={placement}
       data-variant={variant}
       data-tone={tone}
+      data-priority={priority}
       data-progress-style={normalizedProgress == null ? undefined : progressStyle}
       aria-hidden={empty || undefined}
       aria-label={ariaLabel}

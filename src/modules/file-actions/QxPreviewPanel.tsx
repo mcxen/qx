@@ -54,11 +54,10 @@ export default function QxPreviewPanel() {
 
   return (
     <QxShell
+      contentMode="fill"
       title={t("filePreview.qxPreview", "QxPreview")}
       islandKey="file-preview"
-      escapeAction={shell.escapeAction}
-      onKeyDown={shell.onKeyDown}
-      island={shell.island}
+      {...shell.shellProps}
       actions={actions}
       actionTitle={t("filePreview.actions", "Preview Actions")}
       navigation={{ index: selectedIndex, count: snapshot.items.length, onChange: setSelectedIndex }}

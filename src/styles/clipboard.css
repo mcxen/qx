@@ -24,13 +24,6 @@
   flex-wrap: nowrap;
 }
 
-.qx-clipboard-shell .qx-shell-content {
-  display: flex;
-  min-height: 0;
-  overflow: hidden;
-  background: transparent;
-}
-
 .qx-clipboard-search-wrap {
   height: 36px;
   min-height: 36px;

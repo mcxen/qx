@@ -324,7 +324,9 @@ if (cliWorkbench.includes("function parseJsonLoose")) {
   fail("cliWorkbench must not keep a second inline SDK implementation");
 }
 
-const qxShell = read("src/components/QxShell.tsx");
+const qxShell = read("src/components/QxShell.tsx")
+  + read("src/components/qx-shell/useShellActions.ts")
+  + read("src/components/qx-shell/windowChrome.ts");
 for (const token of [
   "actions?: QxShellAction[]",
   "primaryActionId?: string",
@@ -838,8 +840,8 @@ if (bundleProductionModule("src/components/qx-shell/actionProtocol.ts", actionPr
   try {
     const protocol = await import(pathToFileURL(actionProtocolOut).href + `?t=${Date.now()}`);
     const valid = protocol.validateQxShellActions([
-      { id: "open", label: "Open" },
-      { id: "more", label: "More", children: [{ id: "copy", label: "Copy" }] },
+      { id: "open", label: "Open", onClick() {} },
+      { id: "more", label: "More", children: [{ id: "copy", label: "Copy", onClick() {} }] },
     ], "open");
     if (valid.length !== 0) fail(`valid action protocol rejected: ${valid.join("; ")}`);
     const invalid = protocol.validateQxShellActions([

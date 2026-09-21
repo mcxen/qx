@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type {
   FocusEventHandler,
   InputHTMLAttributes,
@@ -84,8 +85,11 @@ export function QxModuleSearch({
   "aria-label": ariaLabel,
   inputProps,
 }: QxModuleSearchProps) {
+  const [searching, setSearching] = useState(false);
+  const glowTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(glowTimer.current), []);
   return (
-    <div className={["qx-search-wrap", className].filter(Boolean).join(" ")}>
+    <div className={["qx-search-wrap", searching ? "is-searching" : "", className].filter(Boolean).join(" ")}>
       <span className="qx-search-icon" aria-hidden="true" />
       <input
         {...inputProps}
@@ -100,7 +104,12 @@ export function QxModuleSearch({
         value={value}
         autoFocus={autoFocus}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          setSearching(true);
+          clearTimeout(glowTimer.current);
+          glowTimer.current = setTimeout(() => setSearching(false), 720);
+          onChange(event.target.value);
+        }}
         onKeyDown={onKeyDown}
         onFocus={onFocus}
         placeholder={placeholder}

@@ -240,7 +240,7 @@ export default function WeatherPanel() {
 
   const shell = useQxModuleShell({
     leave: goBack,
-    island,
+    island: error ? { label: t("launcher.weather", "Weather"), detail: error, priority: "error", tone: "danger", actionLabel: t("common.retry", "Retry"), onAction: () => { void loadWeather(); } } : island,
     onKeyDown: handleModuleKeyDown,
   });
 
@@ -251,7 +251,7 @@ export default function WeatherPanel() {
         label: t("weather.refresh", "Refresh"),
         kbd: "R",
         disabled: loading,
-        onClick: () => void loadWeather(),
+        onClick: () => loadWeather(),
       },
       {
         id: "settings",
@@ -275,15 +275,13 @@ export default function WeatherPanel() {
       title="Weather"
       islandKey="weather"
       visual="solid"
-      escapeAction={shell.escapeAction}
+      {...shell.shellProps}
       search={
         <div className="qx-rss-detail-title qx-module-title-with-badge">
           <span>{t("launcher.weather", "Weather")}</span>
           <BetaBadge />
         </div>
       }
-      island={shell.island}
-      onKeyDown={shell.onKeyDown}
       primaryActionId="refresh"
       actionTitle={t("weather.actions", "Weather Actions")}
       actions={weatherActions}
@@ -293,21 +291,6 @@ export default function WeatherPanel() {
           <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--qx-text-secondary)" }}>
             <LoadingSpinner />
             <span>{t("weather.loading", "Loading weather...")}</span>
-          </div>
-        )}
-
-        {error && (
-          <div
-            style={{
-              textAlign: "center",
-              color: "var(--qx-text-secondary)",
-              padding: "32px 16px",
-            }}
-          >
-            <p style={{ marginBottom: 12 }}>{error}</p>
-            <button className="qx-command-button" onClick={() => void loadWeather()}>
-              {t("weather.retry", "Retry")}
-            </button>
           </div>
         )}
 

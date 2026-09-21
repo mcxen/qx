@@ -244,14 +244,14 @@ export default function RssPanel() {
     {
       id: "export-opml",
       label: t("rss.exportOpml", "Export OPML"),
-      onClick: () => void handleExportOpml(),
+      onClick: () => handleExportOpml(),
     },
     {
       id: "refresh-all",
       label: t("rss.refreshAll", "Refresh All"),
       kbd: "CmdOrCtrl+Shift+R",
       disabled: refreshingFeedId != null,
-      onClick: () => void refreshAll(),
+      onClick: () => refreshAll(),
     },
     {
       id: "edit-subscription",
@@ -313,6 +313,7 @@ export default function RssPanel() {
     },
     island: error
       ? {
+          priority: "error",
           label: t("rss.reader", "RSS Reader"),
           detail: error,
           tone: "danger",
@@ -374,11 +375,11 @@ export default function RssPanel() {
 
   return (
     <QxShell
+      contentMode="fill"
       ref={shellRef}
       title={t("rss.reader", "RSS Reader")}
       islandKey="rss.feeds"
       className="qx-rss-shell"
-      onKeyDown={shell.onKeyDown}
       navigation={{
         index: selectedIndex,
         count: flatFeeds.length,
@@ -425,8 +426,7 @@ export default function RssPanel() {
           />
         </div>
       }
-      island={shell.island}
-      escapeAction={shell.escapeAction}
+      {...shell.shellProps}
       primaryActionId={primaryActionId}
       actions={actions}
     >

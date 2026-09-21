@@ -3,6 +3,7 @@ import type {
   IslandActionVariant,
   IslandActivity,
   IslandProgressStyle,
+  IslandPriority,
 } from "../types";
 
 export interface BottomIslandAction {
@@ -15,6 +16,8 @@ export interface BottomIslandAction {
 }
 
 export interface BottomIslandContent {
+  /** Semantic state, independent of danger styling (e.g. unsaved drafts). */
+  priority?: IslandPriority;
   label: string;
   detail?: string;
   progress?: number;

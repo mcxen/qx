@@ -91,11 +91,13 @@ task > error > toast > location > home
 
 插件文本由宿主截断，进度钳制到 0–100；插件不能发布任意 React 组件、抢占 task/error、创建永驻 toast 或把浮窗导向其它模块。
 
-插件自身仍只可发布受限 toast/location；插件 command、后台 job、Workbench 和安装流程的失败由宿主桥接为 `source: shell`、`priority: error`，并附带插件 open target。QxShell 对未显式指定 priority 的遗留内容执行固定推导：`danger -> error`，activity/progress -> task，其余 -> location。操作错误不得通过 Main Area 新增第二行来规避 Island。
+插件自身仍只可发布受限 toast/location；插件 command、后台 job、Workbench 和安装流程的失败由宿主桥接为 `source: shell`、`priority: error`，并附带插件 open target。模块显式发布语义 priority；tone 仅用于视觉（红色录制是 task、未保存草稿是 location）。未显式指定 priority 的遗留内容仍由适配器执行固定推导：`danger -> error`，activity/progress -> task，其余 -> location。操作错误不得通过 Main Area 新增第二行来规避 Island。
 
 ## 5. Docked、Floating 与最近界面
 
-`QxIslandDockSlot` 是 QxShell 的唯一 docked 入口：exception 优先，否则渲染 store winner，没有 winner 时保留 shell 空态。`.qx-shell-bottombar` 负责窗口相对居中，不允许模块自行计算偏移。
+`QxIslandDockSlot` 是 QxShell 的唯一 docked 入口：error/task/toast 优先于 exception 空闲预览；其余渲染 exception 或 store winner，没有 winner 时保留 shell 空态。`.qx-shell-bottombar` 负责窗口相对居中，不允许模块自行计算偏移。
+
+错误沿用同一个 session，`IslandErrorSummary` 投影单行摘要和完整详情 Popover，不新增正文行或第二份错误存储。底栏按真实可用宽度选择 full/compact/minimal 密度，最小仍保留可点击/键盘激活的错误图标；详情保留恢复动作、来源和关闭入口。任务和错误不参与窄窗隐藏。`useIslandError` 以稳定内容/target identity 发布，内联回调或等价对象重渲染不重置 TTL / rankEpoch，也不重复 aria-live 播报。
 
 Floating 是同一 winner 的另一种宿主 surface：
 

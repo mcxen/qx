@@ -135,9 +135,7 @@ export default function QxAiSettings() {
       islandKey="qx-ai.settings"
       visual="elevated"
       className="qx-qxai-settings-shell"
-      onKeyDown={shell.onKeyDown}
-      island={shell.island}
-      escapeAction={shell.escapeAction}
+      {...shell.shellProps}
       primaryActionId="done"
       actionTitle={t("qxai.settings.actions", "Chat Settings Actions")}
       actions={settingsActions}

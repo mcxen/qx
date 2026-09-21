@@ -6,6 +6,7 @@ import {
 import { getIslandComponent } from "../components/registry";
 import QxIslandSurface from "./QxIslandSurface";
 import ShellContent from "./ShellContent";
+import IslandErrorSummary from "./IslandErrorSummary";
 import { useSettingsStore } from "../../modules/settings/store";
 import { Button } from "../../components/ui";
 import { PictureInPicture2 } from "lucide-react";
@@ -35,7 +36,7 @@ const RECENT_IGNORE_SELECTOR = [
 
 /**
  * Renders the docked store winner inside QxIslandSurface.
- * Exception customIsland paths suppress this via QxIslandDockSlot.
+ * Idle previews may replace this through QxIslandDockSlot, not active feedback.
  */
 export default function QxIslandDockHost() {
   const t = useT();
@@ -113,6 +114,14 @@ export default function QxIslandDockHost() {
     );
   }
 
+  const canFloat = floatEnabled && winner.placement !== "docked" && winner.priority !== "home";
+  if (winner.priority === "error") {
+    return <QxIslandSurface placement="docked" variant="shell" tone="danger" priority="error">
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{winner.content.primary}: {winner.content.secondary}</span>
+      <IslandErrorSummary key={winner.id} session={winner} canFloat={canFloat} openRoute={openRoute} />
+    </QxIslandSurface>;
+  }
+
   const componentId = winner.content.componentId;
   if (componentId) {
     const Comp = getIslandComponent(componentId);
@@ -130,6 +139,7 @@ export default function QxIslandDockHost() {
           placement="docked"
           variant={variant}
           tone={winner.content.tone}
+          priority={winner.priority}
           aria-label={winner.content.primary}
           className={recentsClass}
           onDoubleClick={handleDoubleClick}
@@ -142,16 +152,12 @@ export default function QxIslandDockHost() {
     // Unknown componentId: fall back to slots if primary present
   }
 
-  const canFloat =
-    floatEnabled &&
-    winner.placement !== "docked" &&
-    winner.priority !== "home";
-
   return (
     <QxIslandSurface
       placement="docked"
       variant="shell"
       tone={winner.content.tone}
+      priority={winner.priority}
       progress={progressState.progress}
       progressStyle={winner.content.meter?.presentation}
       aria-label={winner.content.primary}

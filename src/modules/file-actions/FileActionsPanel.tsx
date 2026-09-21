@@ -162,7 +162,7 @@ export default function FileActionsPanel() {
         : t("fileActions.run", "Run Operation"),
       kbd: "Enter",
       disabled: !canRun,
-      onClick: () => void run(),
+      onClick: () => run(),
     },
     {
       id: "choose-rename",
@@ -203,12 +203,11 @@ export default function FileActionsPanel() {
 
   return (
     <QxShell
+      contentMode="fill"
       title={t("fileActions.title", "File Actions")}
       trailing={<Button type="button" size="sm" variant={historyOpen ? "secondary" : "outline"} disabled={running} onClick={() => { setPreviewOpen(false); setHistoryOpen((open) => !open); }}>{historyOpen ? <SlidersHorizontal size={14} aria-hidden="true" /> : <History size={14} aria-hidden="true" />}{historyOpen ? t("fileActions.operations", "Operations") : t("fileActions.history", "History")}</Button>}
       islandKey="file-actions"
-      escapeAction={shell.escapeAction}
-      onKeyDown={shell.onKeyDown}
-      island={shell.island}
+      {...shell.shellProps}
       actions={actions}
       primaryActionId="run-operation"
       actionTitle={t("fileActions.actions", "File Actions")}

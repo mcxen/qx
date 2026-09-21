@@ -2,6 +2,7 @@ import { Fragment, type HTMLAttributes, type ReactNode } from "react";
 import { formatQxShortcut } from "../utils/keyboard";
 import type { QxShellAction } from "./ShellActionButton";
 import { Button } from "./ui";
+import { useActionExecution } from "./qx-shell/ActionExecutionContext";
 
 export function QxActionList({
   actions,
@@ -12,6 +13,7 @@ export function QxActionList({
   empty?: ReactNode;
   showShortcuts?: boolean;
 }) {
+  const execution = useActionExecution();
   if (!actions.length) return empty ? <>{empty}</> : null;
   return actions.map((action) => {
     const shortcut = formatQxShortcut(action.kbd);
@@ -22,8 +24,9 @@ export function QxActionList({
         variant="ghost"
         type="button"
         data-qx-search-focus="preserve"
-        disabled={action.disabled}
-        onClick={action.onClick}
+        disabled={action.disabled || execution?.isPending(action)}
+        aria-busy={execution?.isPending(action) || undefined}
+        onClick={() => execution?.run(action)}
       >
         <span className="qx-action-item-copy">
           <span>{action.label}</span>

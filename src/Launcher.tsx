@@ -115,7 +115,7 @@ export default function Launcher({
       menuKey: action.menuKey,
       disabled: action.disabled,
       tone: action.danger ? "danger" : "normal",
-      onClick: () => void action.run(),
+      onClick: () => action.run(),
     }));
   }, [launcherActions, onToggleCategory, selectedCategory, t]);
   const primaryActionId = selectedCategory

@@ -10,6 +10,7 @@ import { useQxListSelection } from "../../hooks/useQxListSelection";
 import {
   qxMasterDetailNavigation,
   qxRegionProps,
+  useQxContentNarrow,
 } from "../../hooks/useQxMasterDetail";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
@@ -197,9 +198,8 @@ function patchFileList(prev: TextFileEntry[], entry: TextFileEntry): TextFileEnt
 export default function DevTxtTool() {
   const t = useT();
   const setTab = useStore((state) => state.setTab);
-  const [narrowContent, setNarrowContent] = useState(
-    () => window.matchMedia("(max-width: 760px)").matches,
-  );
+  const shellRef = useRef<HTMLDivElement>(null);
+  const narrowContent = useQxContentNarrow(shellRef);
   const [files, setFiles] = useState<TextFileEntry[]>([]);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -239,14 +239,6 @@ export default function DevTxtTool() {
   contentRef.current = content;
   selectedNameRef.current = selectedName;
   dirtyRef.current = dirty;
-
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 760px)");
-    const sync = () => setNarrowContent(media.matches);
-    sync();
-    media.addEventListener("change", sync);
-    return () => media.removeEventListener("change", sync);
-  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -941,7 +933,7 @@ export default function DevTxtTool() {
         id: `language-${lang.id}`,
         label: t(lang.labelKey, lang.label),
         disabled: !active || active.language === lang.id,
-        onClick: () => void setLanguage(lang.id),
+        onClick: () => setLanguage(lang.id),
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [active, t],
@@ -965,13 +957,13 @@ export default function DevTxtTool() {
         id: "new-file",
         label: t("docs.newFile", "New File"),
         kbd: "N",
-        onClick: () => void createNewFile(),
+        onClick: () => createNewFile(),
       },
       {
         id: "rename",
         label: t("docs.rename", "Rename"),
         disabled: !active,
-        onClick: () => active && startRename(active),
+        onClick: () => { if (active) startRename(active); },
       },
       {
         id: "open-folder",
@@ -981,14 +973,14 @@ export default function DevTxtTool() {
       {
         id: "refresh",
         label: t("docs.refresh", "Refresh list"),
-        onClick: () => void refreshList(selectedNameRef.current),
+        onClick: () => refreshList(selectedNameRef.current),
       },
       {
         id: "delete-file",
         label: t("docs.deleteFile", "Delete File"),
         tone: "danger" as const,
         disabled: !active,
-        onClick: () => void deleteActive(),
+        onClick: () => deleteActive(),
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1008,7 +1000,7 @@ export default function DevTxtTool() {
         id: "paste",
         label: t("docs.paste", "Paste"),
         disabled: !active,
-        onClick: () => void pasteClipboard(),
+        onClick: () => pasteClipboard(),
       },
       {
         id: "insert-clipboard",
@@ -1025,7 +1017,7 @@ export default function DevTxtTool() {
         id: "copy-all",
         label: t("docs.copyAll", "Copy All"),
         disabled: !content,
-        onClick: () => void copyAll(),
+        onClick: () => copyAll(),
       },
       {
         id: "language",
@@ -1141,12 +1133,13 @@ export default function DevTxtTool() {
 
   return (
     <QxShell
+      ref={shellRef}
+      contentMode="fill"
       title={t("docs.title", "Text Toolbox")}
       islandKey="documents"
       className="documents-shell"
       visual="solid"
-      escapeAction={shell.escapeAction}
-      onKeyDown={shell.onKeyDown}
+      {...shell.shellProps}
       search={
         <QxModuleSearch
           value={query}
@@ -1264,7 +1257,6 @@ export default function DevTxtTool() {
           />
         </div>
       }
-      island={shell.island}
       primaryActionId={primaryActionId}
       actionTitle={actionTitle}
       actions={documentActions}

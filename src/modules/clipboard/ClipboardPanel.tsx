@@ -852,7 +852,7 @@ export default function ClipboardPanel() {
         label: pasteActionLabel,
         kbd: "Enter",
         disabled: !selectedItem,
-        onClick: () => void pasteItem(selectedItem, { focusAtCursor: true }),
+        onClick: () => pasteItem(selectedItem, { focusAtCursor: true }),
       },
       {
         id: "copy",
@@ -860,7 +860,7 @@ export default function ClipboardPanel() {
         kbd: "CmdOrCtrl+C",
         menuKey: "c",
         disabled: !selectedItem,
-        onClick: () => void copyItem(selectedItem),
+        onClick: () => copyItem(selectedItem),
       },
       {
         id: "toggle-pin",
@@ -868,7 +868,7 @@ export default function ClipboardPanel() {
         kbd: "CmdOrCtrl+P",
         menuKey: "p",
         disabled: !selectedItem,
-        onClick: () => void togglePin(selectedItem),
+        onClick: () => togglePin(selectedItem),
       },
       {
         id: "delete",
@@ -877,7 +877,7 @@ export default function ClipboardPanel() {
         menuKey: "d",
         disabled: !selectedItem,
         tone: "danger",
-        onClick: () => void deleteItem(selectedItem),
+        onClick: () => deleteItem(selectedItem),
       },
       {
         id: "import-text-toolbox",
@@ -885,7 +885,7 @@ export default function ClipboardPanel() {
         kbd: "CmdOrCtrl+Shift+T",
         menuKey: "t",
         disabled: !selectedItem?.text?.trim(),
-        onClick: () => void importToTextTool(selectedItem),
+        onClick: () => importToTextTool(selectedItem),
       },
     ];
 
@@ -896,7 +896,7 @@ export default function ClipboardPanel() {
         kbd: "CmdOrCtrl+Shift+U",
         menuKey: "u",
         disabled: decodeClipboardUrl(selectedItem.text) === selectedItem.text.trim(),
-        onClick: () => void decodeUrlItem(selectedItem),
+        onClick: () => decodeUrlItem(selectedItem),
       });
     }
 
@@ -907,14 +907,14 @@ export default function ClipboardPanel() {
         label: t("clipboard.ocrCopy", "OCR and Copy"),
         kbd: "CmdOrCtrl+Shift+O",
         menuKey: "o",
-        onClick: () => void runOcrOnItem(selectedItem, "clipboard"),
+        onClick: () => runOcrOnItem(selectedItem, "clipboard"),
       });
       list.push({
         id: "ocr-editor",
         label: t("clipboard.ocrEditor", "OCR to Text Toolbox"),
         kbd: "CmdOrCtrl+Shift+E",
         menuKey: "e",
-        onClick: () => void runOcrOnItem(selectedItem, "editor"),
+        onClick: () => runOcrOnItem(selectedItem, "editor"),
       });
       const pinPath = selectedItem.image_path
         || (fileMetadata?.kind === "image" ? selectedItem.file_path : null)
@@ -938,7 +938,7 @@ export default function ClipboardPanel() {
         id: "ocr-all",
         label: t("clipboard.ocrAll", "OCR All Images"),
         menuKey: "a",
-        onClick: () => void ocrAllPendingImages(),
+        onClick: () => ocrAllPendingImages(),
       });
     }
 
@@ -950,7 +950,7 @@ export default function ClipboardPanel() {
         kbd: "CmdOrCtrl+Shift+C",
         menuKey: "m",
         disabled: Boolean(mediaProgress),
-        onClick: () => void startMediaTask("compress"),
+        onClick: () => startMediaTask("compress"),
       });
     }
     if (gifSourcePath) {
@@ -960,7 +960,7 @@ export default function ClipboardPanel() {
         kbd: "CmdOrCtrl+Shift+G",
         menuKey: "g",
         disabled: Boolean(mediaProgress),
-        onClick: () => void startMediaTask("gif"),
+        onClick: () => startMediaTask("gif"),
       });
     }
     if (selectedItem?.file_path) {
@@ -1038,6 +1038,7 @@ export default function ClipboardPanel() {
       void handleModuleKeys(e);
     },
     island: {
+      priority: mediaProgress?.error ? "error" : mediaProgress ? "task" : "location",
       label: hasDraftChanges
         ? t("clipboard.edit.unsaved", "Unsaved clipboard edit")
         : mediaProgress?.message || status || t("clipboard.title", "Clipboard History"),
@@ -1070,6 +1071,7 @@ export default function ClipboardPanel() {
 
   return (
     <QxShell
+      contentMode="fill"
       title={t("clipboard.title", "Clipboard History")}
       islandKey="clipboard"
       search={searchSlot}
@@ -1086,8 +1088,7 @@ export default function ClipboardPanel() {
           setSelected(0);
         },
       }]}
-      escapeAction={shell.escapeAction}
-      onKeyDown={shell.onKeyDown}
+      {...shell.shellProps}
       navigation={{
         index: selected,
         count: filtered.length,
@@ -1101,7 +1102,6 @@ export default function ClipboardPanel() {
         onClose: () => setDetailOpen(false),
       }}
       className="qx-clipboard-shell"
-      island={shell.island}
       primaryActionId={!editingId && selectedItem ? "paste" : undefined}
       actionTitle={t("clipboard.actions", "Clipboard Actions")}
       actions={clipboardActions}

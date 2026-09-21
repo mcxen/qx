@@ -13,22 +13,6 @@
   display: flex;
 }
 
-.qx-content-shell .qx-shell-content {
-  display: flex;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* RSS feeds are a single-pane list, so keep the shell itself out of the
-   scrolling chain. The list owns the scrollbar and stays between the fixed
-   top/bottom chrome instead of extending across the whole window. */
-.qx-rss-shell:not(.qx-content-shell) .qx-shell-content {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .qx-rss-feed-list {
   flex: 1 1 auto;
   min-width: 0;
@@ -2414,13 +2398,6 @@
 /* Macro Recorder Workbench: the recorder is a compact fixed header above a
    reusable list/detail surface. Keep both panes in their own scroll chain so
    a long step list never moves the shell chrome. */
-.qx-macro-shell .qx-shell-content {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .qx-macro-content {
   display: flex;
   flex: 1;
@@ -2977,7 +2954,7 @@
   text-align: center;
 }
 
-@media (max-width: 760px) {
+@container qx-content (max-width: 760px) {
   .qx-content-split {
     grid-template-columns: 1fr;
   }

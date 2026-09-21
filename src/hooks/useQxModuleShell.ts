@@ -35,9 +35,7 @@ import { useEscBack, type EscCascade } from "./useEscBack";
  * });
  *
  * <QxShell
- *   escapeAction={shell.escapeAction}
- *   onKeyDown={shell.onKeyDown}
- *   island={shell.island}
+ *   {...shell.shellProps}
  *   actions={actions}
  *   primaryActionId="open"
  *   ...
@@ -45,10 +43,7 @@ import { useEscBack, type EscCascade } from "./useEscBack";
  * ```
  */
 
-export type ModuleIslandState = PureModuleIslandState & {
-  activity?: BottomIslandContent["activity"];
-  tone?: BottomIslandContent["tone"];
-};
+export type ModuleIslandState = PureModuleIslandState;
 
 /** Pure island builder (re-export). Safe for non-React consumers / tests. */
 export function buildModuleIsland(state: ModuleIslandState): BottomIslandContent | null {
@@ -86,6 +81,7 @@ export type UseQxModuleShellOptions = {
 };
 
 export type QxModuleShellChrome = {
+  shellProps: Pick<QxModuleShellChrome, "escapeAction" | "onKeyDown" | "island">;
   escapeAction: QxShellAction;
   onKeyDown: (event: KeyboardEvent) => void;
   island: BottomIslandContent | null;
@@ -149,6 +145,7 @@ export function useQxModuleShell(options: UseQxModuleShellOptions): QxModuleShel
   }, [islandOverride, islandState]);
 
   return {
+    shellProps: { escapeAction, onKeyDown, island },
     escapeAction,
     onKeyDown,
     island,

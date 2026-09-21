@@ -291,6 +291,7 @@ export default function MacroRecorder() {
       },
     },
     island: {
+      priority: visibleError ? "error" : isRecording || activePlayback ? "task" : "location",
       label: isRecording
         ? t("macros.island.recording", "Recording macro")
         : activePlayback
@@ -369,7 +370,7 @@ export default function MacroRecorder() {
           label: t("macros.save", "Save macro"),
           kbd: "Enter",
           disabled: !name.trim(),
-          onClick: () => void handleSave(),
+          onClick: () => handleSave(),
         },
         {
           id: "discard-draft",
@@ -421,7 +422,7 @@ export default function MacroRecorder() {
     list.push({
       id: "refresh",
       label: t("macros.refresh", "Refresh list"),
-      onClick: () => void listMacros(),
+      onClick: () => listMacros(),
     });
     list.push({
       id: "create-demo",
@@ -435,14 +436,14 @@ export default function MacroRecorder() {
           ? t("macros.playback.resume", "Resume playback")
           : t("macros.playback.pause", "Pause playback"),
         kbd: "Space",
-        onClick: () => void togglePlaybackPause(),
+        onClick: () => togglePlaybackPause(),
       });
       list.unshift({
         id: "stop-playback",
         label: t("macros.playback.stop", "Stop playback"),
         kbd: "Enter",
         tone: "danger",
-        onClick: () => void stopPlayback(),
+        onClick: () => stopPlayback(),
       });
     }
     return list;
@@ -514,6 +515,7 @@ export default function MacroRecorder() {
 
   return (
     <QxShell
+      contentMode="fill"
       ref={shellRef}
       title={t("macros.title", "Macro Recorder")}
       islandKey="macros"
@@ -550,7 +552,6 @@ export default function MacroRecorder() {
           <QxActionSections sections={actionSections} />
         </aside>
       )}
-      island={shell.island}
       islandPriority={error ? "error" : isRecording ? "task" : "location"}
       islandSticky={isRecording}
       islandPlacement={isRecording ? "floating" : "docked-or-float"}
@@ -558,8 +559,7 @@ export default function MacroRecorder() {
       actionTitle={t("macros.actions.title", "Macro actions")}
       actions={actions}
       navigation={navigation}
-      escapeAction={shell.escapeAction}
-      onKeyDown={shell.onKeyDown}
+      {...shell.shellProps}
       className="qx-macro-shell"
     >
       <div className="qx-macro-content">

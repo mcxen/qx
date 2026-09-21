@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useIslandError } from "../../island/feedback/useIslandError";
+import { useT } from "../../i18n";
 
 interface ContributionWeek {
   days: [number, number, number, number, number, number, number];
@@ -27,6 +29,7 @@ const MONTH_LABELS = [
 ];
 
 export default function GithubCalendar() {
+  const t = useT();
   const [username, setUsername] = useState("mcxen");
   const [input, setInput] = useState("mcxen");
   const [cal, setCal] = useState<ContributionCalendar | null>(null);
@@ -49,11 +52,11 @@ export default function GithubCalendar() {
       setCal(result);
     } catch (e) {
       setError(String(e));
-      setCal(null);
     } finally {
       setLoading(false);
     }
   }, []);
+  useIslandError({ id: "github-calendar", title: "GitHub", error, actionLabel: t("common.retry", "Retry"), onAction: () => fetchCalendar(username) });
 
   useEffect(() => {
     void fetchCalendar(username);
@@ -122,21 +125,6 @@ export default function GithubCalendar() {
           {loading ? "Loading..." : "Load"}
         </button>
       </form>
-
-      {error && (
-        <div
-          style={{
-            padding: "8px 12px",
-            borderRadius: 6,
-            background: "color-mix(in srgb, var(--qx-danger) 10%, transparent)",
-            color: "var(--qx-danger)",
-            fontSize: 12,
-            marginBottom: 12,
-          }}
-        >
-          {error}
-        </div>
-      )}
 
       {loading && !cal && (
         <div style={{ color: "var(--qx-text-secondary)", fontSize: 12 }}>

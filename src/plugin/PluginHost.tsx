@@ -580,18 +580,17 @@ export function PluginPanelViewport() {
     : undefined;
 
   const runWorkbenchAction = useCallback((actionId: string) => {
-    runWorkbenchNavigation(() => {
+    return runWorkbenchNavigation(async () => {
     const descriptor = [...workbenchActionDescriptors, ...workbenchFormActionDescriptors]
       .find((action) => action.id === actionId);
     if (descriptor?.command) {
       const command = pluginCommands.find((candidate) => candidate.name === descriptor.command);
       if (command) {
-        void usePluginRegistry.getState().runCommand(command).then(() => {
-          postPluginWorkbenchEvent(pluginId, {
-            kind: "commandComplete",
-            command: command.name,
-            at: Date.now(),
-          });
+        await usePluginRegistry.getState().runCommand(command);
+        postPluginWorkbenchEvent(pluginId, {
+          kind: "commandComplete",
+          command: command.name,
+          at: Date.now(),
         });
         return;
       }
@@ -874,13 +873,13 @@ export function PluginPanelViewport() {
 
   return (
     <QxShell
+      contentMode="fill"
       title={shellTitle}
       islandKey={`plugin.${pluginId}`}
       islandOpenTarget={{ kind: "plugin", id: pluginId }}
       className="qx-plugin-shell"
-      onKeyDown={shell.onKeyDown}
       navigation={workbenchNavigation}
-      escapeAction={shell.escapeAction}
+      {...shell.shellProps}
       search={
         activeChrome && activeChrome.showSearch !== false ? (
           <QxModuleSearch
@@ -938,7 +937,6 @@ export function PluginPanelViewport() {
           )}
         </aside>
       }
-      island={shell.island}
       islandManagedExternally={!shellHasError && (workbenchIslandManaged || pluginIslandSessionActive)}
       onGoHome={goHome}
       primaryActionId={primaryActionId}

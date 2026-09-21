@@ -32,6 +32,8 @@
 
 ### Shell、模块与系统表面
 
+- [Shell 公共协议与消融验证](./shell-refactor-validation.md)：Action、错误反馈和内容/分栏组合回归及桌面待验边界。
+
 - [窗口生命周期与 Windows 消融](./window-lifecycle-validation.md)：窗口清单、显隐/焦点协议和原生消融。
 
 - [显示器亮度服务](./display-brightness.md)：原生 / DDC / 软件调光的接口、匹配和恢复。

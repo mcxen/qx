@@ -8,6 +8,8 @@
 - 宿主模块 shell：`src/hooks/useQxModuleShell.ts`、`useEscBack.ts`、`moduleEscapeHost.ts`
 - 列表 / 主从 / 网格：`useQxListSelection.ts`、`useQxMasterDetail.ts`、`qxGridNavigation.ts`
 - Actions：`src/components/QxActionPanel.tsx`（消费统一 `QxShellAction`）
+- Action 协议 / 执行 / 菜单：`src/components/qx-shell/actionProtocol.ts`、`actionExecution.ts`、`useShellActions.ts`；所有宿主入口复用，插件 wire shape 不变。
+- 内容布局 / 分栏：`QxShell.contentMode`、`useResizablePane.ts`、`useQxContentNarrow`；Context 与主从共享拖动、键盘、存储和宽度约束，模块保留选择与详情语义。
 - 搜索 / loading UI：`src/components/QxModuleSearch.tsx`、`QxListLoading.tsx`
 - 插件作者入口：[`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md)
 - 市场仓库 Agent 地图：`qx-plugins/AGENTS.md`（与本表对照）

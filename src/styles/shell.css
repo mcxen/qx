@@ -2326,7 +2326,7 @@
     gap: 8px;
   }
 
-  .qx-island-surface[data-placement="docked"]:not([data-tone="danger"]) {
+  .qx-island-surface[data-placement="docked"]:not([data-priority="error"]):not([data-priority="task"]) {
     display: none;
   }
 
@@ -2381,9 +2381,50 @@
 /* The centered island first shrinks to the symmetric space measured by
    QxShell. Hide it only when that space is narrower than its minimum width. */
 .qx-shell-bottombar[data-island-overlap="true"]
-  .qx-island-surface[data-placement="docked"] {
+  .qx-island-surface[data-placement="docked"]:not([data-priority="error"]):not([data-priority="task"]) {
   visibility: hidden;
   pointer-events: none;
+}
+.qx-island-surface .qx-island-error-trigger.qx-shadcn-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  color: var(--qx-danger);
+}
+.qx-island-error-trigger svg { flex: 0 0 16px; }
+.qx-island-error-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qx-island-error-preview { color: var(--qx-text-secondary); flex: 1; }
+.qx-island-error-details { width: min(360px, calc(100vw - 24px)); max-height: min(340px, calc(100vh - 80px)); overflow: auto; }
+.qx-island-error-details p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; margin: 8px 0; }
+.qx-island-error-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.qx-island-surface[data-placement="docked"]:is([data-priority="error"], [data-priority="task"]) {
+  display: flex;
+  visibility: visible;
+  pointer-events: auto;
+  min-width: 34px;
+  width: min(400px, var(--qx-island-safe-width, 400px));
+}
+.qx-shell-bottombar:not([data-island-density="full"]) .qx-island-error-preview { display: none; }
+.qx-shell-bottombar[data-island-density="minimal"] .qx-island-error-trigger span { display: none; }
+.qx-shell-bottombar[data-island-density="minimal"] .qx-island-error-trigger { justify-content: center; padding: 0; }
+@media (max-width: 760px) {
+  .qx-shell-bottombar:has([data-priority="error"], [data-priority="task"]) .qx-shell-actions { gap: 4px; }
+  .qx-shell-bottombar:has([data-priority="error"], [data-priority="task"]) .qx-shell-action { padding-inline: 5px; gap: 0; min-width: 28px; }
+  .qx-shell-bottombar:has([data-priority="error"], [data-priority="task"]) .qx-shell-action > span { display: none; }
+  .qx-shell.launcher-shell .qx-shell-bottombar:has([data-priority="error"], [data-priority="task"]) { display: grid; }
+  .qx-shell.launcher-shell:has([data-priority="error"], [data-priority="task"]) .qx-shell-main { bottom: var(--qx-bottom-bar-h); }
+}
+.qx-shell-content { container: qx-content / inline-size; }
+.qx-shell[data-content-mode="fill"] .qx-shell-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 .qx-module-title-with-badge {
   display: inline-flex;

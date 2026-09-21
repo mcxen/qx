@@ -504,17 +504,17 @@ export default function QxAiChat() {
       id: "attach-files",
       label: t("qxai.attachments.add", "Attach Images or Files"),
       disabled: !conv || attachmentsBusy,
-      onClick: () => void handleAttach(),
+      onClick: () => handleAttach(),
     },
     {
       id: "open-skills-folder",
       label: t("qxai.skills.openFolder", "Open Skills Folder"),
-      onClick: () => void openQxAiSkillsDirectory(),
+      onClick: () => openQxAiSkillsDirectory(),
     },
     {
       id: "refresh-skills",
       label: t("qxai.skills.refresh", "Refresh Skills"),
-      onClick: () => void refreshSkills(),
+      onClick: () => refreshSkills(),
     },
     {
       id: "new-chat",
@@ -583,6 +583,7 @@ export default function QxAiChat() {
 
   const island: BottomIslandContent = isCurrentConversationStreaming
     ? {
+        priority: "task",
         label: t("qxai.title", "QxAI Chat"),
         detail: queuedMessages.length > 0
           ? t("qxai.queue.streaming", "Streaming… · {n} queued").replace(
@@ -594,6 +595,7 @@ export default function QxAiChat() {
       }
     : composerErrorText
       ? {
+          priority: "error",
           label: t("qxai.title", "QxAI Chat"),
           detail: composerErrorText,
           tone: "danger",
@@ -605,6 +607,7 @@ export default function QxAiChat() {
             : undefined,
         }
       : {
+          priority: runningCount > 0 ? "task" : "location",
           label: t("qxai.title", "QxAI Chat"),
           detail:
             runningCount > 0
@@ -655,11 +658,11 @@ export default function QxAiChat() {
 
   return (
     <QxShell
+      contentMode="fill"
       ref={shellRef}
       title={conv?.name ?? t("qxai.title", "QxAI Chat")}
       islandKey="qx-ai.workbench"
       className="qx-qxai-chat-shell qx-content-shell is-jan is-workbench"
-      onKeyDown={shell.onKeyDown}
       navigation={{
         index: selectedIndex,
         count: filteredConversations.length,
@@ -842,8 +845,7 @@ export default function QxAiChat() {
           />
         </div>
       }
-      island={shell.island}
-      escapeAction={shell.escapeAction}
+      {...shell.shellProps}
       primaryActionId={primaryActionId}
       actionTitle={t("qxai.actions", "AI Actions")}
       actions={actions}

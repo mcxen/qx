@@ -116,6 +116,7 @@ export default function PzaiPanel() {
   const activeError = run.error || error;
   const island: BottomIslandContent = activeError
     ? {
+        priority: "error",
         label: t("pzai.title", "P仔"),
         detail: activeError,
         tone: "danger",
@@ -124,11 +125,13 @@ export default function PzaiPanel() {
       }
     : run.streaming
     ? {
+        priority: "task",
         label: t("pzai.title", "P仔"),
         detail: t("pzai.thinking", "Reading with agent…"),
         activity: "dots",
       }
     : {
+        priority: "location",
         label: t("pzai.title", "P仔"),
         detail: workbench.articleId
           ? workbench.title
@@ -217,12 +220,12 @@ export default function PzaiPanel() {
           : t("pzai.run", "Ask P仔"),
         kbd: "↵",
         disabled: run.streaming || !instruction.trim(),
-        onClick: () => void runPzai(),
+        onClick: () => runPzai(),
       },
       {
         id: "refresh",
         label: t("pzai.refresh", "Refresh list"),
-        onClick: () => void loadArticles(selectedFeedId),
+        onClick: () => loadArticles(selectedFeedId),
       },
       {
         id: "save-docs",
@@ -258,9 +261,7 @@ export default function PzaiPanel() {
       <QxShell
         title={t("pzai.title", "P仔")}
         islandKey="p-zai"
-        island={shell.island}
-        escapeAction={shell.escapeAction}
-        onKeyDown={shell.onKeyDown}
+        {...shell.shellProps}
         actions={[]}
       >
         <div className="qx-ai-empty-state">
@@ -278,7 +279,6 @@ export default function PzaiPanel() {
       title={t("pzai.title", "P仔")}
       islandKey="p-zai"
       className="qx-pzai-shell"
-      onKeyDown={shell.onKeyDown}
       search={
         <QxModuleSearch
           value={query}
@@ -349,8 +349,7 @@ export default function PzaiPanel() {
           {saveMsg ? <div className="qx-ai-tool-hint">{saveMsg}</div> : null}
         </div>
       }
-      island={shell.island}
-      escapeAction={shell.escapeAction}
+      {...shell.shellProps}
       primaryActionId="run"
       actionTitle={t("pzai.actions", "P仔 actions")}
       actions={actions}

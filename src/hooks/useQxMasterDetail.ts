@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import type { RefObject } from "react";
 
 /**
@@ -96,11 +96,24 @@ export function focusQxRegion(
   // Avoid CSS.escape for broader webview support; region ids are always slug-like.
   const safeId = regionId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const el = scope.querySelector<HTMLElement>(`[data-qx-region="${safeId}"]`);
-  if (!el || el.getAttribute("aria-hidden") === "true" || el.hasAttribute("hidden")) {
+  if (!el || el.closest('[aria-hidden="true"], [hidden], [inert]') || el.getClientRects().length === 0) {
     return false;
   }
   el.focus({ preventScroll: true });
   return true;
+}
+
+/** Matches the qx-content container breakpoint, including Context width changes. */
+export function useQxContentNarrow(shellRef: RefObject<HTMLElement | null>) {
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    const content = shellRef.current?.querySelector<HTMLElement>(".qx-shell-content");
+    if (!content) return;
+    const observer = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width <= 760));
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [shellRef]);
+  return narrow;
 }
 
 /**

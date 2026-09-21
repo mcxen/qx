@@ -324,10 +324,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       search={settingsSearch}
       trailing={<span className="qx-shell-meta">Qx v{version || "..."}</span>}
       context={settingsContext}
-      island={shell.island}
       customIsland={homePreviewIsland}
-      escapeAction={shell.escapeAction}
-      onKeyDown={shell.onKeyDown}
+      {...shell.shellProps}
       primaryActionId="close"
       actionTitle={t("settings.actions", "Settings Actions")}
       actions={settingsActions}
