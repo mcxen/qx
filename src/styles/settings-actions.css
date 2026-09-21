@@ -655,6 +655,20 @@ img.qx-ext-card-icon {
   text-transform: uppercase;
 }
 
+.qx-agent-settings-tabs {
+  display: flex;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+}
+
+.qx-agent-settings-tabs > .qx-shadcn-toggle-group {
+  width: 100%;
+}
+
+.qx-agent-settings-tabs .qx-shadcn-toggle-group-item {
+  flex: 1 1 auto;
+}
+
 .qx-agent-skill-toolbar {
   display: flex;
   flex-wrap: wrap;

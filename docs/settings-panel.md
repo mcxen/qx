@@ -72,7 +72,7 @@ QxShell (visual="elevated")
 | **General** | 启动与行为 · 托盘菜单（加入即显示、拖动排序） |
 | **Shortcuts** | Qx 主窗口召唤 / 应用快捷键；模块快捷键在对应插件详情中配置 |
 | **Extensions** | Installed 使用分组连续列表，Browse 使用主从列表，配置走 Dialog；天气等内置扩展的专属配置也在此处 |
-| **AI Agent** | 供应商 · 模型 · 工具 · Bash · Grep |
+| **AI Agent** | 二级分区：Agent 与模型 · 工具与安全 · Skills 与 MCP · 自动化；资源只在对应分区加载 |
 | **OCR / RSS** | 各自模块设置 |
 | **Permissions** | macOS 权限 |
 | **Advanced** | 数据路径 · 诊断日志开关/级别/文件入口 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |

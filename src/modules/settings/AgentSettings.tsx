@@ -55,6 +55,7 @@ type ScheduleRow = {
 };
 
 type ProviderOption = { value: string; label: string; disabled?: boolean };
+type AgentSettingsSection = "agent-models" | "tools-safety" | "skills-mcp" | "automation";
 
 const MODE_OPTIONS: { value: QxAiSkillLoadMode; labelKey: string; fallback: string }[] = [
   { value: "fixed", labelKey: "agent.skills.mode.fixed", fallback: "Fixed" },
@@ -78,6 +79,7 @@ export default function AgentSettings() {
   } = useG4fStore();
   const t = useT();
   const agent = settings.agent;
+  const [section, setSection] = useState<AgentSettingsSection>("agent-models");
   const [skills, setSkills] = useState<QxAiSkillSummary[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
@@ -91,10 +93,11 @@ export default function AgentSettings() {
   const [scheduleBusyId, setScheduleBusyId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (section !== "agent-models") return;
     if (providers.length === 0 && builtInProviders.length === 0 && customProviders.length === 0) {
       void loadProviders();
     }
-  }, [builtInProviders.length, customProviders.length, loadProviders, providers.length]);
+  }, [builtInProviders.length, customProviders.length, loadProviders, providers.length, section]);
 
   const refreshSkills = useCallback(async () => {
     setSkillsLoading(true);
@@ -139,10 +142,13 @@ export default function AgentSettings() {
   }, []);
 
   useEffect(() => {
-    void refreshSkills();
-    void refreshMcp();
-    void refreshSchedules();
-  }, [refreshMcp, refreshSchedules, refreshSkills]);
+    if (section === "skills-mcp") {
+      void refreshSkills();
+      void refreshMcp();
+    } else if (section === "automation") {
+      void refreshSchedules();
+    }
+  }, [refreshMcp, refreshSchedules, refreshSkills, section]);
 
   const allProviders = useMemo(() => {
     if (providers.length > 0) return providers;
@@ -274,6 +280,20 @@ export default function AgentSettings() {
 
   return (
     <div className="qx-settings-page">
+      <div className="qx-agent-settings-tabs">
+        <SegmentedControl
+          value={section}
+          options={[
+            { value: "agent-models", label: t("agent.section.models", "Agent & Models") },
+            { value: "tools-safety", label: t("agent.section.tools", "Tools & Safety") },
+            { value: "skills-mcp", label: t("agent.section.resources", "Skills & MCP") },
+            { value: "automation", label: t("agent.section.automation", "Automation") },
+          ]}
+          onChange={setSection}
+        />
+      </div>
+
+      {section === "agent-models" && <>
       <SettingsCard title={t("agent.providers.title", "Providers & Keys")}>
         <ProviderListSection />
         <MemorySection />
@@ -405,7 +425,9 @@ export default function AgentSettings() {
           />
         </Row>
       </SettingsCard>
+      </>}
 
+      {section === "tools-safety" && <>
       <SettingsCard
         title={t("agent.safety.title", "Safety & SOLO")}
         description={t(
@@ -525,7 +547,9 @@ export default function AgentSettings() {
           <Toggle value={agent.background_tasks_enabled} onChange={(value) => patchAgent({ background_tasks_enabled: value })} />
         </Row>
       </SettingsCard>
+      </>}
 
+      {section === "automation" && <>
       <SettingsCard
         title={t("agent.schedules.title", "Schedules")}
         description={t(
@@ -598,7 +622,9 @@ export default function AgentSettings() {
           ))}
         </div>
       </SettingsCard>
+      </>}
 
+      {section === "skills-mcp" && <>
       <SettingsCard
         title={t("agent.skills.title", "Skills")}
         description={t(
@@ -699,6 +725,7 @@ export default function AgentSettings() {
           aria-label={t("agent.mcp.editor", "MCP JSON")}
         />
       </SettingsCard>
+      </>}
     </div>
   );
 }

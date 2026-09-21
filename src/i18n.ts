@@ -320,6 +320,10 @@ const zh: Record<string, string> = {
 
   "agent.providers.title": "供应商与密钥",
   "agent.providers.desc": "API 密钥、自定义 OpenAI 兼容端点与用户记忆。对话默认值仍在 AI 模块中设置。",
+  "agent.section.models": "Agent 与模型",
+  "agent.section.tools": "工具与安全",
+  "agent.section.resources": "Skills 与 MCP",
+  "agent.section.automation": "自动化",
   "agent.basics.title": "Agent 与模型",
   "agent.basics.desc": "总开关，以及 Agent 任务使用的模型。",
   "agent.mode": "Agent 模式",
