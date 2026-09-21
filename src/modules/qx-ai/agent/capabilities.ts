@@ -20,6 +20,7 @@ import { truncate } from "./types";
 import type { Settings } from "../../settings/store";
 import { useSettingsStore } from "../../settings/store";
 import { usePluginRegistry } from "../../../plugin/registry";
+import { getDangerousTool } from "./dangerous-tools";
 
 export type QxCapabilityKind = "module_action" | "plugin_command" | "agent_tool";
 
@@ -150,15 +151,18 @@ export function listQxCapabilities(
     pluginCommands = pluginCommands.filter((item) => item.source === filter.source);
   }
 
-  const tools: QxCapabilityPublic[] = enabledToolNames.map((name) => ({
-    id: `tool:${name}`,
-    kind: "agent_tool" as const,
-    title: name,
-    description: `Call the agent tool "${name}" directly (function/ReAct tool by name).`,
-    source: "agent",
-    risk: "read",
-    inputHint: `Use tool name: ${name}`,
-  }));
+  const tools: QxCapabilityPublic[] = enabledToolNames.map((name) => {
+    const danger = getDangerousTool(name);
+    return {
+      id: `tool:${name}`,
+      kind: "agent_tool" as const,
+      title: name,
+      description: `Call the agent tool "${name}" directly (function/ReAct tool by name).`,
+      source: "agent",
+      risk: danger ? (danger.level === "high" ? "high" : "write") : "read",
+      inputHint: `Use tool name: ${name}`,
+    };
+  });
 
   let all = [...actions, ...pluginCommands, ...tools];
 
@@ -262,6 +266,8 @@ export function listInstalledPluginsForAgent(): Array<{
   name: string;
   version: string;
   enabled: boolean;
+  kind: "builtin" | "marketplace";
+  canManageLifecycle: boolean;
   description: string;
   commands: Array<{ name: string; title: string; description?: string }>;
 }> {
@@ -271,6 +277,8 @@ export function listInstalledPluginsForAgent(): Array<{
     name: plugin.name,
     version: plugin.version,
     enabled: plugin.enabled !== false,
+    kind: plugin.id.startsWith("builtin:") ? "builtin" : "marketplace",
+    canManageLifecycle: !plugin.id.startsWith("builtin:"),
     description: plugin.description || "",
     commands: state.commands
       .filter((command) => command.pluginId === plugin.id)

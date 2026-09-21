@@ -265,9 +265,9 @@ export default function QxTTYPanel() {
     leave,
     island: {
       label: activeSessionTitle,
-      detail: activeSession
+      detail: error || (activeSession
         ? `${activeSession.running ? t("tty.running", "Running") : t("tty.exited", "Exited")} · ${compactPath(activeSession.cwd)}`
-        : t("tty.noSessions", "No terminal sessions"),
+        : t("tty.noSessions", "No terminal sessions")),
       tone: error ? "danger" : activeSession?.running ? "success" : "neutral",
     },
   });
@@ -335,7 +335,6 @@ export default function QxTTYPanel() {
           tabIndex={-1}
           onKeyDown={(event) => event.stopPropagation()}
         >
-          {error && <div className="qx-tty-error" role="alert">{error}</div>}
           <div ref={hostRef} className="qx-tty-terminal" />
         </section>
       </div>

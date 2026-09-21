@@ -2,7 +2,7 @@ import type { PluginRuntimeStatus } from "../../plugin/types";
 import { islandHost } from "../session/hostApi";
 import type { IslandTone } from "../types";
 
-const PLUGIN_SESSION_ID = "plugin.status";
+const PLUGIN_SESSION_PREFIX = "plugin.status";
 const PLUGIN_INSTALL_SESSION_ID = "plugin.install";
 
 /** Rate limit: one show per plugin per second (global coalesce for v1). */
@@ -14,10 +14,11 @@ const MIN_INTERVAL_MS = 1000;
  * Replaces App.tsx pluginIsland React state.
  */
 export function showPluginIslandStatus(status: PluginRuntimeStatus): void {
+  const sessionId = `${PLUGIN_SESSION_PREFIX}.${status.pluginId || "global"}`;
   const now = Date.now();
   if (now - lastShowAt < MIN_INTERVAL_MS && status.kind === "activity") {
     // Coalesce high-frequency activity: update only
-    islandHost.update(PLUGIN_SESSION_ID, {
+    const updated = islandHost.update(sessionId, {
       content: {
         primary: status.label,
         secondary: status.detail,
@@ -26,7 +27,7 @@ export function showPluginIslandStatus(status: PluginRuntimeStatus): void {
       },
       ttlMs: 8000,
     });
-    return;
+    if (updated.ok) return;
   }
   lastShowAt = now;
 
@@ -41,12 +42,17 @@ export function showPluginIslandStatus(status: PluginRuntimeStatus): void {
     status.kind === "success" ? 2600 : status.kind === "error" ? 8000 : 8000;
 
   islandHost.show({
-    id: PLUGIN_SESSION_ID,
-    priority: "toast",
-    source: "plugin",
+    id: sessionId,
+    priority: status.kind === "error" ? "error" : "toast",
+    // Runtime failures are projected by the host and must not be downgraded by
+    // the capability cap applied to plugin-authored island sessions.
+    source: status.kind === "error" ? "shell" : "plugin",
     sticky: false,
     placement: "docked",
     ttlMs,
+    openTarget: status.pluginId
+      ? { kind: "plugin", id: status.pluginId }
+      : undefined,
     content: {
       primary: status.label,
       secondary: status.detail,
@@ -60,7 +66,11 @@ export function showPluginIslandStatus(status: PluginRuntimeStatus): void {
 }
 
 export function clearPluginIslandStatus(): void {
-  islandHost.dismiss(PLUGIN_SESSION_ID);
+  for (const session of islandHost.getSnapshot()) {
+    if (session.id.startsWith(`${PLUGIN_SESSION_PREFIX}.`)) {
+      islandHost.dismiss(session.id);
+    }
+  }
 }
 
 /**

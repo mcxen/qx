@@ -311,7 +311,15 @@ export default function RssPanel() {
       },
       query: { active: query.length > 0, clear: () => setQuery("") },
     },
-    island: refreshingFeedId
+    island: error
+      ? {
+          label: t("rss.reader", "RSS Reader"),
+          detail: error,
+          tone: "danger",
+          actionLabel: t("common.retry", "Retry"),
+          onAction: () => void refreshAll(),
+        }
+      : refreshingFeedId
       ? buildRssRefreshIsland(refreshProgress, selectedFeed?.title, t)
       : localizedStatusMessage
         ? { label: "RSS", detail: localizedStatusMessage, tone: "success" }
@@ -540,20 +548,6 @@ export default function RssPanel() {
               "rss.noSubscriptions",
               "No subscriptions yet — folders above are empty until you add or move feeds.",
             )}
-          </div>
-        )}
-        {error && (
-          <div
-            style={{
-              margin: "8px 10px",
-              padding: "6px 8px",
-              fontSize: 12,
-              color: "var(--qx-danger)",
-              background: "var(--qx-danger-border)",
-              borderRadius: "var(--qx-card-radius)",
-            }}
-          >
-            {error}
           </div>
         )}
       </div>

@@ -103,6 +103,24 @@ export const DANGEROUS_TOOLS: DangerousToolSpec[] = [
     gate: "ask",
   },
   {
+    name: "set_qx_setting",
+    level: "medium",
+    reason: "changes a persisted Qx host setting",
+    gate: "ask",
+  },
+  {
+    name: "set_plugin_enabled",
+    level: "medium",
+    reason: "changes whether an installed plugin may run",
+    gate: "ask",
+  },
+  {
+    name: "uninstall_plugin",
+    level: "high",
+    reason: "uninstalls a plugin and removes its durable plugin data",
+    gate: "ask",
+  },
+  {
     name: "run_plugin_command",
     level: "high",
     reason: "dispatches an arbitrary installed plugin command",

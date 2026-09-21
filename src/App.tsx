@@ -1376,7 +1376,7 @@ function App() {
       if (cancelled) return;
       startMarketplaceCatalogCheck();
       void loadPlugins({
-        onToast: (msg) => window.dispatchEvent(new CustomEvent("qx:toast", { detail: msg })),
+        onToast: (msg) => showPluginIslandStatus({ kind: "success", label: msg }),
         onPrompt: async (label, def) => window.prompt(label, def ?? ""),
         onGetPreference: async (pluginId, id) => {
           const values = await invoke<Record<string, unknown>>("plugin_preferences_get", {

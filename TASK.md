@@ -30,6 +30,15 @@
 - 重新生成会把旧回答保留为同一条消息的候选版本，支持在页脚切换；失败或异常退出时恢复原对话，模型请求只发送当前候选内容。
 - `npm run check`、`npm run build` 与 QxAI Agent 门禁通过；未执行安装版桌面视觉验收。
 
+### QxAI — 宿主设置与插件生命周期管理（2026-09-21）
+
+- 新增可枚举的 setting adapter registry：`list_qx_settings` / `set_qx_setting` 先覆盖宿主级定时壁纸策略，关闭后暂停全部壁纸插件的后台轮换，手动命令不受影响。
+- 新增 `set_plugin_enabled` / `uninstall_plugin`，复用 registry 的 runtime、timer、Island、panel、tray 清理与 marketplace IPC；`builtin:*` 明确拒绝走插件包生命周期。
+- 能力目录的 agent tool 风险改为读取统一 dangerous-tool catalogue，卸载不再被错误标成只读；设置/启停为 medium ask，卸载为 high ask，SOLO 行为不变。
+- 设置适配器补充自动更新、桌面浮动 Island、RSS 后台刷新、QxAI 后台任务与宿主动作开关；写入前 flush 旧队列并通过真实 `update_settings` 持久化，不直接操作浏览器存储。
+- 插件 command/后台 job/Workbench/安装失败统一提升为宿主 `error` Island；Shell 对 danger/activity 自动推导 error/task 优先级，清除插件、QxAI Composer、RSS、终端、文件操作、宏、OCR 与设置表单中会突然撑高布局的内联错误行，并增加消融门禁。
+- `npm run check`、`npx tsc --noEmit`、`npm run build` 与 QxAI Agent 门禁通过；未实际修改用户壁纸策略或卸载插件，安装态对话执行仍待人工验收。
+
 ### Audit — Windows 窗口管理与消融（2026-09-12）
 
 - 全部原生窗口所有者完成代码盘点，契约与矩阵见 [窗口生命周期验证](docs/window-lifecycle-validation.md)。主窗口、picker/shade、录制控制栏、island、宏指针层、Tray、更新进度与一次性 pin 分别维护领域关闭语义；可复用表面共用有序呈现端口。

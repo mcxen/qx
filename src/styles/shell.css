@@ -2279,6 +2279,11 @@
     display: none;
   }
 
+  .qx-island-surface[data-tone="danger"] .qx-island-shell-secondary,
+  .qx-island-surface[data-tone="danger"] .qx-bottom-island-detail {
+    display: block;
+  }
+
   .qx-island-surface[data-placement="docked"] {
     width: min(
       340px,
@@ -2321,7 +2326,7 @@
     gap: 8px;
   }
 
-  .qx-island-surface[data-placement="docked"] {
+  .qx-island-surface[data-placement="docked"]:not([data-tone="danger"]) {
     display: none;
   }
 

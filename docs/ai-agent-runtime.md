@@ -79,11 +79,34 @@ P仔创建带当前内容快照的后台 conversation，并复用同一 store、
 | `tools.ts` / `tools-modules.ts` | 权限化工具目录与模块适配 |
 | `module-actions.ts` | 模块/插件注册的稳定意图动作 |
 | `capabilities.ts` | skill 绑定的 module action、plugin command、agent tool 目录 |
+| `host-management.ts` | 可枚举 Qx 设置适配器与插件生命周期边界；不直接写存储/目录 |
 | `hooks.ts` | `before_turn`、`after_turn`、`on_error`、`before_tool`、`after_tool` |
 | `dangerous-tools.ts` | 写入、bash、schedule、插件命令等风险分类与确认 |
 | `memory.ts` | turn 前冻结的 memory snapshot 与工具适配 |
 
 模块通过注册表扩展动作，不在 Agent core 增长每功能 `switch`。插件用 `context.ai.actions.register()` 注册 namespaced action；disable/unload 时宿主清理。插件 hook 只能 dispatch 已声明的插件 command，不接受 iframe JS 回调。
+
+### 宿主管理端口
+
+QxAI 可以管理 Qx 自身，但只能走可发现、可校验的窄端口：
+
+```text
+list_qx_settings ──> setting id / type / current value
+set_qx_setting  ──> registered setting adapter ──> owning host service
+
+list_plugins ─────> installed plugin + lifecycle availability
+set_plugin_enabled / uninstall_plugin ──> plugin registry lifecycle
+```
+
+内置设置适配器覆盖定时壁纸、自动更新、桌面浮动 Island、RSS 后台刷新、QxAI 后台任务和宿主动作总开关。`plugins.background.wallpaper.enabled` 关闭后调用宿主统一的
+`backgroundCategory: wallpaper` 调度策略，只暂停后续定时壁纸任务；手动设置壁纸仍可用。
+它不依赖某个壁纸插件，也不允许 Agent 直接写 localStorage。
+
+插件启停和卸载必须调用 registry：卸载前清理 timer、Island、panel、tray 和 runtime，
+再调用既有 marketplace IPC 并刷新目录。`builtin:*` 不是 marketplace package，不能走
+这组生命周期工具。新增可写设置时调用 `registerQxSettingAdapter` 注册
+adapter（id/type/read/write），不要在
+`set_qx_setting` 内加入页面名或业务 `switch`。
 
 ### Safety 与 SOLO
 
@@ -96,6 +119,8 @@ Settings → AI Agent 的 dangerous-tools guard 默认开启，SOLO 默认关闭
 | guard on + SOLO on | 跳过确认，但仍记录 SOLO 运行语义 |
 
 无 `window.confirm` 的 headless context 把 ask 当 deny。安全判断必须解析嵌套 capability/action id，不能只看外层 `run_qx_capability` 名称。
+`set_qx_setting`、`set_plugin_enabled` 是 medium ask；`uninstall_plugin` 因同时删除插件持久
+数据是 high ask。SOLO 语义仍按上表执行。
 
 ## 5. Skills、Actions 与工具可见性
 

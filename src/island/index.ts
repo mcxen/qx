@@ -57,6 +57,7 @@ export {
   mapSlotToBottomIsland,
 } from "./compat/mapBottomIslandContent";
 export { useShellIslandShim } from "./compat/useShellIslandShim";
+export { useIslandError } from "./feedback/useIslandError";
 export {
   showPluginIslandStatus,
   clearPluginIslandStatus,

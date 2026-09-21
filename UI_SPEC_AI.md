@@ -72,6 +72,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 3. Composer **in-flow dock**，禁止 absolute 叠 transcript。
 4. 消息列 `min(760px, 100%)` 居中。
 5. 左列表默认 ~280px（持久化 `qx-ai.workbench.listWidth`），min ≥ 220；标题单行 ellipsis。
+6. 发送、附件、模型能力、API key 与工具运行错误统一进入 Bottom Island `error` 状态；Composer、消息正文和工具收起行下方不得临时增长错误行。工具历史中的失败详情只在用户主动展开该步骤后显示。
 
 ### Esc
 

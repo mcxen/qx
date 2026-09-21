@@ -83,13 +83,13 @@ export async function dispatchPluginCommand(
     });
     if (options?.launchType !== "background") {
       hooks?.onToast?.(`Plugin command failed: ${String(error)}`);
-      hooks?.onPluginStatus?.({
-        kind: "error",
-        pluginId: command.pluginId,
-        label: "Command failed",
-        detail: `${command.pluginName}: ${summary}`,
-      });
     }
+    hooks?.onPluginStatus?.({
+      kind: "error",
+      pluginId: command.pluginId,
+      label: isBackgroundJob ? "Background command failed" : "Command failed",
+      detail: `${command.pluginName}: ${summary}`,
+    });
     return { ok: false, error: summary };
   }
 }

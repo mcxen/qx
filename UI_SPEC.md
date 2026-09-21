@@ -466,7 +466,7 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - Launcher 等带 Context Panel 的两栏 Shell，搜索卡片右边缘必须与 Main Area / Context Panel 分割线对齐，允许误差不超过 `4px`；筛选控件位于右侧 trailing/context 轨道。
 - 搜索占据可用主列；内容筛选通过 `QxShell.topbarFilters` 发布 `id / label / value / options / onChange`，由宿主适宽 Select 渲染在 trailing 列，不得把搜索缩成短输入框。
 - 内置模块和插件都不得在 `trailing` 中自绘 Select、分段按钮或 tabs 充当内容筛选。刷新、新建、导入、录制等命令属于 Bottom Bar / Actions；短状态优先进入 Island，避免 Top Bar 重新变成工具按钮排。
-- 插件安装、升级、重装成功只通过 Bottom Island 显示一次结果，不得在插件库内容顶部再渲染重复成功横幅；下载、兼容、安装失败仍须在当前操作区域保留可读错误，同时可同步发布 Island 错误状态。
+- 插件安装、升级、重装成功只通过 Bottom Island 显示一次结果，不得在插件库内容顶部再渲染重复成功横幅；下载、兼容、安装和运行失败统一发布为宿主 `error` Island，不得在当前行、表单、工具栏或列表下方临时插入第二行错误。
 - Quick Entries 不以成组图标占用 Top Bar；它们保留在 Context Panel、Actions 或专用入口中。Top Bar trailing 只保留筛选和当前上下文必需操作。
 - Launcher 右侧 Quick Entries 保持用户可编辑；其后提供默认展开、可折叠的“所有模块”目录，
   由宿主模块目录与外置插件注册表自动生成，只显示当前已启用入口，不维护第二份硬编码列表。
@@ -489,7 +489,7 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - macOS 首次引导覆盖普通 Shell 时，卡片顶部必须提供明确的窗口拖拽握区，卡片外空白背景也可移动无边框窗口；拖拽层不得覆盖按钮、开关、链接或正文交互。
 - 文件结果只按 leaf name 命中，不以父目录制造相关性。短 ASCII 词（四字符及以下，例如 `Siri`）只允许字面量与弱分隔匹配，不生成逐字符通配符；更长 ASCII 缩写及至少三字符的非 ASCII 查询才允许密集有序子序列召回。Cardinal、Spotlight 与 Everything 的候选必须经过同一后置匹配，分类内先按名称相关性、再按修改时间排序。
 - trailing 操作不得挤压搜索框到不可输入。
-- 声明式 Workbench 的 Top Bar 由宿主统一组合：搜索只占 `search` 主列，tabs 与 `filters[]` 统一投影为 `topbarFilters` 适宽 Select；筛选变更继续通过 `onTab(id)` / `onFilter(id, value)` 回传。插件不得提供筛选 DOM 或 CSS。后台状态进入紧凑宿主状态或 Island；统计、loading 与 error 信息属于 Main Area 状态行，不得把 Top Bar 撑成第二层。
+- 声明式 Workbench 的 Top Bar 由宿主统一组合：搜索只占 `search` 主列，tabs 与 `filters[]` 统一投影为 `topbarFilters` 适宽 Select；筛选变更继续通过 `onTab(id)` / `onFilter(id, value)` 回传。插件不得提供筛选 DOM 或 CSS。后台统计与 loading 可进入既有固定状态位；运行错误必须投影到宿主 `error` Island，不得让 Workbench 状态行因错误增高。
 - Workbench 是结构化业务表面，不是 CLI 专用皮肤。CLI、HTTP 与 typed
   `context.system.*` 数据源均可复用 List / Gallery / Detail / tabs / Actions；
   Sysinfo 是系统 API 数据源的参考。只有图表、地图、画布等无法表达为宿主结构化
@@ -1135,6 +1135,8 @@ Plugin Store 详情必须展示插件库提供的版本说明与历史版本（�
 - destructive：删除/清空等不可逆操作必须确认，文案说明对象和影响。
 
 状态分为页面级、区域级、列表行级、按钮级和 Bottom Island 长任务级；局部失败不得无必要替换整个页面。
+
+操作失败统一进入固定高度的 Bottom Island `error` session；模块传入 `tone: "danger"` 时 Shell 自动推导 `error` 优先级。禁止在列表行、设置 Row、工具栏、Composer、Workbench 状态行或操作按钮下方临时追加错误文本并撑高布局。只有两类例外：与具体输入通过 `aria-invalid` / `aria-describedby` 绑定的字段校验，以及替换整个既有区域的稳定不可用状态；例外也不得新增一条游离错误行。窄窗口仍保留 danger Island 的主次文案，不得因隐藏普通位置态而吞掉错误。
 
 Settings → System → Storage Management 同时展示宿主静态缓存和插件 manifest
 登记的可重建缓存。插件目标显示插件名、target 文案、精确占用和 records 数量；清理

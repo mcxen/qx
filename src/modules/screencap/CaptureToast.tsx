@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useT } from "../../i18n";
+import { useIslandError } from "../../island";
 import { revealSystemPath, writeImageFileToClipboard } from "../../system";
 import { pinScreenshotToDesktop } from "./store";
 
@@ -16,6 +17,11 @@ export default function CaptureToast({ path, onOpen, onDismiss }: Props) {
   const [copied, setCopied] = useState(false);
   const [pinning, setPinning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useIslandError({
+    id: "screencap.toast",
+    title: t("screencap.toast.saved", "Screenshot saved"),
+    error,
+  });
   const src = convertFileSrc(path);
   const fileName = path.split(/[\\/]/).pop() ?? path;
 
@@ -62,7 +68,6 @@ export default function CaptureToast({ path, onOpen, onDismiss }: Props) {
       <div className="qx-capture-toast-body">
         <strong>{t("screencap.toast.saved", "Screenshot saved")}</strong>
         <span>{fileName}</span>
-        {error && <small className="is-error">{error}</small>}
         <div className="qx-capture-toast-actions">
           <button type="button" onClick={onOpen}>{t("screencap.toast.open", "Open")}</button>
           <button type="button" onClick={() => void copy()}>

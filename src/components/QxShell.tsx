@@ -35,6 +35,7 @@ import {
 } from "../utils/keyboard";
 import QxIslandDockSlot from "../island/surface/QxIslandDockSlot";
 import { useShellIslandShim } from "../island/compat/useShellIslandShim";
+import { inferBottomIslandPriority } from "../island/compat/mapBottomIslandContent";
 import type {
   IslandOpenTarget,
   IslandPlacementMode,
@@ -166,7 +167,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   customIsland,
   islandKey,
   islandSource = "module",
-  islandPriority = "location",
+  islandPriority,
   islandSticky = false,
   islandPlacement = "docked-or-float",
   islandOpenTarget,
@@ -192,11 +193,12 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     () => islandOpenTarget ?? defaultIslandOpenTarget(islandKey, islandSource),
     [islandKey, islandOpenTarget, islandSource],
   );
+  const resolvedIslandPriority = islandPriority ?? inferBottomIslandPriority(island);
   useShellIslandShim({
     island: islandManagedExternally ? null : island,
     routeKey: islandKey,
     source: islandSource,
-    priority: islandPriority,
+    priority: resolvedIslandPriority,
     sticky: islandSticky,
     placement: islandPlacement,
     openTarget: resolvedIslandOpenTarget,

@@ -100,6 +100,10 @@ const builtinSource = readFileSync(
   new URL("../src/plugin/builtin.ts", import.meta.url),
   "utf8",
 );
+const hostManagementSource = readFileSync(
+  new URL("../src/modules/qx-ai/agent/host-management.ts", import.meta.url),
+  "utf8",
+);
 
 // Tool execution and model transport are separate switches. Models without
 // native tool schemas must retain the prompt-based ReAct path.
@@ -179,6 +183,19 @@ assert.match(agentSource, /name:\s*"send_file"/);
 assert.match(agentSource, /clipboard_write_file_paths/);
 assert.match(storeSource, /attachments:\s*result\.attachments/);
 assert.match(messageSource, /qx-ai-attachments/);
+for (const settingId of [
+  "plugins.background.wallpaper.enabled",
+  "general.auto_update.enabled",
+  "appearance.floating_island.enabled",
+  "rss.background_refresh.enabled",
+  "agent.background_tasks.enabled",
+  "agent.host_actions.enabled",
+]) {
+  assert.match(hostManagementSource, new RegExp(settingId.replaceAll(".", "\\.")));
+}
+assert.match(hostManagementSource, /await store\.flush\(\)/);
+assert.match(hostManagementSource, /invoke<Settings>\("update_settings"/);
+assert.doesNotMatch(hostManagementSource, /window\.(?:localStorage|sessionStorage)/);
 assert.match(messageSource, /function StepRow[\s\S]*?useState\(false\)/);
 assert.match(messageSource, /className="qx-jan-step-header"/);
 assert.match(messageSource, /aria-expanded=\{open\}/);
@@ -302,11 +319,22 @@ assert.match(agentSource, /name:\s*"list_qx_capabilities"/);
 assert.match(agentSource, /name:\s*"run_qx_capability"/);
 assert.match(agentSource, /name:\s*"list_plugins"/);
 assert.match(agentSource, /name:\s*"run_plugin_command"/);
+assert.match(agentSource, /name:\s*"list_qx_settings"/);
+assert.match(agentSource, /name:\s*"set_qx_setting"/);
+assert.match(agentSource, /name:\s*"set_plugin_enabled"/);
+assert.match(agentSource, /name:\s*"uninstall_plugin"/);
 assert.match(capabilitiesSource, /parseSkillCapabilities/);
 assert.match(capabilitiesSource, /buildSkillCapabilityPromptBlock/);
 assert.match(capabilitiesSource, /command:\$\{/);
+assert.match(capabilitiesSource, /getDangerousTool\(name\)/);
 assert.match(skillsSourceGate, /withSkillCapabilityBinding/);
 assert.match(skillsSourceGate, /buildSkillCapabilityPromptBlock/);
+assert.match(hostManagementSource, /plugins\.background\.wallpaper\.enabled/);
+assert.match(hostManagementSource, /registerQxSettingAdapter/);
+assert.match(hostManagementSource, /setBackgroundCategoryEnabled\("wallpaper"/);
+assert.match(hostManagementSource, /usePluginRegistry\.getState\(\)\.setEnabled/);
+assert.match(hostManagementSource, /usePluginRegistry\.getState\(\)\.uninstall/);
+assert.doesNotMatch(hostManagementSource, /window\.localStorage|sessionStorage/);
 
 // Isolation: App must not statically import the AI store/agent graph; schedule
 // bridge starts deferred; sendMessage loads harness dynamically.
@@ -360,6 +388,9 @@ assert.match(dangerousToolsSource, /BASH_SAFE_COMMANDS/);
 assert.match(dangerousToolsSource, /classifyBashScript/);
 assert.match(dangerousToolsSource, /evaluateSafetyGate/);
 assert.match(dangerousToolsSource, /resolveDangerousToolCall/);
+assert.match(dangerousToolsSource, /name:\s*"set_qx_setting"/);
+assert.match(dangerousToolsSource, /name:\s*"set_plugin_enabled"/);
+assert.match(dangerousToolsSource, /name:\s*"uninstall_plugin"[\s\S]*?level:\s*"high"/);
 assert.match(dangerousToolsSource, /rm\s+\\?-rf|rm -rf|recursive force delete/);
 // bash must not be a whole-tool hard block in the catalogue array
 {

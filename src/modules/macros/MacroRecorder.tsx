@@ -266,6 +266,18 @@ export default function MacroRecorder() {
     }
   }, [activePlayback, closeDetail, detailOpen, handleDiscard, handleStop, isRecording, lastRecordedSteps, stopPlayback]);
 
+  const visibleError = permissionIssue === "input-monitoring"
+    ? t(
+        "macros.permission.inputMonitoring",
+        "Input Monitoring permission is required to record keyboard and mouse input. Enable Qx in System Settings → Privacy & Security → Input Monitoring.",
+      )
+    : permissionIssue === "windows-hook"
+      ? t(
+          "macros.permission.windowsHook",
+          "Windows could not register the keyboard or mouse hook. Check system permissions and try again.",
+        )
+      : error;
+
   const shell = useQxModuleShell({
     leave,
     esc: {
@@ -286,7 +298,7 @@ export default function MacroRecorder() {
           : lastRecordedSteps
             ? t("macros.island.captured", "Macro captured")
             : t("macros.title", "Macro Recorder"),
-      detail: isRecording
+      detail: visibleError || (isRecording
         ? `${formatTime(elapsed)} · ${formatCursorPosition(
             recording.cursorX,
             recording.cursorY,
@@ -301,8 +313,14 @@ export default function MacroRecorder() {
               })
             : replaceTemplate(t("macros.island.savedDetail", "{n} saved macros"), {
                 n: savedMacros.length,
-              }),
+              })),
       tone: error ? "danger" : isRecording ? "danger" : activePlayback ? "neutral" : lastRecordedSteps ? "success" : "neutral",
+      actionLabel: permissionIssue === "input-monitoring" && desktopPlatform === "macos"
+        ? t("macros.permission.openSettings", "Open System Settings")
+        : undefined,
+      onAction: permissionIssue === "input-monitoring" && desktopPlatform === "macos"
+        ? () => void openMacroPermissionSettings()
+        : undefined,
       progress: activePlayback ? playbackPercent(playback) : undefined,
       actions: isRecording
         ? [{
@@ -533,7 +551,7 @@ export default function MacroRecorder() {
         </aside>
       )}
       island={shell.island}
-      islandPriority={isRecording ? "task" : "location"}
+      islandPriority={error ? "error" : isRecording ? "task" : "location"}
       islandSticky={isRecording}
       islandPlacement={isRecording ? "floating" : "docked-or-float"}
       primaryActionId={primaryActionId}
@@ -610,33 +628,6 @@ export default function MacroRecorder() {
             )}
           </div>
 
-          {error ? (
-            <div className={`qx-macro-error${permissionIssue ? " is-permission" : ""}`} role="alert">
-              <div>
-                {permissionIssue === "input-monitoring"
-                  ? t(
-                      "macros.permission.inputMonitoring",
-                      "Input Monitoring permission is required to record keyboard and mouse input. Enable Qx in System Settings → Privacy & Security → Input Monitoring.",
-                    )
-                  : permissionIssue === "windows-hook"
-                    ? t(
-                        "macros.permission.windowsHook",
-                        "Windows could not register the keyboard or mouse hook. Check system permissions and try again.",
-                      )
-                    : error}
-              </div>
-              {permissionIssue === "input-monitoring" && desktopPlatform === "macos" ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void openMacroPermissionSettings()}
-                >
-                  {t("macros.permission.openSettings", "Open System Settings")}
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
         </div>
 
         <div className="qx-macro-workbench">

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Redo2, Save, ScanText, Undo2 } from "lucide-react";
 import { Button } from "../../components/ui";
 import { useT } from "../../i18n";
+import { useIslandError } from "../../island";
 import { ocrRecognizePath } from "../../system/ocr";
 import { readCaptureOcrDraft, saveCaptureOcrDraft } from "./captureOcrDrafts";
 
@@ -21,6 +22,11 @@ export default function CaptureOcrPanel({ path }: Props) {
   const [recognizing, setRecognizing] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  useIslandError({
+    id: "screencap.ocr",
+    title: t("screencap.preview.ocr.title", "Image text recognition"),
+    error,
+  });
 
   useEffect(() => {
     const stored = readCaptureOcrDraft(path) ?? "";
@@ -168,7 +174,6 @@ export default function CaptureOcrPanel({ path }: Props) {
         ) : null}
       </div>
 
-      {error ? <p className="qx-screencap-ocr-error">{error}</p> : null}
     </section>
   );
 }

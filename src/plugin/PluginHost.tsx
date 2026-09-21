@@ -63,7 +63,7 @@ import {
   hasPluginIslandSession,
   syncPluginWorkbenchIsland,
 } from "./pluginIsland";
-import { islandHost } from "../island";
+import { islandHost, showPluginIslandStatus } from "../island";
 import { useWorkbenchHtmlExportAction } from "./useWorkbenchHtmlExportAction";
 import { goHomeToLauncher, openSettings } from "../modules/settings/openSettings";
 import { assignPluginActionMenuKeys, isBareEnterShortcut } from "./pluginActions";
@@ -161,17 +161,23 @@ export function PluginPanelViewport() {
       ...(plugin?.manifest?.permissions || []),
     ]);
     if (!permissions.has("*") && !permissions.has("open-url")) {
-      window.dispatchEvent(new CustomEvent("qx:toast", {
+      showPluginIslandStatus({
+        kind: "error",
+        pluginId,
+        label: t("plugins.error", "Plugin error"),
         detail: t("plugins.workbench.openLinkDenied", "This plugin cannot open external links."),
-      }));
+      });
       return;
     }
     void openerOpenUrl(url).catch(() => {
-      window.dispatchEvent(new CustomEvent("qx:toast", {
+      showPluginIslandStatus({
+        kind: "error",
+        pluginId,
+        label: t("plugins.error", "Plugin error"),
         detail: t("plugins.workbench.openLinkFailed", "Could not open this link."),
-      }));
+      });
     });
-  }, [plugin, t]);
+  }, [plugin, pluginId, t]);
   const runPluginIslandCommand = useCallback(async (targetPluginId: string, commandName: string) => {
     const command = await usePluginRegistry.getState().resolveCommand(
       targetPluginId,
@@ -748,6 +754,8 @@ export function PluginPanelViewport() {
     return t("plugins.background.scheduled", "Background scheduled");
   })();
 
+  const workbenchError = workbench?.error?.trim() || "";
+  const shellHasError = renderState.kind === "error" || Boolean(workbenchError);
   const shell = useQxModuleShell({
     leave: goBack,
     esc: {
@@ -767,10 +775,10 @@ export function PluginPanelViewport() {
           detail: pluginDisplayName,
           activity: "wave",
         }
-      : renderState.kind === "error"
+      : shellHasError
         ? {
             label: t("plugins.error", "Plugin error"),
-            detail: renderState.detail || pluginDisplayName,
+            detail: workbenchError || renderState.detail || pluginDisplayName,
             tone: "danger",
             actionLabel: t("common.retry", "Retry"),
             onAction: () => setRefreshKey((k) => k + 1),
@@ -931,7 +939,7 @@ export function PluginPanelViewport() {
         </aside>
       }
       island={shell.island}
-      islandManagedExternally={workbenchIslandManaged || pluginIslandSessionActive}
+      islandManagedExternally={!shellHasError && (workbenchIslandManaged || pluginIslandSessionActive)}
       onGoHome={goHome}
       primaryActionId={primaryActionId}
       actionTitle={

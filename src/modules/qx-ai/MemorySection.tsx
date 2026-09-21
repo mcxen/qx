@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LoadingLabel } from "../../components/ui";
 import { useLocale, useT } from "../../i18n";
+import { useIslandError } from "../../island";
 
 interface AiMemoryEntry {
   id: string;
@@ -23,6 +24,11 @@ export function MemorySection({ onSaved }: { onSaved?: (detail: string) => void 
   const [memoryTags, setMemoryTags] = useState("");
   const [memoryError, setMemoryError] = useState<string | null>(null);
   const [memoryLoading, setMemoryLoading] = useState(false);
+  useIslandError({
+    id: "settings.ai-memory",
+    title: t("agent.memory.manage.title", "Memory Management"),
+    error: memoryError,
+  });
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }),
     [locale],
@@ -135,12 +141,6 @@ export function MemorySection({ onSaved }: { onSaved?: (detail: string) => void 
           {t("agent.memory.add", "Add Memory")}
         </button>
       </div>
-
-      {memoryError && (
-        <div className="qx-ai-config-error" role="alert">
-          {memoryError}
-        </div>
-      )}
 
       {memories.length === 0 ? (
         <div className="qx-ai-config-muted">{t("agent.memory.empty", "No memory saved yet.")}</div>

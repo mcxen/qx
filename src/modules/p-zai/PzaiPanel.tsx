@@ -113,7 +113,16 @@ export default function PzaiPanel() {
     });
   }, []);
 
-  const island: BottomIslandContent = run.streaming
+  const activeError = run.error || error;
+  const island: BottomIslandContent = activeError
+    ? {
+        label: t("pzai.title", "P仔"),
+        detail: activeError,
+        tone: "danger",
+        actionLabel: t("common.retry", "Retry"),
+        onAction: () => void loadArticles(selectedFeedId),
+      }
+    : run.streaming
     ? {
         label: t("pzai.title", "P仔"),
         detail: t("pzai.thinking", "Reading with agent…"),
@@ -503,7 +512,6 @@ export default function PzaiPanel() {
           )}
 
           <div className="qx-pzai-composer">
-            {run.error ? <div className="qx-ai-config-error">{run.error}</div> : null}
             {run.streaming || run.streamedContent ? (
               <div className="qx-pzai-agent-stream">
                 {run.streaming ? <Loader2 size={14} className="qx-spin" /> : <Sparkles size={14} />}
@@ -541,7 +549,6 @@ export default function PzaiPanel() {
           </div>
         </section>
       </div>
-      {error ? <div className="qx-ai-config-error qx-pzai-error">{error}</div> : null}
     </QxShell>
   );
 }

@@ -348,7 +348,6 @@ export default function FileActionsPanel() {
                 {t("fileActions.extractZipOnly", "All selected items must be ZIP archives.")}
               </div>
             ) : null}
-            {error ? <div className="qx-file-actions-notice is-error" role="alert"><TriangleAlert size={16} />{error}</div> : null}
             {result ? (
               <div className="qx-file-actions-notice is-success" role="status">
                 <CheckCircle2 size={16} aria-hidden="true" />

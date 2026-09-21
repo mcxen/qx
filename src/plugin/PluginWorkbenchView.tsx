@@ -839,10 +839,9 @@ export default function PluginWorkbenchView({
 
   return (
     <div className="qx-host-workbench" aria-busy={state.loading || undefined}>
-      {(state.meta || state.error) && (
+      {state.meta && (
         <div className="qx-host-workbench-status">
-          {state.meta ? <span>{state.meta}</span> : null}
-          {state.error ? <span className="is-danger">{state.error}</span> : null}
+          <span>{state.meta}</span>
         </div>
       )}
       {detailOnly ? (

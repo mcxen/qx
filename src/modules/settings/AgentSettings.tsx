@@ -37,6 +37,7 @@ import {
   upsertQxAiSchedule,
 } from "../qx-ai/schedule-bridge";
 import { useT } from "../../i18n";
+import { useIslandError } from "../../island";
 import { useSettingsStore, type AgentSettings as AgentSettingsValue } from "./store";
 
 type ScheduleRow = {
@@ -88,6 +89,16 @@ export default function AgentSettings() {
   const [schedulesLoading, setSchedulesLoading] = useState(false);
   const [schedulesError, setSchedulesError] = useState<string | null>(null);
   const [scheduleBusyId, setScheduleBusyId] = useState<string | null>(null);
+  const activeSettingsError = section === "automation"
+    ? schedulesError
+    : section === "skills-mcp"
+      ? skillsError || mcpError
+      : error;
+  useIslandError({
+    id: "settings.ai-agent",
+    title: t("settings.aiAgent", "AI Agent"),
+    error: activeSettingsError,
+  });
 
   useEffect(() => {
     if (section !== "agent-models") return;
@@ -546,7 +557,6 @@ export default function AgentSettings() {
             {schedulesLoading ? t("common.loading", "Loading…") : t("agent.schedules.refresh", "Refresh")}
           </button>
         </div>
-        {schedulesError && <p className="qx-settings-muted is-error">{schedulesError}</p>}
         {!schedulesLoading && schedules.length === 0 && !schedulesError && (
           <p className="qx-settings-muted">
             {t("agent.schedules.empty", "No schedules yet. Ask QxAI to upsert_schedule, or reinstall to seed Morning desk log.")}
@@ -619,7 +629,6 @@ export default function AgentSettings() {
             {t("agent.skills.openFolder", "Open skills folder")}
           </button>
         </div>
-        {skillsError && <p className="qx-settings-muted is-error">{skillsError}</p>}
         {!skillsLoading && skills.length === 0 && !skillsError && (
           <p className="qx-settings-muted">
             {t("agent.skills.empty", "No skills yet. Drop SKILL.md files into the skills folder, or ask QxAI to write_skill.")}
@@ -691,7 +700,6 @@ export default function AgentSettings() {
             {t("agent.mcp.save", "Save config")}
           </button>
         </div>
-        {mcpError && <p className="qx-settings-muted is-error">{mcpError}</p>}
         <p className="qx-settings-muted">
           {t("agent.mcp.serverCount", "{n} servers").replace("{n}", String(mcp.servers?.length ?? 0))}
         </p>

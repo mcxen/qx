@@ -28,6 +28,7 @@ import {
   recentTileStagger,
 } from "../src/island/recents/recentMotion.ts";
 import { visibleIslandActivity } from "../src/island/surface/contentPolicy.ts";
+import { inferBottomIslandPriority } from "../src/island/compat/mapBottomIslandContent.ts";
 
 // store/logger run in a WebView in production; provide only the timer surface
 // needed by the store before importing it in Node.
@@ -159,6 +160,10 @@ assert.equal(
   }),
   "pulse",
 );
+assert.equal(inferBottomIslandPriority({ label: "Idle" }), "location");
+assert.equal(inferBottomIslandPriority({ label: "Failed", tone: "danger" }), "error");
+assert.equal(inferBottomIslandPriority({ label: "Working", activity: "dots" }), "task");
+assert.equal(inferBottomIslandPriority({ label: "Working", progress: 0 }), "task");
 
 __resetIslandStoreForTests();
 const display = showSession({
@@ -236,7 +241,37 @@ assert.doesNotMatch(workbenchKitSource, /__qxPluginUiBridge\.updateIsland/);
 
 const pluginHostSource = fs.readFileSync("src/plugin/PluginHost.tsx", "utf8");
 assert.match(pluginHostSource, /syncPluginWorkbenchIsland/);
-assert.match(pluginHostSource, /islandManagedExternally=\{workbenchIslandManaged \|\| pluginIslandSessionActive\}/);
+assert.match(pluginHostSource, /islandManagedExternally=\{!shellHasError/);
+
+const pluginBridgeSource = fs.readFileSync("src/island/bridge/pluginIslandBridge.ts", "utf8");
+assert.match(pluginBridgeSource, /priority: status\.kind === "error" \? "error" : "toast"/);
+assert.match(pluginBridgeSource, /source: status\.kind === "error" \? "shell" : "plugin"/);
+
+const workbenchViewSource = fs.readFileSync("src/plugin/PluginWorkbenchView.tsx", "utf8");
+assert.doesNotMatch(workbenchViewSource, /state\.error \? <span/);
+
+const feedbackSources = [
+  "src/App.tsx",
+  "src/plugin/PluginHost.tsx",
+  "src/modules/settings/plugins/PluginManager.tsx",
+].map((file) => fs.readFileSync(file, "utf8")).join("\n");
+assert.doesNotMatch(feedbackSources, /CustomEvent\("qx:toast"/);
+
+for (const file of [
+  "src/modules/qx-ai/QxAiChat.tsx",
+  "src/modules/file-actions/FileActionsPanel.tsx",
+  "src/modules/qx-tty/QxTTYPanel.tsx",
+  "src/modules/macros/MacroRecorder.tsx",
+  "src/modules/rss/RssPanel.tsx",
+  "src/modules/p-zai/PzaiPanel.tsx",
+]) {
+  const source = fs.readFileSync(file, "utf8");
+  assert.doesNotMatch(
+    source,
+    /qx-(?:ai-config|file-actions-notice|tty|macro|pzai)[^"']*error/,
+    `${file} must project operational errors through the Island instead of adding an inline row`,
+  );
+}
 
 const islandTypesSource = fs.readFileSync("src/island/types.ts", "utf8");
 for (const activity of ["wave", "dots", "spinner", "pulse"]) {

@@ -8,6 +8,7 @@ import { useT } from "../../i18n";
 import { useStore } from "../../store";
 import { setPendingModuleLaunch } from "../../search/moduleSurfaces";
 import { getQxDesktopPlatform } from "../../utils/keyboard";
+import { useIslandError } from "../../island";
 import {
   ocrClearHistory,
   ocrDeleteHistory,
@@ -38,6 +39,11 @@ export default function OcrSettings() {
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  useIslandError({
+    id: "settings.ocr",
+    title: t("ocr.title", "OCR"),
+    error: modelError || historyError,
+  });
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -248,7 +254,6 @@ export default function OcrSettings() {
                   )}
                 </div>
               )}
-              {modelError && <div className="qx-settings-error">{modelError}</div>}
               <Row
                 title={t("ocr.modelSize", "Model Size")}
                 description={t(
@@ -335,7 +340,6 @@ export default function OcrSettings() {
                   {t("ocr.history.clear", "Clear All")}
                 </Button>
               </div>
-              {historyError && <div className="qx-settings-error">{historyError}</div>}
               {history.length === 0 ? (
                 <div className="qx-empty-state qx-ocr-history-empty">
                   {historyBusy

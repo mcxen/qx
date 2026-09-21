@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Badge, Button, Input, LoadingLabel, Select, Toggle } from "../../components/ui";
 import { useT } from "../../i18n";
+import { useIslandError } from "../../island";
 import { useSettingsStore } from "../settings/store";
 import { openSettings } from "../settings/openSettings";
 import {
@@ -48,6 +49,11 @@ export function BuiltInProviderKeys({
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  useIslandError({
+    id: "settings.ai-provider-key",
+    title: t("qxai.builtinKeys", "Built-in Provider Keys"),
+    error: saveError,
+  });
 
   useEffect(() => {
     setDrafts(Object.fromEntries(credentials.map((item) => [item.id, item.apiKey])));
@@ -108,11 +114,6 @@ export function BuiltInProviderKeys({
           );
         })}
       </div>
-      {saveError && (
-        <div role="alert" className="qx-ai-config-error">
-          {saveError}
-        </div>
-      )}
     </div>
   );
 }
@@ -126,6 +127,7 @@ export function AddProviderForm({
   onSave: (p: { name: string; baseUrl: string; apiKey: string; models: { id: string; name: string }[] }) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [name, setName] = useState(initial?.name ?? "");
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState(initial?.apiKey ?? "");
@@ -134,6 +136,11 @@ export function AddProviderForm({
   );
   const [fetchingModels, setFetchingModels] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  useIslandError({
+    id: "settings.ai-provider-models.legacy",
+    title: t("qxai.providers.fetchModels", "Fetch models"),
+    error: modelsError,
+  });
 
   const canFetchModels = Boolean(baseUrl.trim() && apiKey.trim() && !fetchingModels);
   const canSave = Boolean(name.trim() && baseUrl.trim() && apiKey.trim());
@@ -213,7 +220,6 @@ export function AddProviderForm({
         >
           {fetchingModels ? <LoadingLabel>Fetch Models</LoadingLabel> : "Fetch Models"}
         </button>
-        {modelsError && <span className="qx-ai-config-error">{modelsError}</span>}
       </div>
 
       <div className="qx-ai-config-row is-end">
@@ -408,6 +414,11 @@ function ProviderEditor({
   );
   const [fetchingModels, setFetchingModels] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  useIslandError({
+    id: "settings.ai-provider-models",
+    title: t("qxai.providers.fetchModels", "Fetch models"),
+    error: modelsError,
+  });
   const [saving, setSaving] = useState(false);
 
   const selectedTemplate = builtInProviders.find((provider) => provider.id === templateId);
@@ -576,7 +587,6 @@ function ProviderEditor({
               ? <LoadingLabel>{t("qxai.providers.fetchingModels", "Fetching models…")}</LoadingLabel>
               : t("qxai.providers.fetchModels", "Fetch models")}
           </Button>
-          {modelsError && <span className="qx-ai-config-error">{modelsError}</span>}
         </div>
       )}
 
@@ -797,6 +807,11 @@ export function ProviderListSection() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  useIslandError({
+    id: "settings.ai-providers",
+    title: t("qxai.providers.title", "AI Providers"),
+    error: actionError,
+  });
 
   const configured = [
     ...builtInProviders.map((provider) => ({
@@ -912,8 +927,6 @@ export function ProviderListSection() {
           />
         </div>
       )}
-
-      {actionError && <div role="alert" className="qx-ai-config-error">{actionError}</div>}
 
       {configured.length === 0 ? (
         <div className="qx-ai-config-muted">

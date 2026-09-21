@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { useRssStore } from "./store";
 import { LoadingLabel, Modal } from "../../components/ui";
 import { useT } from "../../i18n";
+import { useIslandError } from "../../island";
 
 export default function AddFeedDialog({ onClose }: { onClose: () => void }) {
   const { addFeed, loading } = useRssStore();
   const t = useT();
   const [url, setUrl] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  useIslandError({ id: "rss.add-feed", title: t("rss.addSubscription", "Add RSS Subscription"), error: localError });
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -56,7 +58,6 @@ export default function AddFeedDialog({ onClose }: { onClose: () => void }) {
         className="qx-inline-input"
         style={{ width: "100%" }}
       />
-      {localError && <div className="qx-modal-error">{localError}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" onClick={onClose}>
           {t("common.cancel", "Cancel")}

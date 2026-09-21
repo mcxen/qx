@@ -571,6 +571,15 @@ export default function QxAiChat() {
 
   const userMessageCount = conv?.messages.filter((m) => m.role === "user").length ?? 0;
   const runningCount = Object.values(runs).filter((runItem) => runItem.streaming).length;
+  const visionErrorText = pendingAttachments.some(
+    (item) => item.kind === "image" || item.mimeType?.startsWith("image/"),
+  ) && modelVisionState === "unsupported"
+    ? t(
+        "qxai.model.vision.required",
+        "Current model cannot read images. Pick a Vision model or enable Vision in Settings → AI Agent.",
+      )
+    : "";
+  const composerErrorText = currentErrorText || attachmentsError || visionErrorText;
 
   const island: BottomIslandContent = isCurrentConversationStreaming
     ? {
@@ -583,8 +592,18 @@ export default function QxAiChat() {
           : t("qxai.streaming", "Streaming response…"),
         activity: "dots",
       }
-    : currentErrorText
-      ? { label: t("qxai.title", "QxAI Chat"), detail: currentErrorText, tone: "danger" }
+    : composerErrorText
+      ? {
+          label: t("qxai.title", "QxAI Chat"),
+          detail: composerErrorText,
+          tone: "danger",
+          actionLabel: errorPresentation?.kind === "missing-api-key"
+            ? t("qxai.error.configure", "Configure")
+            : undefined,
+          onAction: errorPresentation?.kind === "missing-api-key"
+            ? openAgentSettingsTab
+            : undefined,
+        }
       : {
           label: t("qxai.title", "QxAI Chat"),
           detail:
@@ -1130,8 +1149,6 @@ export default function QxAiChat() {
 
                 {(selectedSkill
                   || pendingAttachments.length > 0
-                  || attachmentsError
-                  || currentErrorText
                   || queuedMessages.length > 0) && (
                   <div className="qx-ai-composer-status is-docked">
                     {selectedSkill ? (
@@ -1195,36 +1212,6 @@ export default function QxAiChat() {
                             </div>
                           );
                         })}
-                      </div>
-                    ) : null}
-
-                    {pendingAttachments.some(
-                      (item) => item.kind === "image" || item.mimeType?.startsWith("image/"),
-                    ) && modelVisionState === "unsupported" ? (
-                      <div className="qx-ai-config-error">
-                        {t(
-                          "qxai.model.vision.required",
-                          "Current model cannot read images. Pick a Vision model or enable Vision in Settings → AI Agent.",
-                        )}
-                      </div>
-                    ) : null}
-                    {attachmentsError ? (
-                      <div className="qx-ai-config-error">{attachmentsError}</div>
-                    ) : null}
-                    {currentErrorText ? (
-                      <div className="qx-ai-config-error qx-ai-run-error" role="alert">
-                        <span>{currentErrorText}</span>
-                        {errorPresentation?.kind === "missing-api-key" ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() => {
-                              openAgentSettingsTab();
-                            }}
-                          >
-                            {t("qxai.error.configure", "Configure")}
-                          </Button>
-                        ) : null}
                       </div>
                     ) : null}
 

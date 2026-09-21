@@ -156,6 +156,9 @@ blocking HTTP · filesystem · native APIs
 - **可扩展性**：新增 provider 应实现现有 normalized stream port；新增工具通过
   catalogue/permission registration；新增统计字段只能扩展事件 payload，不改变已有
   `text`/`reasoning`/`done` 语义。
+- **宿主管理**：Agent 不得直接写 settings 存储、插件目录或绕过 registry。可写设置由
+  `host-management` 注册稳定 id/type/read/write adapter；插件启停/卸载复用完整 lifecycle
+  port。跨插件能力（例如定时壁纸）归宿主 category policy，不为每个插件添加特例工具。
 - **速率不变量**：优先使用 provider `completion_tokens` 与 `token_speed`；没有 usage 时
   才使用前端 token 估算和本次模型请求 `duration_ms`。禁止用首 token 时间的 0/1ms
   作为分母，也禁止把 prompt、工具等待或标题生成时间算进完成速率。

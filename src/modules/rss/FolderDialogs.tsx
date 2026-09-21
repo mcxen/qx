@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { LoadingLabel, Modal, Select } from "../../components/ui";
 import { useRssStore, type RssFeed, type RssFolder } from "./store";
 import { useT } from "../../i18n";
+import { useIslandError } from "../../island";
 
 const NEW_FOLDER_VALUE = "__new__";
 const UNGROUPED_VALUE = "none";
@@ -18,6 +19,7 @@ export function NewFolderDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  useIslandError({ id: "rss.new-folder", title: t("rss.newFolder", "New Folder"), error });
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -77,7 +79,6 @@ export function NewFolderDialog({ onClose }: { onClose: () => void }) {
         className="qx-inline-input"
         style={{ width: "100%" }}
       />
-      {error && <div className="qx-modal-error">{error}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" type="button" onClick={onClose}>
           {t("common.cancel", "Cancel")}
@@ -112,6 +113,7 @@ export function SetFeedFolderDialog({
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useIslandError({ id: "rss.set-folder", title: t("rss.setFolderForSubscription", "Set folder for subscription"), error });
   const [choice, setChoice] = useState<string>(
     feed.folder_id == null ? UNGROUPED_VALUE : String(feed.folder_id),
   );
@@ -217,7 +219,6 @@ export function SetFeedFolderDialog({
           />
         </div>
       )}
-      {error && <div className="qx-modal-error">{error}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" type="button" onClick={onClose}>
           {t("common.cancel", "Cancel")}
@@ -243,6 +244,7 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  useIslandError({ id: "rss.import-opml", title: t("rss.importOpmlShort", "Import OPML"), error });
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -333,7 +335,6 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
         rows={8}
         style={{ width: "100%", resize: "vertical", fontFamily: "var(--qx-font-mono)", fontSize: 12 }}
       />
-      {error && <div className="qx-modal-error">{error}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" type="button" onClick={onClose}>
           {t("common.cancel", "Cancel")}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRssStore, type RssFeed } from "./store";
 import { LoadingLabel, Modal, Select } from "../../components/ui";
 import { useT } from "../../i18n";
+import { useIslandError } from "../../island";
 
 const UNGROUPED = "none";
 
@@ -20,6 +21,7 @@ export default function EditFeedDialog({
     feed.folder_id == null ? UNGROUPED : String(feed.folder_id),
   );
   const [localError, setLocalError] = useState<string | null>(null);
+  useIslandError({ id: "rss.edit-feed", title: t("rss.editSubscription", "Edit subscription"), error: localError });
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -112,7 +114,6 @@ export default function EditFeedDialog({
           ariaLabel={t("rss.folderForFeed", "Folder for this feed")}
         />
       </div>
-      {localError && <div className="qx-modal-error">{localError}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" type="button" onClick={onClose}>
           {t("common.cancel", "Cancel")}

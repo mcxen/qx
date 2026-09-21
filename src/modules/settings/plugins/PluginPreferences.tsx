@@ -18,6 +18,7 @@ import type {
   PluginPreferenceGroup,
 } from "../../../plugin/types";
 import { localizePluginPreference } from "../../../plugin/pluginLabels";
+import { useIslandError } from "../../../island";
 
 export type PreferenceValue = string | number | boolean;
 export type PreferenceValues = Record<string, PreferenceValue>;
@@ -254,6 +255,11 @@ export function PluginPreferences({
 }) {
   const locale = useLocale();
   const t = useT();
+  useIslandError({
+    id: `settings.plugin.${plugin.id}`,
+    title: t("plugins.preferences", "Preferences"),
+    error,
+  });
   const sections = useMemo(() => groupPreferences(preferences, groups), [groups, preferences]);
   if (!loaded || preferences.length === 0) return null;
 
@@ -326,9 +332,6 @@ export function PluginPreferences({
                   {connectionActionTitle}
                 </Button>
               </div>
-            ) : null}
-            {error && (dirty || Boolean(group.connectionCheck)) ? (
-              <div className="qx-plugin-preference-error" role="alert">{error}</div>
             ) : null}
           </SettingsCard>
         );

@@ -647,7 +647,7 @@ async function upgradeInstalledPlugin(
       .replace("{version}", entry.version);
     const current = useMarketplaceCatalog.getState();
     if (current.installingId && current.installingId !== entry.id) {
-      window.dispatchEvent(new CustomEvent("qx:toast", { detail: message }));
+      showPluginInstallStatus({ kind: "success", label: message });
       return;
     }
     showPluginInstallStatus({ kind: "success", label: message });
@@ -658,7 +658,7 @@ async function upgradeInstalledPlugin(
     );
     const current = useMarketplaceCatalog.getState();
     if (current.installingId && current.installingId !== entry.id) {
-      window.dispatchEvent(new CustomEvent("qx:toast", { detail: message }));
+      showPluginInstallStatus({ kind: "error", label: message });
       return;
     }
     showPluginInstallStatus({ kind: "error", label: message });

@@ -1,5 +1,18 @@
 import type { BottomIslandContent } from "./bottomIslandTypes";
-import type { IslandSlotContent, IslandTone } from "../types";
+import type { IslandPriority, IslandSlotContent, IslandTone } from "../types";
+
+/**
+ * Legacy module surfaces only supplied content, so the Shell used to publish
+ * every session as a location. Infer the semantic priority from the content
+ * while preserving an explicit caller override.
+ */
+export function inferBottomIslandPriority(
+  content: BottomIslandContent | null | undefined,
+): IslandPriority {
+  if (content?.tone === "danger") return "error";
+  if (content?.activity || typeof content?.progress === "number") return "task";
+  return "location";
+}
 
 /** Map legacy BottomIslandContent → IslandSlotContent (actions bound separately). */
 export function mapBottomIslandContent(

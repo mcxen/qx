@@ -85,6 +85,7 @@ const zh: Record<string, string> = {
   "settings.navGroup.core": "核心",
   "settings.navGroup.basics": "基础",
   "settings.navGroup.intelligence": "智能",
+  "settings.aiAgent": "AI 智能体",
   "settings.navGroup.workspace": "工作区",
   "settings.navGroup.extensions": "扩展",
   "settings.navGroup.features": "功能",
@@ -361,6 +362,7 @@ const zh: Record<string, string> = {
   "qxai.key.saving": "保存中...",
   "qxai.key.saved": "API Key 已保存",
   "qxai.key.removed": "API Key 已移除",
+  "qxai.providers.title": "AI 供应商",
   "qxai.providers.desc": "内置模板与 OpenAI 兼容供应商。展开行可星标模型、切换视觉，并查看上下文窗口（对齐 Jan 供应商模型列表）。",
   "qxai.providers.add": "添加供应商",
   "qxai.providers.addTitle": "添加供应商",
@@ -2389,6 +2391,7 @@ const zh: Record<string, string> = {
   "tty.noSessions": "暂无终端会话",
   "tty.sessionName": "终端 {n}",
 
+  "ocr.title": "OCR",
   "ocr.capture.title": "识别",
   "ocr.capture.desc": "启用截图、剪贴板图片和插件会用到的 OCR 能力。",
   "ocr.enable": "启用 OCR",

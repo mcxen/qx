@@ -28,6 +28,7 @@ export {
 export {
   TOOLS,
   CAPABILITY_TOOLS,
+  HOST_MANAGEMENT_TOOLS,
   MODULE_ACTION_TOOLS,
   getEnabledTools,
   toolsToOpenAISchema,

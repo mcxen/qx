@@ -91,6 +91,8 @@ task > error > toast > location > home
 
 插件文本由宿主截断，进度钳制到 0–100；插件不能发布任意 React 组件、抢占 task/error、创建永驻 toast 或把浮窗导向其它模块。
 
+插件自身仍只可发布受限 toast/location；插件 command、后台 job、Workbench 和安装流程的失败由宿主桥接为 `source: shell`、`priority: error`，并附带插件 open target。QxShell 对未显式指定 priority 的遗留内容执行固定推导：`danger -> error`，activity/progress -> task，其余 -> location。操作错误不得通过 Main Area 新增第二行来规避 Island。
+
 ## 5. Docked、Floating 与最近界面
 
 `QxIslandDockSlot` 是 QxShell 的唯一 docked 入口：exception 优先，否则渲染 store winner，没有 winner 时保留 shell 空态。`.qx-shell-bottombar` 负责窗口相对居中，不允许模块自行计算偏移。
