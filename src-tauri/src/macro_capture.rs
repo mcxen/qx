@@ -408,7 +408,10 @@ mod platform {
                 code: CGEventGetIntegerValueField(event, CG_EVENT_KEYBOARD_EVENT_KEYCODE) as u32,
                 flags: CGEventGetFlags(event),
             }),
-            CG_EVENT_MOUSE_MOVED | CG_EVENT_LEFT_MOUSE_DRAGGED | CG_EVENT_RIGHT_MOUSE_DRAGGED => {
+            CG_EVENT_MOUSE_MOVED
+            | CG_EVENT_LEFT_MOUSE_DRAGGED
+            | CG_EVENT_RIGHT_MOUSE_DRAGGED
+            | CG_EVENT_OTHER_MOUSE_DRAGGED => {
                 let point = CGEventGetLocation(event);
                 Some(CaptureEventKind::MouseMove {
                     x: point.x,
@@ -433,7 +436,7 @@ mod platform {
                     y: point.y,
                 })
             }
-            CG_EVENT_OTHER_MOUSE_DOWN | CG_EVENT_OTHER_MOUSE_UP | CG_EVENT_OTHER_MOUSE_DRAGGED => {
+            CG_EVENT_OTHER_MOUSE_DOWN | CG_EVENT_OTHER_MOUSE_UP => {
                 let point = CGEventGetLocation(event);
                 Some(CaptureEventKind::MouseButton {
                     button: CGEventGetIntegerValueField(event, CG_EVENT_MOUSE_EVENT_BUTTON_NUMBER)

@@ -1,4 +1,5 @@
 import { useT } from "../../i18n";
+import { isImeCompositionEvent } from "../../utils/keyboard";
 
 interface SaveDialogProps {
   stepCount: number;
@@ -17,6 +18,7 @@ export default function SaveDialog({
 }: SaveDialogProps) {
   const t = useT();
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isImeCompositionEvent(e.nativeEvent)) return;
     if (e.key === "Enter" && name.trim()) {
       e.preventDefault();
       e.stopPropagation();

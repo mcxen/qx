@@ -4,7 +4,9 @@ import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import mathml from "@webc.site/math";
+import { Check, Copy, FileCode2, WrapText } from "lucide-react";
 import { useTheme } from "../../ThemeProvider";
+import { useT } from "../../i18n";
 
 const SHIKI_LANGS = [
   "bash",
@@ -57,11 +59,19 @@ function CodeBlock({
   code: string;
   themeId: "github-light" | "github-dark";
 }) {
+  const t = useT();
   const [html, setHtml] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [wrapped, setWrapped] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lang = normalizeLang(language);
   const supported = SHIKI_LANGS.includes(lang as (typeof SHIKI_LANGS)[number]);
+  const wrapLabel = wrapped
+    ? t("qxai.code.unwrap", "Do not wrap lines")
+    : t("qxai.code.wrap", "Wrap long lines");
+  const copyLabel = copied
+    ? t("qxai.code.copied", "Copied")
+    : t("qxai.code.copy", "Copy code");
 
   useEffect(() => {
     let cancelled = false;
@@ -109,23 +119,39 @@ function CodeBlock({
   return (
     <div className="qx-md-codeblock">
       <div className="qx-md-codeblock-header">
-        <span className="qx-md-codeblock-lang">{lang === "text" ? "code" : lang}</span>
-        <button
-          type="button"
-          className="qx-md-codeblock-copy"
-          onClick={copy}
-          aria-label="Copy code"
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
+        <span className="qx-md-codeblock-lang">
+          <FileCode2 size={14} aria-hidden="true" />
+          {lang === "text" ? t("qxai.code.label", "Code") : lang}
+        </span>
+        <span className="qx-md-codeblock-actions">
+          <button
+            type="button"
+            className={`qx-md-codeblock-action${wrapped ? " is-active" : ""}`}
+            title={wrapLabel}
+            aria-label={wrapLabel}
+            aria-pressed={wrapped}
+            onClick={() => setWrapped((value) => !value)}
+          >
+            <WrapText size={14} />
+          </button>
+          <button
+            type="button"
+            className="qx-md-codeblock-action"
+            onClick={copy}
+            title={copyLabel}
+            aria-label={copyLabel}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+        </span>
       </div>
       {html ? (
         <div
-          className="qx-md-codeblock-body is-highlighted"
+          className={`qx-md-codeblock-body is-highlighted${wrapped ? " is-wrapped" : ""}`}
           dangerouslySetInnerHTML={{ __html: html }}
         />
       ) : (
-        <pre className="qx-md-codeblock-body">
+        <pre className={`qx-md-codeblock-body${wrapped ? " is-wrapped" : ""}`}>
           <code>{code}</code>
         </pre>
       )}

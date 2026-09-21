@@ -13,6 +13,19 @@
 
 ## 当前工作
 
+### Plugin — Speedtest 原生 Workbench 移植（2026-09-21）
+
+- 从固定的 Raycast 上游提交按 Qx `context.*` 端口重写，使用 Ookla 官方 CLI、归档 SHA-256 校验、JSONL 实时进度、Workbench 指标与真实带宽采样曲线；未引入 Raycast shim 或自绘仪表盘。
+- 插件 1.0.1 已生成本地市场包与索引，`npm run smoke:speedtest` 覆盖 CLI 失败、重试、结果解析、曲线与持久化；宿主插件搜索门禁覆盖中英/拼音/首字母召回。
+- 尚未在真实 Ookla 服务上完成 macOS / Windows 安装态下载、运行、限流与离线错误验收，因此本轮只提交本地源码与包，不发布插件市场版本。
+
+### QxAI — 折叠思考与工具活动摘要（2026-09-21）
+
+- 流式与完成态默认收起为单行，展示最新思考或工具参数/结果摘要；用户手动展开后保留选择，状态更新不强制展开。
+- 工具收起态移除厚卡片/pill，统一为时间线式摘要；重复的 action/observation 输出只呈现一次。
+- 重新生成会把旧回答保留为同一条消息的候选版本，支持在页脚切换；失败或异常退出时恢复原对话，模型请求只发送当前候选内容。
+- `npm run check`、`npm run build` 与 QxAI Agent 门禁通过；未执行安装版桌面视觉验收。
+
 ### Audit — Windows 窗口管理与消融（2026-09-12）
 
 - 全部原生窗口所有者完成代码盘点，契约与矩阵见 [窗口生命周期验证](docs/window-lifecycle-validation.md)。主窗口、picker/shade、录制控制栏、island、宏指针层、Tray、更新进度与一次性 pin 分别维护领域关闭语义；可复用表面共用有序呈现端口。
@@ -29,7 +42,21 @@
 - 主窗口初始隐藏、每次收起与再次召唤接入共享 `window_composition` 端口；隐藏期间维持 cloak，show 后解除。picker 复用同一实现，原生调用失败记录窗口标签和错误。
 - Windows MSVC `cargo check`、`cargo fmt --check`、TypeScript/Vite build 与窗口端口检查通过。全量 `npm run check` 剩余 3 组受本机 `qx-plugins` 缺失影响（文档链接、插件搜索、亮度）；未把它们记为通过。
 - 本地 Tauri release 构建及 MSI/NSIS 打包通过（0.6.110 本地修复包，包含工作区已有截图提示改动）；未替换运行中的安装版，截图确认/复制/取消及再次召唤的安装态验收、远端 Windows Action 尚未执行。本轮相对 v0.6.110 的聚合改动约 190 行，低于发布阈值。
+### Landing — 可操作客户端搜索演示（2026-09-12）
 
+- 参考 Qoder 的 Hero → 完整应用窗口节奏重新排版；居中主张后立即露出 Qx Launcher 三层布局，加入主页、启动应用、搜索文件、剪贴板、RSS 阅读器、V2EX 六个场景。独立 `landing/demo.css` / `demo.js` 承载浏览器示例适配。
+- 支持双语、拼音首字母、多词/扩展名搜索、范围筛选、键盘选择、双击/Enter 预览、Esc 分层返回、操作菜单、真实复制与会话内置顶；公开示例数据不访问本机内容。
+- `npm run check`、JS 语法和 diff 检查通过；浏览器验证中英/明暗、390/640/880/1200px 无横向溢出、预览/范围空结果/菜单/复制/置顶。此次仅改静态落地页，未运行客户端 TS/Vite/Rust 构建。
+- 已部署 Cloudflare Pages production `06e94a56`，正式域名 `https://qx.xpai.uk/` 已验证新版首屏、六个场景、RSS/V2EX 分层交互与下载区 v0.6.109；源码已随 `v0.6.110` 提交，未更改并行宏录制工作。
+- 依据已安装 Qx 的真实界面补全 RSS 与 V2EX：RSS 公开快照含 13 个订阅、4 个文件夹，并可进入 IT之家文章列表和阅读详情；V2EX 公开快照含当前 41 条最新主题中的示例，可搜索、筛选、选择和进入详情。
+- 演示色彩改为客户端令牌：亮色 `#2563eb`、暗色 `#3b82f6`，并同步 Qx 的表面、边框、蓝色选择态、搜索焦点和主动作。
+
+### Macro — 录制时间线与停止修复（2026-09-11）
+
+- 修复高频移动重置计时造成轨迹丢失和回放加速、中键拖动误记松键、裁尾后输入不闭合。
+- 修复回放延迟 IPC 参数、暂停态 Stop、暂停等待错过取消通知；前端录制/回放互斥，名称输入保护 IME。
+- 验证：`npm run check`、`npm run build`、`node scripts/check-macros.mjs`、`cargo fmt --check` 与 12 个 `cargo test --lib macro_` 测试通过。
+- 未替换安装版、未做桌面交互或 Windows 验收；滚轮事件当前仍未进入宏步骤协议。
 ### UI — Qxpicture 新增 API 与管理表单（2026-09-09）
 
 - 基线：旧新增页重复展示参数摘要、参数组套卡片，类型 Select 铺满整行；API 仅覆盖 GET、直接图片和 JSON URL，无法提交 FastAPI 常见 JSON 请求体或读取 Base64 图片。
@@ -42,7 +69,7 @@
 - macOS / Windows 按钮固定为 `/download/macos`、`/download/windows`，默认 CNB。
   Pages Function 解析同源版本清单，切换源不会混用版本；按钮无需等待 JS。
 - 门禁、浏览器源切换、平台/失败回归通过；CNB 当前 0.6.108 的 DMG / EXE 均返回 200。
-- Wrangler 未登录，本轮尚未部署；部署须从 `landing/` 运行以包含 Functions。
+- 2026-09-12 随交互演示从 `landing/` 部署，Functions 与直达下载已上线；正式域名版本清单读取成功。
 
 ### Release — v0.6.109（2026-09-08）
 

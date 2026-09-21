@@ -36,6 +36,18 @@ const messageSource = readFileSync(
   new URL("../src/modules/qx-ai/message-rendering.tsx", import.meta.url),
   "utf8",
 );
+const messageVariantsSource = readFileSync(
+  new URL("../src/modules/qx-ai/message-variants.ts", import.meta.url),
+  "utf8",
+);
+const contractsSource = readFileSync(
+  new URL("../src/modules/qx-ai/contracts.ts", import.meta.url),
+  "utf8",
+);
+const markdownSource = readFileSync(
+  new URL("../src/modules/qx-ai/MarkdownRenderer.tsx", import.meta.url),
+  "utf8",
+);
 const qxAiCssSource = readFileSync(
   new URL("../src/styles/qx-ai.css", import.meta.url),
   "utf8",
@@ -148,6 +160,15 @@ assert.match(messageSource, /className="qx-jan-step-header"/);
 assert.match(messageSource, /aria-expanded=\{open\}/);
 assert.match(messageSource, /defaultOpen=\{false\}/);
 assert.doesNotMatch(messageSource, /defaultOpen=\{step\.state === "running"\}/);
+assert.match(messageSource, /function latestActivityLine/);
+assert.match(messageSource, /function ToolCallGroupPanel/);
+assert.match(messageSource, /className="qx-ai-reasoning-summary"/);
+assert.match(messageSource, /className="qx-ai-tool-activity"/);
+assert.doesNotMatch(messageSource, /if \(isStreaming\) setOpen\(true\)/);
+assert.match(qxAiCssSource, /\.qx-ai-reasoning-summary,[\s\S]*?white-space:\s*nowrap/);
+assert.match(qxAiCssSource, /\.qx-ai-activity-roll-line\.is-entering/);
+assert.match(qxAiCssSource, /\.qx-ai-tool-group-body/);
+assert.match(qxAiCssSource, /prefers-reduced-motion[\s\S]*?qx-ai-activity-roll-line\.is-leaving/);
 
 // Tool completion must update both the live streaming projection and the
 // durable steps returned with the finished assistant message. Otherwise the
@@ -234,7 +255,7 @@ assert.match(appSource, /startQxAiScheduleBridgeDeferred/);
 assert.match(scheduleBridgeSource, /startQxAiScheduleBridgeDeferred/);
 assert.match(scheduleBridgeSource, /import\(["']\.\/store["']\)/);
 assert.match(storeIsolationSource, /loadAgentHarness|import\(["']\.\/agent["']\)/);
-assert.match(storeIsolationSource, /import type \{ AgentStep/);
+assert.match(storeIsolationSource, /import type \{[\s\S]*?AgentStep[\s\S]*?\} from "\.\/contracts"/);
 
 // Agent hooks: pre/post/error/tool lifecycle wired into both loops.
 const hooksSource = readFileSync(
@@ -321,6 +342,33 @@ assert.match(chatSource, /className="qx-jan-composer-actions"/);
 assert.match(qxAiCssSource, /\.qx-jan-composer-actions\s*\{[\s\S]*?margin-left:\s*auto/);
 assert.match(qxAiCssSource, /\.qx-jan-message-actions \.qx-shadcn-button\s*\{[\s\S]*?box-shadow:\s*none/);
 assert.match(qxAiCssSource, /\.qx-jan-message-action-btns\s*\{[\s\S]*?opacity:\s*0/);
+
+// Regeneration keeps durable assistant alternatives, restores the original
+// transcript on failure, and sends only the active variant to the model.
+assert.match(contractsSource, /variants\?: QxAiAssistantVariant\[\]/);
+assert.match(messageVariantsSource, /function assistantWithRegeneratedVariant/);
+assert.match(messageVariantsSource, /function withoutAssistantVariants/);
+assert.match(storeSource, /regenerationBackup:\s*\{/);
+assert.match(storeSource, /messages:\s*conversation\.regenerationBackup\.messages/);
+assert.match(storeSource, /\.map\(withoutAssistantVariants\)/);
+assert.match(storeSource, /selectMessageVariant:/);
+assert.match(chatSource, /variantCount=\{msg\.variants\?\.length \?\? 0\}/);
+assert.match(chatSource, /onPreviousVariant=/);
+assert.match(chatSource, /onNextVariant=/);
+assert.match(qxAiCssSource, /\.qx-ai-message-branches\s*\{/);
+
+// Thinking and tool activity stay dense: latest-wins rolling summaries,
+// semantic tool categories, grouped consecutive calls, and compact affordances.
+assert.match(messageSource, /function getToolCategory/);
+assert.match(messageSource, /function ActivitySummary/);
+assert.match(messageSource, /function ToolCallGroupPanel/);
+assert.match(qxAiCssSource, /\.qx-ai-activity-roll\s*\{/);
+assert.match(qxAiCssSource, /prefers-reduced-motion:\s*reduce/);
+assert.match(qxAiCssSource, /\.qx-jan-chevron\s*\{[\s\S]*?opacity:\s*0/);
+assert.match(qxAiCssSource, /\.qx-ai-message-queue-actions\s*\{[\s\S]*?opacity:\s*0/);
+assert.match(markdownSource, /<WrapText/);
+assert.match(markdownSource, /qx-md-codeblock-action/);
+assert.match(qxAiCssSource, /\.qx-md-codeblock-body\s*\{[\s\S]*?max-height:/);
 
 // Generating a response must not lock the composer: later submissions enter a
 // visible FIFO queue, and slash search resolves a managed Qx Skill document.

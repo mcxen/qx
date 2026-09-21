@@ -311,5 +311,22 @@
     "天气预报",
     "tianqiyubao",
     "tqyb"
+  ],
+  "speedtest": [
+    "测速",
+    "cesu",
+    "cs",
+    "网速",
+    "wangsu",
+    "ws",
+    "网络测速",
+    "wangluocesu",
+    "wlcs",
+    "带宽",
+    "daikuan",
+    "dk",
+    "延迟",
+    "yanchi",
+    "yc"
   ]
 }

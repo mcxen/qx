@@ -404,6 +404,16 @@
   padding-left: 6px;
 }
 
+.qx-ai-pending-attachment > .qx-shadcn-button {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.qx-ai-pending-attachment:hover > .qx-shadcn-button,
+.qx-ai-pending-attachment:focus-within > .qx-shadcn-button {
+  opacity: 1;
+}
+
 .qx-ai-pending-thumb {
   width: 32px;
   height: 32px;
@@ -550,6 +560,13 @@
   align-items: center;
   gap: 2px;
   flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.qx-ai-message-queue-row:hover .qx-ai-message-queue-actions,
+.qx-ai-message-queue-row:focus-within .qx-ai-message-queue-actions {
+  opacity: 1;
 }
 
 .qx-ai-message-queue-edit {
@@ -650,7 +667,7 @@
 /* Attachments must not force a 460px min width inside narrow bubbles */
 .qx-ai-message-bubble .qx-ai-attachment {
   min-width: 0;
-  width: 100%;
+  width: auto;
   max-width: 100%;
 }
 
@@ -680,28 +697,30 @@
 }
 
 .qx-ai-attachments {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
 }
 
 .qx-ai-attachment {
-  min-width: min(460px, 100%);
-  min-height: var(--qx-control-height);
+  min-width: 0;
+  width: fit-content;
+  max-width: min(360px, 100%);
+  min-height: 38px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
-  padding: 7px 8px 7px 10px;
+  gap: 7px;
+  padding: 3px 4px 3px 6px;
   border: 1px solid var(--qx-border-1);
-  border-radius: var(--qx-control-radius);
+  border-radius: 8px;
   background: var(--qx-bg-component-1);
 }
 
 .qx-ai-attachment.is-image {
-  grid-template-columns: minmax(72px, 120px) minmax(0, 1fr) auto;
-  align-items: stretch;
-  padding: 8px;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  padding-left: 3px;
 }
 
 .qx-ai-attachment > svg {
@@ -716,7 +735,7 @@
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
-  align-self: stretch;
+  align-self: center;
 }
 
 .qx-ai-attachment-preview {
@@ -729,9 +748,9 @@
 }
 
 .qx-ai-attachment.is-image .qx-ai-attachment-preview {
-  width: 100%;
-  height: 88px;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
 }
 
 .qx-ai-attachment-copy {
@@ -762,6 +781,13 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.qx-ai-attachment:hover .qx-ai-attachment-actions,
+.qx-ai-attachment:focus-within .qx-ai-attachment-actions {
+  opacity: 1;
 }
 
 .qx-ai-reasoning-setting {
@@ -1294,6 +1320,15 @@
   transition: opacity 120ms ease;
 }
 
+.qx-ai-message-branches {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
 .qx-ai-message.is-jan:hover .qx-jan-message-action-btns,
 .qx-ai-message.is-jan:focus-within .qx-jan-message-action-btns {
   opacity: 1;
@@ -1750,7 +1785,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   margin: 0 0 0 -6px;
   padding: 4px 6px;
@@ -1781,9 +1816,63 @@
 
 .qx-jan-cot-title,
 .qx-jan-tool-label {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   white-space: nowrap;
+}
+
+.qx-ai-activity-separator {
+  flex: 0 0 auto;
+  color: var(--qx-text-tertiary);
+}
+
+.qx-ai-reasoning-summary,
+.qx-ai-tool-activity {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--qx-text-tertiary);
+  font-weight: 400;
+}
+
+.qx-ai-activity-roll {
+  position: relative;
+  display: block;
+  min-width: 0;
+  height: 1.3em;
+  overflow: hidden;
+}
+
+.qx-ai-activity-roll-line {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  white-space: nowrap;
+}
+
+.qx-ai-activity-roll-line.is-entering {
+  animation: qx-ai-activity-enter 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.qx-ai-activity-roll-line.is-leaving {
+  position: absolute;
+  inset: 0 auto auto 0;
+  animation: qx-ai-activity-leave 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes qx-ai-activity-enter {
+  from { opacity: 0; transform: translateY(0.8em); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes qx-ai-activity-leave {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-0.8em); }
+}
+
+.qx-ai-tool-activity {
+  text-overflow: ellipsis;
 }
 
 .qx-jan-cot-title.is-shimmer,
@@ -1804,6 +1893,18 @@
 .qx-jan-chevron {
   transition: transform 300ms cubic-bezier(0.23, 1, 0.32, 1);
   color: var(--qx-text-tertiary);
+  opacity: 0;
+}
+
+.qx-jan-cot-header:hover .qx-jan-chevron,
+.qx-jan-cot-header:focus-visible .qx-jan-chevron,
+.qx-jan-tool-header:hover .qx-jan-chevron,
+.qx-jan-tool-header:focus-visible .qx-jan-chevron,
+.qx-jan-step-header:hover .qx-jan-chevron,
+.qx-jan-step-header:focus-visible .qx-jan-chevron,
+.qx-ai-tool-group-header:hover .qx-jan-chevron,
+.qx-ai-tool-group-header:focus-visible .qx-jan-chevron,
+.qx-jan-chevron.is-open {
   opacity: 1;
 }
 
@@ -1917,12 +2018,18 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .qx-jan-step.is-active .qx-jan-step-rail svg {
+  .qx-jan-step.is-active .qx-jan-step-rail svg,
+  .qx-ai-activity-roll-line.is-entering,
+  .qx-ai-activity-roll-line.is-leaving {
     animation: none;
+  }
+
+  .qx-ai-activity-roll-line.is-leaving {
+    opacity: 0;
   }
 }
 
-/* Tool chips — compact field pills (Beautiful UI Tool Chips) */
+/* Tool rows — compact timeline summaries with expandable details. */
 .qx-jan-tool {
   border-radius: 8px;
   margin: 2px 0;
@@ -1939,10 +2046,7 @@
 }
 
 .qx-jan-tool:not(.is-open) .qx-jan-tool-header {
-  background: color-mix(in srgb, var(--qx-bg-component-3) 55%, transparent);
-  border: 1px solid color-mix(in srgb, var(--qx-border-1) 80%, transparent);
-  border-radius: 999px;
-  padding: 3px 8px 3px 8px;
+  padding-block: 3px;
 }
 
 .qx-jan-tool-body {
@@ -2073,6 +2177,48 @@
 }
 
 .qx-jan-tool.is-error .qx-jan-tool-label {
+  color: var(--qx-danger);
+}
+
+.qx-ai-tool-group {
+  min-width: 0;
+  margin: 2px 0;
+}
+
+.qx-ai-tool-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 0 -6px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--qx-text-secondary);
+  font: 500 12.5px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-ai-tool-group-header:hover {
+  background: color-mix(in srgb, var(--qx-bg-component-3) 62%, transparent);
+}
+
+.qx-ai-tool-group-body {
+  display: grid;
+  gap: 3px;
+  margin: 2px 0 3px 7px;
+  padding-left: 12px;
+  border-left: 1px solid var(--qx-border-1);
+}
+
+.qx-ai-tool-group.is-running > .qx-ai-tool-group-header > .qx-ai-tool-label {
+  color: var(--qx-accent);
+}
+
+.qx-ai-tool-group.is-error > .qx-ai-tool-group-header > .qx-ai-tool-label {
   color: var(--qx-danger);
 }
 
@@ -2772,25 +2918,37 @@
 }
 
 .qx-md-codeblock-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--qx-font-mono);
   font-weight: 600;
   text-transform: lowercase;
   letter-spacing: 0.02em;
 }
 
-.qx-md-codeblock-copy {
+.qx-md-codeblock-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.qx-md-codeblock-action {
+  width: 24px;
   height: 22px;
-  padding: 0 8px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
   color: var(--qx-text-secondary);
-  font-size: 11px;
   cursor: pointer;
+  display: inline-grid;
+  place-items: center;
   transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
 }
 
-.qx-md-codeblock-copy:hover {
+.qx-md-codeblock-action:hover,
+.qx-md-codeblock-action.is-active {
   background: var(--qx-bg-component-3);
   color: var(--qx-text-primary);
   border-color: var(--qx-border-1);
@@ -2798,11 +2956,20 @@
 
 .qx-md-codeblock-body {
   margin: 0;
+  max-height: min(420px, 55vh);
   padding: 9px 12px;
-  overflow-x: auto;
+  overflow: auto;
   font-family: var(--qx-font-mono);
   font-size: 12.5px;
   line-height: 1.5;
+}
+
+.qx-md-codeblock-body.is-wrapped,
+.qx-md-codeblock-body.is-wrapped pre,
+.qx-md-codeblock-body.is-wrapped code {
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .qx-md-codeblock-body code {

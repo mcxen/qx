@@ -5,7 +5,17 @@ import { useSettingsStore } from "../settings/store";
 // Types only — agent harness is dynamically imported when a turn actually runs
 // so opening QxAI sessions/providers does not parse the full tool graph.
 import type { AgentStreamMetrics } from "./agent/types";
-import type { AgentStep, G4fMessage, QxAiFileAttachment } from "./contracts";
+import type {
+  AgentStep,
+  G4fMessage,
+  QxAiFileAttachment,
+  QxAiRegenerationBackup,
+} from "./contracts";
+import {
+  applyAssistantVariant,
+  assistantWithRegeneratedVariant,
+  withoutAssistantVariants,
+} from "./message-variants";
 import { computeTokenSpeed, estimateTokens } from "./message-rendering";
 import {
   messageHasImages,
@@ -217,6 +227,8 @@ export interface G4fConversation {
   provider: string;
   model: string;
   reasoningEnabled?: boolean;
+  /** Crash-safe backup while regenerate replaces the final assistant turn. */
+  regenerationBackup?: QxAiRegenerationBackup;
   /**
    * Title ownership:
    * - auto: may replace with fallback / AI titles
@@ -448,6 +460,11 @@ interface G4fStore {
    * preceding user turn, then re-send that user content.
    */
   regenerateMessage: (conversationId: string, assistantIndex: number) => Promise<void>;
+  selectMessageVariant: (
+    conversationId: string,
+    messageIndex: number,
+    variantIndex: number,
+  ) => void;
   clearMessages: () => void;
 
   loadProviders: () => Promise<void>;
@@ -729,10 +746,17 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         const stored = await loadQxAiSessions();
         const sourceConversations = Array.isArray(stored) ? stored : [];
         const conversations = sourceConversations.map((conversation) => {
-          const messages = removeLegacySyntheticErrorMessages(conversation.messages);
-          const repairedConversation = messages === conversation.messages
-            ? conversation
-            : { ...conversation, messages };
+          const recoveredConversation = conversation.regenerationBackup
+            ? {
+                ...conversation,
+                messages: conversation.regenerationBackup.messages,
+                regenerationBackup: undefined,
+              }
+            : conversation;
+          const messages = removeLegacySyntheticErrorMessages(recoveredConversation.messages);
+          const repairedConversation = messages === recoveredConversation.messages
+            ? recoveredConversation
+            : { ...recoveredConversation, messages };
           return withAutoTitle(repairedConversation);
         });
         const repaired = conversations.filter(
@@ -920,6 +944,20 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
 
     const conv = conversations.find((c) => c.id === currentConversationId);
     if (!conv) return;
+    const restoreRegeneration = () => {
+      if (!conv.regenerationBackup) return;
+      set((state) => ({
+        conversations: state.conversations.map((conversation) =>
+          conversation.id === currentConversationId && conversation.regenerationBackup
+            ? {
+                ...conversation,
+                messages: conversation.regenerationBackup.messages,
+                regenerationBackup: undefined,
+              }
+            : conversation,
+        ),
+      }));
+    };
 
     const selection = resolveProviderModel(
       providers,
@@ -945,6 +983,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           },
         },
       });
+      restoreRegeneration();
       scheduleNext();
       return;
     }
@@ -965,6 +1004,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           },
         },
       });
+      restoreRegeneration();
       scheduleNext();
       return;
     }
@@ -992,6 +1032,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           },
         },
       });
+      restoreRegeneration();
       scheduleNext();
       return;
     }
@@ -1027,6 +1068,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           },
         },
       });
+      restoreRegeneration();
       scheduleNext();
       return;
     }
@@ -1083,6 +1125,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           },
         },
       }));
+      restoreRegeneration();
       dismissQxAiRun(currentConversationId);
       scheduleNext();
       return;
@@ -1121,7 +1164,9 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           content,
           skill,
         );
-        const nonSystem = titledConv.messages.filter((m) => m.role !== "system");
+        const nonSystem = titledConv.messages
+          .filter((m) => m.role !== "system")
+          .map(withoutAssistantVariants);
 
         // Native function calling is opt-in because many compatible models do
         // not accept tool schemas. The prompt-based ReAct transport remains the
@@ -1291,7 +1336,14 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         set((s) => ({
           conversations: s.conversations.map((c) =>
             c.id === currentConversationId
-              ? { ...c, messages: [...c.messages, assistantMessage] }
+              ? {
+                  ...c,
+                  messages: [
+                    ...c.messages,
+                    assistantWithRegeneratedVariant(c.regenerationBackup, assistantMessage),
+                  ],
+                  regenerationBackup: undefined,
+                }
               : c,
           ),
           runs: {
@@ -1343,7 +1395,9 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       );
       const requestMessages: G4fMessage[] = [
         { role: "system", content: buildQxHostSystemPrompt(basePrompt) },
-        ...titledConv.messages.filter((message) => message.role !== "system"),
+        ...titledConv.messages
+          .filter((message) => message.role !== "system")
+          .map(withoutAssistantVariants),
       ];
       let latestProviderMetrics: AgentStreamMetrics | undefined;
       const response = await streamChatEvents({
@@ -1429,7 +1483,14 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       set((s) => ({
         conversations: s.conversations.map((c) =>
           c.id === currentConversationId
-            ? { ...c, messages: [...c.messages, assistantMessage] }
+            ? {
+                ...c,
+                messages: [
+                  ...c.messages,
+                  assistantWithRegeneratedVariant(c.regenerationBackup, assistantMessage),
+                ],
+                regenerationBackup: undefined,
+              }
             : c,
         ),
         runs: {
@@ -1453,6 +1514,15 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         return;
       }
       set((s) => ({
+        conversations: s.conversations.map((conversation) =>
+          conversation.id === currentConversationId && conversation.regenerationBackup
+            ? {
+                ...conversation,
+                messages: conversation.regenerationBackup.messages,
+                regenerationBackup: undefined,
+              }
+            : conversation,
+        ),
         runs: {
           ...s.runs,
           [currentConversationId]: {
@@ -1536,7 +1606,10 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
                         tokenCount: undefined,
                         tokenSpeed: undefined,
                         durationMs: undefined,
+                        reasoningDurationMs: undefined,
                         usage: undefined,
+                        variants: undefined,
+                        activeVariant: undefined,
                       }
                     : {}),
                 }
@@ -1607,7 +1680,16 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     const kept = conv.messages.slice(0, userIndex);
     set((state) => ({
       conversations: state.conversations.map((item) =>
-        item.id === conversationId ? { ...item, messages: kept } : item,
+        item.id === conversationId
+          ? {
+              ...item,
+              messages: kept,
+              regenerationBackup: {
+                assistantIndex,
+                messages: conv.messages,
+              },
+            }
+          : item,
       ),
     }));
 
@@ -1617,6 +1699,24 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       conversationId,
       userMessage.attachments,
     );
+  },
+
+  selectMessageVariant: (conversationId, messageIndex, variantIndex) => {
+    set((state) => ({
+      conversations: state.conversations.map((conversation) => {
+        if (conversation.id !== conversationId) return conversation;
+        const target = conversation.messages[messageIndex];
+        if (!target) return conversation;
+        const next = applyAssistantVariant(target, variantIndex);
+        if (next === target) return conversation;
+        return {
+          ...conversation,
+          messages: conversation.messages.map((message, index) =>
+            index === messageIndex ? next : message,
+          ),
+        };
+      }),
+    }));
   },
 
   clearMessages: () => {

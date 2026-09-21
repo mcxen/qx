@@ -40,6 +40,20 @@ fn pause_wait_resumes_from_the_same_control_state() {
 }
 
 #[test]
+fn paused_wait_observes_cancel_even_if_notification_was_missed() {
+    let control = Arc::new(PlaybackControl::new());
+    control.paused.store(true, Ordering::SeqCst);
+    let worker_control = control.clone();
+    let worker = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(10));
+        worker_control.cancel.store(true, Ordering::SeqCst);
+        // Deliberately omit notification to exercise the bounded fallback.
+    });
+    assert!(!wait_for_resume(&control, || {}, || {}));
+    worker.join().unwrap();
+}
+
+#[test]
 fn preserves_recorded_mouse_button_names() {
     assert_eq!(parse_button(Some("Right")), Ok(enigo::Button::Right));
     assert_eq!(parse_button(Some("Middle")), Ok(enigo::Button::Middle));

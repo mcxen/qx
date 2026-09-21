@@ -62,6 +62,8 @@ started -> delta* -> done | error | timeout | cancelled
 
 每次变更只 debounce 保存当前 session，Rust 原子替换对应 `session.json` 并更新轻量 index。删除会话时删除该会话目录。旧 bulk save command 只用于兼容/恢复。
 
+助手消息可以持久化 `variants` 与 `activeVariant`，用于同一轮重新生成后的候选切换；消息顶层字段始终镜像当前候选，现有渲染、编辑和删除协议无需理解分支容器。重新生成开始前，会话保存带原始 transcript 的 `regenerationBackup`：成功后把新回复追加为候选并清除备份，provider/配置/运行错误或下次启动恢复时还原原 transcript。Provider 请求必须剥离 `variants`、`activeVariant` 与恢复元数据，只传当前候选，避免本地 UI 状态污染模型上下文。
+
 每个 conversation 拥有独立 run state 和 FIFO 输入队列；不同会话可并发。活动 run 发布独立的 `qxai.run.<conversation-id>` Island task，因此切换聊天或模块不会隐藏后台生成状态。
 
 P仔创建带当前内容快照的后台 conversation，并复用同一 store、stream、queue 和 persistence。关闭 P仔投影不会删除对话；写回 RSS 等领域数据必须调用窄 domain tool，不能直接修改源正文。
@@ -163,6 +165,7 @@ Soul/persona API 也不在当前 `PluginContext.ai` 中。若未来实现，必�
 修改 Agent runtime 时至少验证：
 
 - 多会话并发、FIFO、取消、timeout 与 stream 终态清理；
+- 重新生成成功保留候选，切换候选同步正文/推理/工具/用量，失败或重启恢复原 transcript，provider payload 不含候选元数据；
 - provider 真实文本/图片请求和明确 unsupported 错误；
 - native tools 与 ReAct 使用同一权限和 safety 结果；
 - disabled module/tool/plugin 不进入目录；plugin unload 清理 actions/hooks；

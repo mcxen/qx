@@ -186,8 +186,13 @@ fn wait_for_resume(
         Err(_) => return false,
     };
     while control.paused.load(Ordering::SeqCst) && !control.cancel.load(Ordering::SeqCst) {
-        guard = match control.wake.wait(guard) {
-            Ok(guard) => guard,
+        // Control flags are atomic and notifications can arrive between the
+        // predicate check and waiting. Bound that race so Stop always joins.
+        guard = match control
+            .wake
+            .wait_timeout(guard, Duration::from_millis(PLAYBACK_TICK_MS))
+        {
+            Ok((guard, _)) => guard,
             Err(_) => return false,
         };
     }

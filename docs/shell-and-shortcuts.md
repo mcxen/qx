@@ -377,6 +377,12 @@ macOS 的 TIS/TSM 键盘布局 API（例如 `TSMGetInputSourceProperty`）只能
 `EventType::KeyPress/KeyRelease` 与鼠标事件，但在 macOS 监听回调中将 `Event::name` 留空。
 Qx 的宏录制和指针合成只依赖物理 `Key`/鼠标事件，不得为了字符名称重新调用 TIS/TSM。
 
+宏的 `duration_ms` 是距上一个已保存事件的等待时间；丢弃的高频移动不推进时间基准，
+每 16ms 可保留一个移动样本。中键拖动属于移动事件，不能解释为松键。裁尾后按相反顺序
+补齐仍按下的键/鼠标释放，补齐释放不得改变指针坐标。前端启动录制与回放互斥，
+`macro_play` 的 JS 参数为 `delayMs`；暂停中的回放同样通过 stop/join 退出，暂停等待必须
+有界检查取消，不能依赖一次可能错过的唤醒通知。
+
 ### 6.2 窗口内动作
 
 模块动作不是全局快捷键。Feature 只发布稳定 ID 的 `QxShellAction[]`，

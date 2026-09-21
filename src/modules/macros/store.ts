@@ -157,6 +157,12 @@ export const useMacroStore = create<MacroStore>((set, get) => ({
   playback: idleMacroPlayback,
 
   startRecording: () => {
+    if (
+      get().isRecording
+      || isMacroPlaybackActive(get().playback.status)
+      || playbackStartInFlight
+      || playbackStopInFlight
+    ) return Promise.resolve();
     if (startInFlight) return startInFlight;
     if (stopInFlight) return stopInFlight;
 
@@ -266,6 +272,7 @@ export const useMacroStore = create<MacroStore>((set, get) => ({
   },
 
   playMacro: (id, delayMs = 0) => {
+    if (get().isRecording || startInFlight || stopInFlight) return Promise.resolve();
     if (playbackStartInFlight) return playbackStartInFlight;
     if (playbackStopInFlight) return playbackStopInFlight;
     if (get().playback.status === "waiting"
@@ -289,7 +296,7 @@ export const useMacroStore = create<MacroStore>((set, get) => ({
       try {
         const started = await invoke<MacroPlaybackStarted>("macro_play", {
           id,
-          delay_ms: normalizedDelay,
+          delayMs: normalizedDelay,
         });
         set((state) => {
           if (state.playback.status !== "waiting" || state.playback.macroId !== id) {
@@ -355,7 +362,7 @@ export const useMacroStore = create<MacroStore>((set, get) => ({
       try {
         if (playbackStartInFlight) await playbackStartInFlight;
         const status = get().playback.status;
-        if (status === "waiting" || status === "playing") {
+        if (isMacroPlaybackActive(status)) {
           await invoke("macro_stop_playback");
         }
       } catch (e) {

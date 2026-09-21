@@ -1,4 +1,4 @@
-import { Check, Copy, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "../../components/ui";
 import { useT } from "../../i18n";
 
@@ -21,10 +21,14 @@ interface QxAiMessageActionsProps {
   disabled?: boolean;
   /** Show regenerate on the last completed assistant turn (Jan). */
   canRegenerate?: boolean;
+  variantCount?: number;
+  activeVariant?: number;
   onCopy: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onRegenerate?: () => void;
+  onPreviousVariant?: () => void;
+  onNextVariant?: () => void;
 }
 
 /**
@@ -38,10 +42,14 @@ export function QxAiMessageActions({
   copied = false,
   disabled = false,
   canRegenerate = false,
+  variantCount = 0,
+  activeVariant = 0,
   onCopy,
   onEdit,
   onDelete,
   onRegenerate,
+  onPreviousVariant,
+  onNextVariant,
 }: QxAiMessageActionsProps) {
   const t = useT();
   const date = formatQxAiMessageDate(timestamp);
@@ -60,6 +68,33 @@ export function QxAiMessageActions({
         >
           {date}
         </time>
+      ) : null}
+      {role === "assistant" && variantCount > 1 ? (
+        <div className="qx-ai-message-branches" aria-label={t("qxai.message.variants", "Response variants")}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={disabled || !onPreviousVariant}
+            title={t("qxai.message.previousVariant", "Previous response")}
+            aria-label={t("qxai.message.previousVariant", "Previous response")}
+            onClick={onPreviousVariant}
+          >
+            <ChevronLeft size={14} />
+          </Button>
+          <span>{activeVariant + 1}/{variantCount}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={disabled || !onNextVariant}
+            title={t("qxai.message.nextVariant", "Next response")}
+            aria-label={t("qxai.message.nextVariant", "Next response")}
+            onClick={onNextVariant}
+          >
+            <ChevronRight size={14} />
+          </Button>
+        </div>
       ) : null}
       <div className="qx-jan-message-action-btns">
         <Button

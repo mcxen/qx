@@ -229,14 +229,12 @@ fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
             {
                 let Some(mask) = mac_modifier_mask(code) else {
                     state.mac_modifier_flags = flags;
-                    state.last_ts = event.captured_at;
                     return;
                 };
                 let was_pressed = state.mac_modifier_flags & mask != 0;
                 let is_pressed = flags & mask != 0;
                 state.mac_modifier_flags = flags;
                 if was_pressed == is_pressed {
-                    state.last_ts = event.captured_at;
                     return;
                 }
                 Some(MacroStep {
@@ -260,7 +258,7 @@ fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
                 None
             }
         }
-        CaptureEventKind::MouseMove { x, y } => (elapsed > 16).then(|| MacroStep {
+        CaptureEventKind::MouseMove { x, y } => (elapsed >= 16).then(|| MacroStep {
             event_type: "mouse_move".into(),
             key: None,
             x: Some(x.round() as i32),
@@ -295,8 +293,10 @@ fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
         }),
     };
 
-    state.last_ts = event.captured_at;
     if let Some(step) = step {
+        // Only accepted events advance the timeline. Otherwise a stream of
+        // 1–8ms pointer events suppresses every move and erases elapsed time.
+        state.last_ts = event.captured_at;
         state.steps.push(step);
         state.step_offsets_ms.push(event_offset_ms);
     }
@@ -580,12 +580,44 @@ fn configured_stop_tail_ms() -> u64 {
 
 fn finalize_recording(state: RecordingState, stop_elapsed_ms: u64, stop_tail_ms: u64) -> MacroData {
     let cutoff_ms = stop_elapsed_ms.saturating_sub(stop_tail_ms);
-    let steps: Vec<MacroStep> = state
+    let mut steps: Vec<MacroStep> = state
         .steps
         .into_iter()
         .zip(state.step_offsets_ms)
         .filter_map(|(step, offset_ms)| (offset_ms < cutoff_ms).then_some(step))
         .collect();
+    // Tail trimming can remove a release while retaining its press. Close
+    // those inputs in reverse order without adding another wait or click.
+    let mut held: Vec<MacroStep> = Vec::new();
+    for step in &steps {
+        match step.event_type.as_str() {
+            "key_press" | "mouse_click" if step.key.is_some() || step.button.is_some() => {
+                if !held
+                    .iter()
+                    .any(|input| input.key == step.key && input.button == step.button)
+                {
+                    held.push(step.clone());
+                }
+            }
+            "key_release" | "mouse_release" => {
+                held.retain(|input| input.key != step.key || input.button != step.button);
+            }
+            _ => {}
+        }
+    }
+    for mut input in held.into_iter().rev() {
+        input.event_type = if input.key.is_some() {
+            "key_release"
+        } else {
+            "mouse_release"
+        }
+        .into();
+        input.duration_ms = 0;
+        // Releasing a drag must not move back to the initial press position.
+        input.x = None;
+        input.y = None;
+        steps.push(input);
+    }
     let total_duration_ms = steps.iter().map(|step| step.duration_ms).sum();
 
     MacroData {
@@ -782,6 +814,70 @@ pub fn macro_delete(id: i64) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn high_frequency_moves_preserve_timing_and_drag_samples() {
+        let started_at = Instant::now();
+        let mut state = RecordingState {
+            steps: Vec::new(),
+            step_offsets_ms: Vec::new(),
+            start_time: started_at,
+            last_ts: started_at,
+            mac_modifier_flags: 0,
+        };
+        for ms in 1..=100 {
+            append_capture_event(
+                &mut state,
+                CaptureEvent {
+                    kind: CaptureEventKind::MouseMove {
+                        x: ms as f64,
+                        y: 10.0,
+                    },
+                    captured_at: started_at + Duration::from_millis(ms),
+                },
+            );
+        }
+        append_capture_event(
+            &mut state,
+            CaptureEvent {
+                kind: CaptureEventKind::MouseButton {
+                    button: 0,
+                    pressed: false,
+                    x: 100.0,
+                    y: 10.0,
+                },
+                captured_at: started_at + Duration::from_millis(105),
+            },
+        );
+        assert_eq!(state.steps.len(), 7);
+        assert_eq!(
+            state.steps.iter().map(|step| step.duration_ms).sum::<u64>(),
+            105
+        );
+        assert_eq!(state.steps.last().unwrap().duration_ms, 9);
+    }
+
+    #[test]
+    fn trimmed_drag_gets_a_release_without_moving_to_its_start() {
+        let started_at = Instant::now();
+        let mut press = empty_macro_step("mouse_click", 100);
+        press.button = Some("Left".into());
+        press.x = Some(10);
+        press.y = Some(20);
+        let state = RecordingState {
+            steps: vec![press],
+            step_offsets_ms: vec![100],
+            start_time: started_at,
+            last_ts: started_at,
+            mac_modifier_flags: 0,
+        };
+        let result = finalize_recording(state, 3000, 2000);
+        assert_eq!(result.steps.len(), 2);
+        assert_eq!(result.steps[1].event_type, "mouse_release");
+        assert_eq!(result.steps[1].button.as_deref(), Some("Left"));
+        assert_eq!(result.steps[1].x, None);
+        assert_eq!(result.total_duration_ms, 100);
+    }
 
     #[test]
     fn worker_interprets_raw_events_without_shared_listener_state() {

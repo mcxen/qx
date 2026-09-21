@@ -85,6 +85,7 @@ export default function QxAiChat() {
     editMessage,
     deleteMessage,
     regenerateMessage,
+    selectMessageVariant,
     clearMessages,
     deleteConversation,
     createConversation,
@@ -309,6 +310,14 @@ export default function QxAiChat() {
       void regenerateMessage(currentConversationId, messageIndex);
     },
     [currentConversationId, isCurrentConversationStreaming, regenerateMessage],
+  );
+
+  const handleSelectVariant = useCallback(
+    (messageIndex: number, variantIndex: number) => {
+      if (!currentConversationId || isCurrentConversationStreaming) return;
+      selectMessageVariant(currentConversationId, messageIndex, variantIndex);
+    },
+    [currentConversationId, isCurrentConversationStreaming, selectMessageVariant],
   );
 
   const handleAttach = useCallback(async () => {
@@ -942,10 +951,25 @@ export default function QxAiChat() {
                               copied={copiedMessageIndex === messageIndex}
                               disabled={isCurrentConversationStreaming || isEditing}
                               canRegenerate={isLastAssistant && !isCurrentConversationStreaming}
+                              variantCount={msg.variants?.length ?? 0}
+                              activeVariant={msg.activeVariant ?? 0}
                               onCopy={() => void copyMessage(messageIndex, msg.content)}
                               onEdit={() => beginEditMessage(messageIndex, msg.content)}
                               onDelete={() => removeMessage(messageIndex)}
                               onRegenerate={() => handleRegenerate(messageIndex)}
+                              onPreviousVariant={msg.variants?.length
+                                ? () => handleSelectVariant(
+                                    messageIndex,
+                                    ((msg.activeVariant ?? 0) - 1 + msg.variants!.length)
+                                      % msg.variants!.length,
+                                  )
+                                : undefined}
+                              onNextVariant={msg.variants?.length
+                                ? () => handleSelectVariant(
+                                    messageIndex,
+                                    ((msg.activeVariant ?? 0) + 1) % msg.variants!.length,
+                                  )
+                                : undefined}
                             />
                           ) : null}
                         </div>

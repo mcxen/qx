@@ -10,7 +10,7 @@
 
 | 层 | 标杆 | 做法 |
 |---|---|---|
-| **结构 / 状态机** | AI Elements | 按零件拆：会话列、消息、思考、工具、输入、队列；流式时思考展开、结束可收 |
+| **结构 / 状态机** | AI Elements | 按零件拆：会话列、消息、思考、工具、输入、队列；思考默认收起为活动摘要，用户可展开完整时间线 |
 | **视觉 / 密度** | Beautiful UI | 中性 field 用户气泡、轻时间线思考、竖线 caret、field 输入栏 + 28px ink 发送 |
 | **主题** | Qx tokens | 只用 `--qx-*`；禁止暗色硬编码 fallback |
 | **宿主** | QxShell | Top / Main / Bottom / Context；Esc 级联；不引入 Vercel AI SDK 运行时依赖 |
@@ -91,13 +91,15 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 
 ### 助手
 
-- 满列、无卡片壳；markdown 可滚动代码块。
+- 满列、无卡片壳；markdown 代码块限制最大高度并可独立滚动，头部保留语言、复制与长行换行操作，切换换行不得改写原始代码。
 - 流式：内容末 **竖线 caret**（`.qx-stream-caret`），不用 `|` 字符硬编码。
 - 完成后可显示 tokens/sec（仅完成态）。
+- 重新生成保留旧回复为同一条助手消息的候选版本；页脚左右切换时，正文、推理、工具步骤、附件和用量必须一起切换。发送给模型的上下文只包含当前候选，不携带候选版本元数据。重新生成失败或应用在生成中退出时恢复原消息，不允许用半截分支覆盖旧回复。
 
 ### 附件
 
 - 不得 `min-width: 460px` 撑破气泡；`min-width: 0; max-width: 100%`。
+- 多附件使用紧凑的可换行文件条；图片使用小缩略图，打开/定位/复制操作在 hover 或键盘焦点进入时显示。
 
 ---
 
@@ -107,12 +109,13 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 
 1. 折叠触发：Sparkles + 标题（流式 shimmer「Thinking…」/ 完成「Thought for N seconds」）。
    完成态优先显示运行时记录的思考阶段耗时；旧消息没有该字段时才退回「Thought for a few seconds」。
-2. 流式时 **默认展开**；完成后可保持用户操作结果。
+2. 流式与完成态默认收起为一行；流式行在状态标题后显示最新一行思考或工具活动，超宽时裁切并跟随最新内容。活动变化用约 300ms 的有界纵向替换动画且采用 latest-wins；`prefers-reduced-motion` 下直接替换。用户可手动展开完整时间线，状态更新不得强制改写用户的展开选择。
 3. 展开：左侧 **1px 时间线** + 步骤行（thought / tool / observation）；active 步骤使用
    accent 脉冲，complete/error 使用稳定状态图标，并尊重 reduced-motion。
 4. 时间线内每条 thought / error 与每次 tool execution 都是独立折叠项，默认收起；
    运行中只更新状态和 spinner，不得强制展开参数、结果或长错误。用户展开某一项时不影响其它项。
 5. 不要厚边框大卡片包住整块思考（避免 web 营销卡）。
+6. 连续的 tool execution 可折叠为一个工具组摘要；展开后必须保留原始顺序、每项状态、参数和结果。
 
 实现：`ReasoningPanel`（原 `JanChainOfThought`）+ `AgentStepsView`。
 
@@ -120,9 +123,11 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 
 ## 5. Tool
 
-- 收起：圆角 pill chip（工具名 + 状态）。
+- 收起：与思考时间线一致的一行摘要（工具类别 + 状态 + 关键参数或结果摘要），超宽单行裁切；不使用独立厚卡片或 pill。命令、搜索、文件、网页、系统和模块工具使用稳定类别图标及语义字段（如 `command`、`query`、`path`、`url`），不直接倾倒 JSON。
 - 展开：轻边框参数/结果 pre。
 - 嵌在 Reasoning 列表内时避免双重标题噪音。
+- 连续两次及以上工具调用收成单个组行；组行展示数量、综合状态和最新活动，展开后仍逐项查看。
+- 折叠箭头默认隐藏，仅在 hover、键盘焦点或已展开时显示；隐藏不能影响键盘可达性。
 
 ---
 
@@ -143,6 +148,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 - 在 prompt 上方，不进消息流。
 - 点击文案 → 回填 composer 并离队；X 删除。
 - 多条可滚，max-height 限制，避免顶破输入。
+- 行内编辑/删除动作只在 hover 或 `focus-within` 显示，保留稳定列宽，避免出现时推动文案。
 
 ---
 
@@ -170,7 +176,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 
 - [x] 左列表标题 ellipsis；首条消息后有兜底名，助手完成后可换成 AI 标题
 - [x] 用户 field 气泡右对齐 ≤80%；助手满列裸文
-- [x] 思考流式展开 + shimmer；时间线步骤可读
+- [x] 思考流式摘要 + shimmer；手动展开后时间线步骤可读
 - [x] 流式 caret 为竖线
 - [x] 输入 field 风格；发送 28px 方钮 + 箭头，附件/队列位于输入上方
 - [x] Token Usage 显示上下文占用、输入/输出/总量，并优先使用供应商真实用量
@@ -178,9 +184,14 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 - [x] 旧会话中“错误 step 与 assistant 正文完全相同”的历史伪回复在加载时安全清理，正常消息不受影响
 - [x] 自动标题必须含 Unicode 字母或数字；`???` / `�` 等损坏结果保留或恢复本地兜底标题
 - [x] 思考步骤、执行步骤与错误步骤逐项独立折叠，包含运行态在内均默认收起
+- [x] 思考活动按 latest-wins 单行滚动，reduced-motion 下不动画；连续工具调用可成组展开
+- [x] 工具摘要按命令/搜索/文件/网页/系统/模块分类并优先显示语义参数
 - [x] function-calling 多轮消息完整保留 `tool_calls` / `tool_call_id`，流式与兼容回退使用同一消息协议
 - [x] 消息下显示日期，并提供复制、编辑、删除；助手末条支持重新生成
 - [x] 消息日期常驻，操作图标按 hover/focus 显示；图标使用无阴影、无毛玻璃的扁平 ghost 样式
+- [x] 重新生成保留可切换候选；失败/中断恢复旧消息，候选元数据不发送给模型
+- [x] 代码块可复制、切换长行换行并在最大高度内独立滚动
+- [x] 已发送附件使用紧凑文件条/小缩略图，动作按 hover/focus 显示
 - [x] 队列在输入上，点击回填或直接编辑
 - [x] 亮色 / 暗色均正常，无死黑块
 - [x] Esc / Bottom Bar 符合 UI_SPEC

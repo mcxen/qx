@@ -1,4 +1,4 @@
-import { Suspense, lazy, memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
   CheckCircle2,
@@ -7,11 +7,15 @@ import {
   Copy,
   ExternalLink,
   File,
+  FileSearch,
   FolderSearch,
   Gauge,
+  Globe,
+  Layers3,
   Loader2,
   Search,
   Sparkles,
+  Terminal,
   Wrench,
   XCircle,
 } from "lucide-react";
@@ -33,6 +37,135 @@ function humanizeToolName(name: string): string {
   const spaced = name.replace(/[_-]+/g, " ").trim();
   if (!spaced) return "tool";
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+type ToolCategory = "command" | "search" | "file" | "web" | "system" | "module" | "generic";
+
+function getToolCategory(name: string): ToolCategory {
+  const normalized = name.toLowerCase();
+  if (normalized === "bash" || normalized.includes("terminal")) return "command";
+  if (/grep|search|(^|_)files?$/.test(normalized)) return "search";
+  if (/path|file|docs_(read|write|inspect)|send_file/.test(normalized)) return "file";
+  if (/http|rss|weather|url/.test(normalized)) return "web";
+  if (/plugin|module|capabilit|schedule|skill|memory/.test(normalized)) return "module";
+  if (/^qx_|ocr|screencap|clipboard|(^|_)apps?$/.test(normalized)) return "system";
+  return "generic";
+}
+
+function toolSummaryKeys(category: ToolCategory): string[] {
+  switch (category) {
+    case "command": return ["command", "script"];
+    case "search": return ["query", "pattern", "root", "path"];
+    case "file": return ["path", "filePath", "name", "root"];
+    case "web": return ["url", "location", "feed", "query"];
+    case "module": return ["action", "command", "id", "name"];
+    case "system": return ["path", "query", "name", "section"];
+    default: return ["query", "path", "url", "command", "script", "name", "id"];
+  }
+}
+
+function ToolCategoryIcon({ category }: { category: ToolCategory }) {
+  if (category === "command") return <Terminal size={14} aria-hidden="true" />;
+  if (category === "search") return <Search size={14} aria-hidden="true" />;
+  if (category === "file") return <FileSearch size={14} aria-hidden="true" />;
+  if (category === "web") return <Globe size={14} aria-hidden="true" />;
+  return <Wrench size={14} aria-hidden="true" />;
+}
+
+function latestActivityLine(value?: string): string {
+  if (!value) return "";
+  const lines = value.replace(/\r\n?/g, "\n").split("\n");
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]
+      ?.trim()
+      .replace(/^```(?:json|text|\w+)?\s*/i, "")
+      .replace(/^[-*#>]+\s*/, "")
+      .replace(/\s+/g, " ");
+    if (line && line !== "```") return line;
+  }
+  return "";
+}
+
+function compactToolPayload(value?: string, category: ToolCategory = "generic"): string {
+  if (!value?.trim()) return "";
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const record = parsed as Record<string, unknown>;
+      for (const key of toolSummaryKeys(category)) {
+        const candidate = record[key];
+        if (typeof candidate === "string" && candidate.trim()) return latestActivityLine(candidate);
+      }
+    }
+    if (typeof parsed === "string") return latestActivityLine(parsed);
+  } catch {
+    // Plain text and incomplete streaming JSON still make useful one-line summaries.
+  }
+  return latestActivityLine(value);
+}
+
+function useToolLabel(name: string, category: ToolCategory): string {
+  const t = useT();
+  if (category === "command") return t("qxai.tool.kind.command", "Command");
+  if (category === "search") return t("qxai.tool.kind.search", "Search");
+  if (category === "file") return t("qxai.tool.kind.file", "File");
+  if (category === "web") return t("qxai.tool.kind.web", "Web");
+  if (category === "system") return t("qxai.tool.kind.system", "System");
+  if (category === "module") return t("qxai.tool.kind.module", "Module");
+  return humanizeToolName(name);
+}
+
+function ActivitySummary({
+  activityKey,
+  streaming,
+  text,
+}: {
+  activityKey: string;
+  streaming?: boolean;
+  text: string;
+}) {
+  const [snapshot, setSnapshot] = useState(() => ({
+    current: { key: activityKey, text },
+    previous: null as { key: string; text: string } | null,
+  }));
+  const viewportRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    setSnapshot((current) => {
+      if (current.current.key === activityKey) {
+        return current.current.text === text
+          ? current
+          : { ...current, current: { key: activityKey, text } };
+      }
+      return {
+        current: { key: activityKey, text },
+        previous: current.current,
+      };
+    });
+    const timer = window.setTimeout(() => {
+      setSnapshot((current) => current.previous ? { ...current, previous: null } : current);
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [activityKey, text]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || !streaming) return;
+    viewport.scrollLeft = viewport.scrollWidth;
+  }, [snapshot.current.text, streaming]);
+
+  return (
+    <span ref={viewportRef} className="qx-ai-activity-roll" title={snapshot.current.text}>
+      {snapshot.previous ? (
+        <span className="qx-ai-activity-roll-line is-leaving" aria-hidden="true">
+          {snapshot.previous.text}
+        </span>
+      ) : null}
+      <span className={`qx-ai-activity-roll-line${snapshot.previous ? " is-entering" : ""}`}>
+        {snapshot.current.text}
+      </span>
+    </span>
+  );
 }
 
 function isImageAttachment(attachment: QxAiFileAttachment): boolean {
@@ -178,20 +311,27 @@ function ToolCallPanel({
   const [open, setOpen] = useState(defaultOpen);
   const running = state === "running" || state === "input-streaming" || state === "input-available";
   const failed = state === "error" || state === "output-error";
+  const category = getToolCategory(name);
+  const toolLabel = useToolLabel(name, category);
+  const activitySummary = compactToolPayload(running ? input : output ?? input, category);
   const label = running
-    ? t("qxai.tool.running", "Running {name}…").replace("{name}", humanizeToolName(name))
+    ? t("qxai.tool.running", "Running {name}…").replace("{name}", toolLabel)
     : failed
-      ? t("qxai.tool.failed", "{name} failed").replace("{name}", humanizeToolName(name))
-      : t("qxai.tool.used", "Used {name}").replace("{name}", humanizeToolName(name));
+      ? t("qxai.tool.failed", "{name} failed").replace("{name}", toolLabel)
+      : t("qxai.tool.used", "Used {name}").replace("{name}", toolLabel);
 
   return (
     <div
       className={`qx-ai-tool qx-jan-tool${open ? " is-open" : ""}${running ? " is-running" : ""}${failed ? " is-error" : ""}`}
       data-qx-ai="tool"
     >
-      <button type="button" className="qx-ai-tool-header qx-jan-tool-header" onClick={() => setOpen((value) => !value)}>
-        <Wrench size={14} aria-hidden="true" />
+      <button type="button" className="qx-ai-tool-header qx-jan-tool-header" title={humanizeToolName(name)} onClick={() => setOpen((value) => !value)}>
+        <ToolCategoryIcon category={category} />
         <span className="qx-ai-tool-label qx-jan-tool-label">{label}</span>
+        {activitySummary ? <span className="qx-ai-activity-separator" aria-hidden="true">·</span> : null}
+        {activitySummary ? (
+          <span className="qx-ai-tool-activity" title={activitySummary}>{activitySummary}</span>
+        ) : null}
         {running ? <Loader2 size={13} className="qx-spin" /> : null}
         <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
       </button>
@@ -224,6 +364,8 @@ function ReasoningPanel({
   streamingLabel,
   completedVerb,
   isStreaming,
+  summary,
+  summaryKey = "reasoning",
   children,
   defaultOpen = true,
   reasoningDurationMs,
@@ -232,6 +374,8 @@ function ReasoningPanel({
   streamingLabel?: string;
   completedVerb?: string;
   isStreaming?: boolean;
+  summary?: string;
+  summaryKey?: string;
   children: ReactNode;
   defaultOpen?: boolean;
   reasoningDurationMs?: number;
@@ -240,10 +384,6 @@ function ReasoningPanel({
   const [open, setOpen] = useState(defaultOpen);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [durationSec, setDurationSec] = useState<number | undefined>(undefined);
-
-  useEffect(() => {
-    if (isStreaming) setOpen(true);
-  }, [isStreaming]);
 
   useEffect(() => {
     if (isStreaming) {
@@ -259,6 +399,7 @@ function ReasoningPanel({
   const completedDurationSec = reasoningDurationMs != null
     ? Math.max(1, Math.ceil(reasoningDurationMs / 1000))
     : durationSec;
+  const activitySummary = !open ? latestActivityLine(summary) : "";
 
   const headerTitle = (() => {
     if (title) return title;
@@ -291,6 +432,12 @@ function ReasoningPanel({
         <span className={`qx-ai-reasoning-title qx-jan-cot-title${isStreaming ? " is-shimmer" : ""}`}>
           {headerTitle}
         </span>
+        {activitySummary ? <span className="qx-ai-activity-separator" aria-hidden="true">·</span> : null}
+        {activitySummary ? (
+          <span className="qx-ai-reasoning-summary">
+            <ActivitySummary activityKey={summaryKey} streaming={isStreaming} text={activitySummary} />
+          </span>
+        ) : null}
         <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
       </button>
       {open ? (
@@ -305,6 +452,49 @@ function ReasoningPanel({
 
 /** @deprecated use ReasoningPanel */
 const JanChainOfThought = ReasoningPanel;
+
+function ToolCallGroupPanel({ steps }: { steps: AgentStep[] }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const running = steps.some((step) => step.state === "running");
+  const failed = steps.some((step) => step.state === "error");
+  const latest = steps[steps.length - 1];
+  const summary = compactToolPayload(
+    running ? latest?.input : latest?.output ?? latest?.input,
+    getToolCategory(latest?.tool ?? "tool"),
+  );
+  const label = (running
+    ? t("qxai.tool.group.running", "Running {n} tools…")
+    : failed
+      ? t("qxai.tool.group.failed", "{n} tools, some failed")
+      : t("qxai.tool.group.used", "Used {n} tools"))
+    .replace("{n}", String(steps.length));
+  return (
+    <div className={`qx-ai-tool-group${open ? " is-open" : ""}${running ? " is-running" : ""}${failed ? " is-error" : ""}`}>
+      <button type="button" className="qx-ai-tool-group-header" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <Layers3 size={14} aria-hidden="true" />
+        <span className="qx-ai-tool-label">{label}</span>
+        {summary ? <span className="qx-ai-activity-separator" aria-hidden="true">·</span> : null}
+        {summary ? <span className="qx-ai-tool-activity" title={summary}>{summary}</span> : null}
+        {running ? <Loader2 size={13} className="qx-spin" /> : null}
+        <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="qx-ai-tool-group-body">
+          {steps.map((step) => (
+            <ToolCallPanel
+              key={step.id}
+              name={step.tool ?? "tool"}
+              state={step.state}
+              input={step.input}
+              output={step.output}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function StepRow({
   status,
@@ -359,17 +549,52 @@ export const AgentStepsView = memo(function AgentStepsView({
   reasoningDurationMs?: number;
 }) {
   const t = useT();
-  const visible = steps.filter((s) => s.kind !== "final");
+  const visible = steps.filter((step, index) => {
+    if (step.kind === "final") return false;
+    if (step.kind !== "observation") return true;
+    return !steps.slice(0, index).some((candidate) =>
+      candidate.kind === "action"
+      && candidate.tool === step.tool
+      && candidate.output === step.output
+    );
+  });
   if (visible.length === 0) return null;
+  const latestStep = visible[visible.length - 1];
+  const activitySummary = latestStep?.kind === "thought" || latestStep?.kind === "error"
+    ? latestActivityLine(latestStep.text)
+    : compactToolPayload(
+        latestStep?.output ?? latestStep?.input,
+        getToolCategory(latestStep?.tool ?? "tool"),
+      );
+  const renderItems: Array<{ kind: "step"; step: AgentStep } | { kind: "group"; steps: AgentStep[] }> = [];
+  for (const step of visible) {
+    const previous = renderItems[renderItems.length - 1];
+    if (step.kind === "action" && previous?.kind === "group") {
+      previous.steps.push(step);
+      continue;
+    }
+    if (step.kind === "action" && previous?.kind === "step" && previous.step.kind === "action") {
+      renderItems.splice(renderItems.length - 1, 1, { kind: "group", steps: [previous.step, step] });
+      continue;
+    }
+    renderItems.push({ kind: "step", step });
+  }
 
   return (
     <JanChainOfThought
       streamingLabel={t("qxai.cot.thinking", "Thinking…")}
       completedVerb={t("qxai.cot.thoughtVerb", "Thought")}
       isStreaming={streaming}
+      summary={activitySummary}
+      summaryKey={latestStep?.id ?? "reasoning"}
+      defaultOpen={false}
       reasoningDurationMs={reasoningDurationMs}
     >
-      {visible.map((step) => {
+      {renderItems.map((item) => {
+        if (item.kind === "group") {
+          return <ToolCallGroupPanel key={`group-${item.steps[0]?.id}`} steps={item.steps} />;
+        }
+        const { step } = item;
         if (step.kind === "thought") {
           return (
             <StepRow
@@ -527,6 +752,8 @@ export function AiMessageContent({
           streamingLabel={t("qxai.reasoning.streaming", "Reasoning…")}
           completedVerb={t("qxai.cot.thoughtVerb", "Thought")}
           isStreaming={streaming}
+          summary={reasoning}
+          defaultOpen={false}
           reasoningDurationMs={reasoningDurationMs}
         >
           <div className="qx-jan-thought-text">{reasoning}</div>
