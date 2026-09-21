@@ -325,7 +325,13 @@ function ToolCallPanel({
       className={`qx-ai-tool qx-jan-tool${open ? " is-open" : ""}${running ? " is-running" : ""}${failed ? " is-error" : ""}`}
       data-qx-ai="tool"
     >
-      <button type="button" className="qx-ai-tool-header qx-jan-tool-header" title={humanizeToolName(name)} onClick={() => setOpen((value) => !value)}>
+      <button
+        type="button"
+        className="qx-ai-tool-header qx-jan-tool-header"
+        title={humanizeToolName(name)}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
         <ToolCategoryIcon category={category} />
         <span className="qx-ai-tool-label qx-jan-tool-label">{label}</span>
         {activitySummary ? <span className="qx-ai-activity-separator" aria-hidden="true">·</span> : null}
