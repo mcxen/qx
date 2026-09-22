@@ -7,9 +7,9 @@ import {
   numberField,
   stringField,
   truncate,
-  type QxAiFileAttachment,
   type ToolSpec,
 } from "./types";
+import { FILE_TOOLS } from "./tools-files";
 import { ALL_MODULE_TOOLS } from "./tools-modules";
 import {
   ensureBuiltinModuleActionsRegistered,
@@ -24,14 +24,11 @@ import {
   runQxCapability,
 } from "./capabilities";
 import { listQxAiHooks } from "./hooks";
-import {
-  listQxManageableSettings,
-  setInstalledPluginEnabled,
-  uninstallInstalledPlugin,
-  updateQxManageableSetting,
-} from "./host-management";
+import { HOST_MANAGEMENT_TOOLS } from "./tools-host-management";
 
 import { mutateMemory, runMemoryDream } from "./memory";
+
+export { HOST_MANAGEMENT_TOOLS };
 
 const hostOn = (s: AgentSettings) => s.qx_host_actions_enabled;
 
@@ -230,96 +227,6 @@ export const CAPABILITY_TOOLS: ToolSpec[] = [
   },
 ];
 
-/** Host-owned settings and plugin lifecycle ports. */
-export const HOST_MANAGEMENT_TOOLS: ToolSpec[] = [
-  {
-    name: "list_qx_settings",
-    description:
-      "List Qx settings that the agent may inspect and change through stable host adapters. Returns current values and exact ids; use before set_qx_setting.",
-    inputHint: '{"query": "wallpaper"}',
-    parameters: {
-      type: "object",
-      properties: { query: { type: "string" } },
-    },
-    isEnabled: hostOn,
-    run: async (input) => {
-      const query = stringField(asRecord(input), "query");
-      const settings = listQxManageableSettings(query);
-      if (settings.length === 0) return "No matching manageable Qx settings.";
-      return settings
-        .map(
-          (item) =>
-            `- ${item.id} [${item.type}/${item.risk}] = ${JSON.stringify(item.value)}\n  ${item.title} — ${item.description}`,
-        )
-        .join("\n");
-    },
-  },
-  {
-    name: "set_qx_setting",
-    description:
-      "Change one Qx setting by an exact id returned by list_qx_settings. The host validates the value and applies the owning subsystem's live update path.",
-    inputHint: '{"id": "plugins.background.wallpaper.enabled", "value": false}',
-    parameters: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        value: { type: ["boolean", "number", "string"] },
-      },
-      required: ["id", "value"],
-    },
-    isEnabled: hostOn,
-    run: async (input) => {
-      const rec = asRecord(input);
-      const id = stringField(rec, "id");
-      if (!id) return "Error: setting id is required. Call list_qx_settings first.";
-      const value = rec.value;
-      if (typeof value !== "boolean" && typeof value !== "number" && typeof value !== "string") {
-        return "Error: value must be a boolean, number, or string.";
-      }
-      const updated = await updateQxManageableSetting(id, value);
-      return `Updated ${updated.id} to ${JSON.stringify(updated.value)}.`;
-    },
-  },
-  {
-    name: "set_plugin_enabled",
-    description:
-      "Enable or disable one installed marketplace plugin through the Qx plugin lifecycle. Call list_plugins first. Built-in modules are intentionally excluded.",
-    inputHint: '{"pluginId": "v2ex", "enabled": false}',
-    parameters: {
-      type: "object",
-      properties: {
-        pluginId: { type: "string" },
-        enabled: { type: "boolean" },
-      },
-      required: ["pluginId", "enabled"],
-    },
-    isEnabled: hostOn,
-    run: async (input) => {
-      const rec = asRecord(input);
-      const pluginId = stringField(rec, "pluginId") || stringField(rec, "plugin_id");
-      if (typeof rec.enabled !== "boolean") return "Error: enabled must be a boolean.";
-      return setInstalledPluginEnabled(pluginId, rec.enabled);
-    },
-  },
-  {
-    name: "uninstall_plugin",
-    description:
-      "Uninstall one installed marketplace plugin through the Qx plugin lifecycle, including runtime cleanup and durable plugin-data removal. Call list_plugins first. This is destructive and requires safety confirmation unless SOLO is enabled.",
-    inputHint: '{"pluginId": "v2ex"}',
-    parameters: {
-      type: "object",
-      properties: { pluginId: { type: "string" } },
-      required: ["pluginId"],
-    },
-    isEnabled: hostOn,
-    run: async (input) => {
-      const rec = asRecord(input);
-      const pluginId = stringField(rec, "pluginId") || stringField(rec, "plugin_id");
-      return uninstallInstalledPlugin(pluginId);
-    },
-  },
-];
-
 /** Discoverable module/plugin action port (shared by QxAI + P仔 + plugins). */
 export const MODULE_ACTION_TOOLS: ToolSpec[] = [
   {
@@ -404,88 +311,7 @@ export const MODULE_ACTION_TOOLS: ToolSpec[] = [
 ];
 
 export const TOOLS: ToolSpec[] = [
-  {
-    name: "bash",
-    description:
-      "Run a shell command through the Bash-compatible runtime resolved by Qx. Use for filesystem operations, listing files, reading text files, and CLIs. Avoid destructive commands without an explicit user instruction.",
-    inputHint: '{"script": "ls -la ~/Documents", "cwd": "~"}',
-    parameters: {
-      type: "object",
-      properties: {
-        script: { type: "string", description: "Shell script to execute" },
-        cwd: { type: "string", description: "Optional working directory" },
-        timeoutMs: { type: "number", description: "Timeout in ms (default 30000)" },
-      },
-      required: ["script"],
-    },
-    isEnabled: (s) => s.bash_enabled,
-    run: async (input) => {
-      const rec = asRecord(input);
-      const script = stringField(rec, "script") || stringField(rec, "command");
-      if (!script.trim()) return "Error: bash requires a non-empty 'script' field.";
-      const cwd = stringField(rec, "cwd").trim();
-      const timeoutMs = numberField(rec, "timeoutMs", 30_000);
-      const result = await invoke<{
-        status: number | null;
-        stdout: string;
-        stderr: string;
-        timedOut: boolean;
-      }>("plugin_ai_run_bash", {
-        req: {
-          script,
-          cwd: cwd || undefined,
-          timeoutMs,
-        },
-      });
-      const parts: string[] = [];
-      parts.push(`exit=${result.status ?? "?"}${result.timedOut ? " (timeout)" : ""}`);
-      if (result.stdout) parts.push(`stdout:\n${result.stdout}`);
-      if (result.stderr) parts.push(`stderr:\n${result.stderr}`);
-      return truncate(parts.join("\n"));
-    },
-  },
-  {
-    name: "grep",
-    description:
-      "Search text inside files recursively under an explicit directory using ripgrep. Use only for file-content search, never to locate a filename. Returns matching lines with paths and line numbers.",
-    inputHint: '{"query": "TODO", "root": "~/code", "maxResults": 40}',
-    parameters: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Search pattern (regex supported)" },
-        root: { type: "string", description: "Directory to search in" },
-        maxResults: { type: "number", description: "Max results to return (default 40)" },
-      },
-      required: ["query", "root"],
-    },
-    isEnabled: (s) => s.grep_search_enabled,
-    run: async (input) => {
-      const rec = asRecord(input);
-      const query = stringField(rec, "query");
-      if (!query.trim()) return "Error: grep requires a 'query' field.";
-      const root = stringField(rec, "root").trim();
-      if (!root) {
-        return "Error: grep requires an explicit 'root' directory. Use the files tool for filename search.";
-      }
-      const maxResults = numberField(rec, "maxResults", 40);
-      const results = await invoke<Array<{ path: string; line: number | null; text: string }>>(
-        "plugin_ai_grep_search",
-        {
-          req: {
-            query,
-            root: root || undefined,
-            maxResults,
-          },
-        },
-      );
-      if (results.length === 0) return "No matches.";
-      return truncate(
-        results
-          .map((r) => `${r.path}:${r.line ?? "?"}: ${r.text}`)
-          .join("\n"),
-      );
-    },
-  },
+  ...FILE_TOOLS,
   {
     name: "http",
     description:
@@ -552,116 +378,6 @@ export const TOOLS: ToolSpec[] = [
           .map((r) => `${r.name} (${r.kind}) — ${r.path}`)
           .join("\n"),
       );
-    },
-  },
-  {
-    name: "files",
-    description:
-      "Search files on the current operating system by name fragment through Qx's cross-platform file index. Returns paths.",
-    inputHint: '{"query": "invoice.pdf"}',
-    parameters: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Filename fragment to search" },
-      },
-      required: ["query"],
-    },
-    isEnabled: (s) => s.file_search_enabled,
-    run: async (input) => {
-      const rec = asRecord(input);
-      const query = stringField(rec, "query");
-      if (!query.trim()) return "Error: files requires a 'query' field.";
-      const results = await invoke<Array<{ name: string; path: string }>>("search_files", {
-        query,
-      });
-      if (results.length === 0) return "No matching files.";
-      return truncate(results.map((r) => `${r.name} — ${r.path}`).join("\n"));
-    },
-  },
-  {
-    name: "open_path",
-    description:
-      "Open a local file or directory with the operating system's default application. Use only when the user asks to open it.",
-    inputHint: '{"path": "<absolute path returned by files>"}',
-    parameters: {
-      type: "object",
-      properties: { path: { type: "string", description: "Existing local file or directory path" } },
-      required: ["path"],
-    },
-    isEnabled: (s) => s.qx_host_actions_enabled,
-    run: async (input) => {
-      const path = stringField(asRecord(input), "path").trim();
-      if (!path) return "Error: open_path requires a 'path' field.";
-      await invoke("plugin_system_open_path", { path });
-      return `Opened ${path}.`;
-    },
-  },
-  {
-    name: "reveal_path",
-    description:
-      "Reveal and select a local file or directory in Finder or Windows File Explorer. Use when the user asks for the containing folder or file location.",
-    inputHint: '{"path": "<absolute path returned by files>"}',
-    parameters: {
-      type: "object",
-      properties: { path: { type: "string", description: "Existing local file or directory path" } },
-      required: ["path"],
-    },
-    isEnabled: (s) => s.qx_host_actions_enabled,
-    run: async (input) => {
-      const path = stringField(asRecord(input), "path").trim();
-      if (!path) return "Error: reveal_path requires a 'path' field.";
-      await invoke("plugin_system_reveal_path", { path });
-      return `Revealed ${path} in the system file manager.`;
-    },
-  },
-  {
-    name: "copy_to_clipboard",
-    description:
-      "Copy text or real local files to the system clipboard. For files, use paths so Finder/Explorer receives native file references rather than path text.",
-    inputHint: '{"paths": ["<absolute path returned by files>"]}',
-    parameters: {
-      type: "object",
-      properties: {
-        text: { type: "string", description: "Text to copy when no file paths are supplied" },
-        paths: { type: "array", items: { type: "string" }, description: "Local file or directory paths to copy natively" },
-      },
-    },
-    isEnabled: (s) => s.qx_host_actions_enabled,
-    run: async (input) => {
-      const rec = asRecord(input);
-      const paths = Array.isArray(rec.paths)
-        ? rec.paths.filter((path): path is string => typeof path === "string" && path.trim().length > 0)
-        : [];
-      if (paths.length > 0) {
-        await invoke("clipboard_write_file_paths", { paths });
-        return `Copied ${paths.length} file${paths.length === 1 ? "" : "s"} to the system clipboard.`;
-      }
-      const text = stringField(rec, "text");
-      if (!text) return "Error: copy_to_clipboard requires non-empty 'text' or 'paths'.";
-      await invoke("plugin_clipboard_write", { text });
-      return "Copied text to the system clipboard.";
-    },
-  },
-  {
-    name: "send_file",
-    description:
-      "Attach an existing local file to the QxAI response so the user receives a file card with Open, Reveal, and Copy actions. Do not use for directories.",
-    inputHint: '{"path": "<absolute path returned by files>"}',
-    parameters: {
-      type: "object",
-      properties: { path: { type: "string", description: "Existing local file path to send" } },
-      required: ["path"],
-    },
-    isEnabled: (s) => s.qx_host_actions_enabled,
-    run: async (input) => {
-      const path = stringField(asRecord(input), "path").trim();
-      if (!path) return "Error: send_file requires a 'path' field.";
-      const metadata = await invoke<QxAiFileAttachment>("clipboard_file_metadata", { path });
-      if (metadata.kind === "folder") return "Error: send_file accepts files, not directories.";
-      return {
-        observation: `Attached ${metadata.name} to the response.`,
-        attachments: [metadata],
-      };
     },
   },
   {

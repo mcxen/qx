@@ -1,4 +1,16 @@
-import { Suspense, lazy, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
   CheckCircle2,
@@ -23,8 +35,94 @@ import { Button } from "../../components/ui";
 import { useT } from "../../i18n";
 import { openSystemPath, revealSystemPath } from "../../system/pathActions";
 import type { AgentStep, QxAiFileAttachment } from "./agent/types";
+import { ReasoningElapsedTime } from "./ReasoningElapsedTime";
 
 const MarkdownRenderer = lazy(() => import("./MarkdownRenderer"));
+
+const DISCLOSURE_UNMOUNT_DELAY_MS = 300;
+const MAX_PERSISTED_DISCLOSURES = 600;
+const disclosureOpenState = new Map<string, boolean>();
+
+function rememberDisclosureState(key: string | undefined, open: boolean) {
+  if (!key) return;
+  disclosureOpenState.delete(key);
+  disclosureOpenState.set(key, open);
+  while (disclosureOpenState.size > MAX_PERSISTED_DISCLOSURES) {
+    const oldestKey = disclosureOpenState.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    disclosureOpenState.delete(oldestKey);
+  }
+}
+
+function useDisclosureState(
+  defaultOpen: boolean,
+  disclosureKey?: string,
+): {
+  open: boolean;
+  renderContent: boolean;
+  setOpen: Dispatch<SetStateAction<boolean>>;
+} {
+  const [open, setOpenState] = useState(
+    () => disclosureKey ? disclosureOpenState.get(disclosureKey) ?? defaultOpen : defaultOpen,
+  );
+  const [renderContent, setRenderContent] = useState(open);
+
+  useEffect(() => {
+    const nextOpen = disclosureKey
+      ? disclosureOpenState.get(disclosureKey) ?? defaultOpen
+      : defaultOpen;
+    setOpenState(nextOpen);
+    setRenderContent(nextOpen);
+  }, [defaultOpen, disclosureKey]);
+
+  useEffect(() => {
+    if (open) {
+      setRenderContent(true);
+      return;
+    }
+    if (!renderContent) return;
+    const timer = window.setTimeout(() => setRenderContent(false), DISCLOSURE_UNMOUNT_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [open, renderContent]);
+
+  const setOpen = useCallback<Dispatch<SetStateAction<boolean>>>((nextValue) => {
+    // Keep children mounted before the closed -> open grid transition starts.
+    // On close they remain mounted until the exit animation finishes.
+    setRenderContent(true);
+    setOpenState((current) => {
+      const next = typeof nextValue === "function" ? nextValue(current) : nextValue;
+      rememberDisclosureState(disclosureKey, next);
+      return next;
+    });
+  }, [disclosureKey]);
+
+  return { open, renderContent, setOpen };
+}
+
+function DisclosureContent({
+  children,
+  className = "",
+  open,
+  renderContent,
+}: {
+  children: ReactNode;
+  className?: string;
+  open: boolean;
+  renderContent: boolean;
+}) {
+  return (
+    <div
+      className={`qx-ai-disclosure-content${open ? " is-open" : ""}${className ? ` ${className}` : ""}`}
+      data-state={open ? "open" : "closed"}
+      aria-hidden={!open}
+      inert={!open ? true : undefined}
+    >
+      <div className="qx-ai-disclosure-clip">
+        {renderContent ? children : null}
+      </div>
+    </div>
+  );
+}
 
 function formatFileSize(size: number): string {
   if (size < 1024) return `${size} B`;
@@ -308,17 +406,20 @@ function ToolCallPanel({
   input,
   output,
   defaultOpen = false,
+  disclosureKey,
 }: {
   name: string;
   state: string;
   input?: string;
   output?: string;
   defaultOpen?: boolean;
+  disclosureKey?: string;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(defaultOpen);
+  const { open, renderContent, setOpen } = useDisclosureState(defaultOpen, disclosureKey);
   const running = state === "running" || state === "input-streaming" || state === "input-available";
   const failed = state === "error" || state === "output-error";
+  const hasOutput = output !== undefined;
   const category = getToolCategory(name);
   const toolLabel = useToolLabel(name, category);
   const activitySummary = compactToolPayload(running ? input : output ?? input, category);
@@ -349,7 +450,11 @@ function ToolCallPanel({
         {running ? <Loader2 size={13} className="qx-spin" /> : null}
         <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
       </button>
-      {open && (
+      <DisclosureContent
+        className="qx-ai-tool-disclosure"
+        open={open}
+        renderContent={renderContent}
+      >
         <div className="qx-ai-tool-body qx-jan-tool-body">
           {input ? (
             <div className="qx-jan-tool-section">
@@ -357,14 +462,14 @@ function ToolCallPanel({
               <pre><code>{input}</code></pre>
             </div>
           ) : null}
-          {output ? (
+          {hasOutput ? (
             <div className="qx-jan-tool-section">
               <h4>{failed ? t("common.error", "Error") : t("qxai.tool.result", "Result")}</h4>
-              <pre className="is-output"><code>{output}</code></pre>
+              <pre className="is-output"><code>{output || t("qxai.tool.noOutput", "No output")}</code></pre>
             </div>
           ) : null}
         </div>
-      )}
+      </DisclosureContent>
     </div>
   );
 }
@@ -375,58 +480,46 @@ function ToolCallPanel({
  */
 function ReasoningPanel({
   title,
-  streamingLabel,
-  completedVerb,
   isStreaming,
   summary,
   summaryKey = "reasoning",
   children,
   defaultOpen = true,
   reasoningDurationMs,
+  reasoningStartedAt,
+  disclosureKey,
 }: {
   title?: ReactNode;
-  streamingLabel?: string;
-  completedVerb?: string;
   isStreaming?: boolean;
   summary?: string;
   summaryKey?: string;
   children: ReactNode;
   defaultOpen?: boolean;
   reasoningDurationMs?: number;
+  reasoningStartedAt?: number;
+  disclosureKey?: string;
 }) {
-  const t = useT();
-  const [open, setOpen] = useState(defaultOpen);
-  const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [durationSec, setDurationSec] = useState<number | undefined>(undefined);
-
-  useEffect(() => {
-    if (isStreaming) {
-      if (startedAt === null) setStartedAt(Date.now());
-      return;
-    }
-    if (startedAt !== null) {
-      setDurationSec(Math.max(1, Math.ceil((Date.now() - startedAt) / 1000)));
-      setStartedAt(null);
-    }
-  }, [isStreaming, startedAt]);
-
-  const completedDurationSec = reasoningDurationMs != null
-    ? Math.max(1, Math.ceil(reasoningDurationMs / 1000))
-    : durationSec;
+  const { open, renderContent, setOpen } = useDisclosureState(defaultOpen, disclosureKey);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const followTimelineRef = useRef(true);
   const activitySummary = !open ? latestActivityLine(summary) : "";
 
-  const headerTitle = (() => {
-    if (title) return title;
-    if (isStreaming || durationSec === 0) {
-      return streamingLabel ?? t("qxai.cot.thinking", "Thinking…");
-    }
-    if (completedDurationSec === undefined) {
-      return t("qxai.cot.thoughtBrief", "Thought for a few seconds");
-    }
-    return t("qxai.cot.thoughtFor", "{verb} for {n} seconds")
-      .replace("{verb}", completedVerb ?? t("qxai.cot.thoughtVerb", "Thought"))
-      .replace("{n}", String(completedDurationSec));
-  })();
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    if (!open || !isStreaming || !timeline || !followTimelineRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      timeline.scrollTop = timeline.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [children, isStreaming, open]);
+
+  const headerTitle = title ?? (
+    <ReasoningElapsedTime
+      streaming={Boolean(isStreaming)}
+      startedAt={reasoningStartedAt}
+      durationMs={reasoningDurationMs}
+    />
+  );
 
   return (
     <div
@@ -440,7 +533,7 @@ function ReasoningPanel({
         onClick={() => setOpen((value) => !value)}
       >
         <Sparkles size={15} strokeWidth={1.75} className="qx-jan-cot-spark" aria-hidden="true" />
-        <span className={`qx-ai-reasoning-title qx-jan-cot-title${isStreaming ? " is-shimmer" : ""}`}>
+        <span className="qx-ai-reasoning-title qx-jan-cot-title">
           {headerTitle}
         </span>
         {activitySummary ? <span className="qx-ai-activity-separator" aria-hidden="true">·</span> : null}
@@ -451,12 +544,25 @@ function ReasoningPanel({
         ) : null}
         <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
       </button>
-      {open ? (
+      <DisclosureContent
+        className="qx-ai-reasoning-disclosure"
+        open={open}
+        renderContent={renderContent}
+      >
         <div className="qx-ai-reasoning-panel qx-jan-cot-panel">
           <div className="qx-ai-reasoning-rail qx-jan-cot-rail" aria-hidden="true" />
-          <div className="qx-ai-reasoning-content qx-jan-cot-content">{children}</div>
+          <div
+            ref={timelineRef}
+            className="qx-ai-reasoning-content qx-jan-cot-content"
+            onScroll={(event) => {
+              const timeline = event.currentTarget;
+              followTimelineRef.current = timeline.scrollHeight - timeline.clientHeight - timeline.scrollTop <= 4;
+            }}
+          >
+            {children}
+          </div>
         </div>
-      ) : null}
+      </DisclosureContent>
     </div>
   );
 }
@@ -466,7 +572,10 @@ const JanChainOfThought = ReasoningPanel;
 
 function ToolCallGroupPanel({ steps }: { steps: AgentStep[] }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const { open, renderContent, setOpen } = useDisclosureState(
+    false,
+    steps[0]?.id ? `tool-group:${steps[0].id}` : undefined,
+  );
   const running = steps.some((step) => step.state === "running");
   const failed = steps.some((step) => step.state === "error");
   const latest = steps[steps.length - 1];
@@ -490,11 +599,12 @@ function ToolCallGroupPanel({ steps }: { steps: AgentStep[] }) {
         {running ? <Loader2 size={13} className="qx-spin" /> : null}
         <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
       </button>
-      {open ? (
+      <DisclosureContent open={open} renderContent={renderContent}>
         <div className="qx-ai-tool-group-body">
           {steps.map((step) => (
             <ToolCallPanel
               key={step.id}
+              disclosureKey={`tool:${step.id}`}
               name={step.tool ?? "tool"}
               state={step.state}
               input={step.input}
@@ -502,7 +612,7 @@ function ToolCallGroupPanel({ steps }: { steps: AgentStep[] }) {
             />
           ))}
         </div>
-      ) : null}
+      </DisclosureContent>
     </div>
   );
 }
@@ -511,12 +621,14 @@ function StepRow({
   status,
   label,
   children,
+  disclosureKey,
 }: {
   status: "complete" | "active" | "pending" | "error";
   label: string;
   children?: ReactNode;
+  disclosureKey?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const { open, renderContent, setOpen } = useDisclosureState(false, disclosureKey);
   return (
     <div className={`qx-jan-step is-${status}`}>
       <button
@@ -543,7 +655,11 @@ function StepRow({
           aria-hidden="true"
         />
       </button>
-      {open && children ? <div className="qx-jan-step-body">{children}</div> : null}
+      {children ? (
+        <DisclosureContent open={open} renderContent={renderContent}>
+          <div className="qx-jan-step-body">{children}</div>
+        </DisclosureContent>
+      ) : null}
     </div>
   );
 }
@@ -554,10 +670,12 @@ export const AgentStepsView = memo(function AgentStepsView({
   steps,
   streaming = false,
   reasoningDurationMs,
+  reasoningStartedAt,
 }: {
   steps: AgentStep[];
   streaming?: boolean;
   reasoningDurationMs?: number;
+  reasoningStartedAt?: number;
 }) {
   const t = useT();
   const visible = steps.filter((step, index) => {
@@ -593,13 +711,13 @@ export const AgentStepsView = memo(function AgentStepsView({
 
   return (
     <JanChainOfThought
-      streamingLabel={t("qxai.cot.thinking", "Thinking…")}
-      completedVerb={t("qxai.cot.thoughtVerb", "Thought")}
       isStreaming={streaming}
       summary={activitySummary}
       summaryKey={latestStep?.id ?? "reasoning"}
       defaultOpen={false}
       reasoningDurationMs={reasoningDurationMs}
+      reasoningStartedAt={reasoningStartedAt}
+      disclosureKey={steps[0]?.id ? `reasoning:${steps[0].id}` : undefined}
     >
       {renderItems.map((item) => {
         if (item.kind === "group") {
@@ -610,6 +728,7 @@ export const AgentStepsView = memo(function AgentStepsView({
           return (
             <StepRow
               key={step.id}
+              disclosureKey={`step:${step.id}`}
               status={step.state === "running" ? "active" : "complete"}
               label={t("qxai.cot.thoughtStep", "Thought")}
             >
@@ -622,9 +741,11 @@ export const AgentStepsView = memo(function AgentStepsView({
           return (
             <ToolCallPanel
               key={step.id}
+              disclosureKey={`tool:${step.id}`}
               name={step.tool ?? "tool"}
               state={step.state}
               input={step.input}
+              output={step.output}
               defaultOpen={false}
             />
           );
@@ -633,6 +754,7 @@ export const AgentStepsView = memo(function AgentStepsView({
           return (
             <ToolCallPanel
               key={step.id}
+              disclosureKey={`tool:${step.id}`}
               name={step.tool ?? "tool"}
               state="completed"
               output={step.output}
@@ -642,7 +764,12 @@ export const AgentStepsView = memo(function AgentStepsView({
         }
         if (step.kind === "error") {
           return (
-            <StepRow key={step.id} status="error" label={t("common.error", "Error")}>
+            <StepRow
+              key={step.id}
+              disclosureKey={`step:${step.id}`}
+              status="error"
+              label={t("common.error", "Error")}
+            >
               <div className="qx-jan-thought-text is-error">{step.text}</div>
             </StepRow>
           );
@@ -730,6 +857,7 @@ export function AiMessageContent({
   tokenCount,
   usage,
   reasoningDurationMs,
+  reasoningStartedAt,
 }: {
   content: string;
   reasoning?: string;
@@ -745,8 +873,8 @@ export function AiMessageContent({
     estimated?: boolean;
   };
   reasoningDurationMs?: number;
+  reasoningStartedAt?: number;
 }) {
-  const t = useT();
   const parts = useMemo(() => parseParts(content), [content]);
   const hasChain = Boolean((steps && steps.length > 0) || reasoning);
 
@@ -757,15 +885,15 @@ export function AiMessageContent({
           steps={steps}
           streaming={streaming}
           reasoningDurationMs={reasoningDurationMs}
+          reasoningStartedAt={reasoningStartedAt}
         />
       ) : reasoning ? (
         <JanChainOfThought
-          streamingLabel={t("qxai.reasoning.streaming", "Reasoning…")}
-          completedVerb={t("qxai.cot.thoughtVerb", "Thought")}
           isStreaming={streaming}
           summary={reasoning}
           defaultOpen={false}
           reasoningDurationMs={reasoningDurationMs}
+          reasoningStartedAt={reasoningStartedAt}
         >
           <div className="qx-jan-thought-text">{reasoning}</div>
         </JanChainOfThought>

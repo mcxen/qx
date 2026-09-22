@@ -39,6 +39,9 @@ export function buildReactSystemPrompt(
   const ruleIf = (name: string, line: string) => (names.has(name) ? line : null);
   const capabilityRules = [
     ruleIf("files", "- Use files for filename or folder-name searches; it runs Qx's complete native system search."),
+    names.has("read_file") || names.has("write_file") || names.has("edit_file")
+      ? "- Native file workflow: use list_directory/glob_files to discover paths, read_file for bounded text plus its revision, edit_file for one exact replacement, and write_file for new or complete-file content. Existing files must be read first and changed with the returned expectedRevision."
+      : null,
     ruleIf("grep", "- Use grep only to search file contents under an explicit root directory. Never use grep as a filename-search fallback."),
     ruleIf("apps", "- Use apps only when the user is looking for an installed application, not a document or folder."),
     names.has("open_path") || names.has("reveal_path") || names.has("copy_to_clipboard") || names.has("send_file") || names.has("notify")

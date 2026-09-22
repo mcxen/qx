@@ -111,15 +111,18 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 
 对齐 Elements `Reasoning` + BUI Thinking：
 
-1. 折叠触发：Sparkles + 标题（流式 shimmer「Thinking…」/ 完成「Thought for N seconds」）。
-   完成态优先显示运行时记录的思考阶段耗时；旧消息没有该字段时才退回「Thought for a few seconds」。
-2. 流式与完成态默认收起为一行；折叠行保持透明，只允许 hover / focus 出现轻量反馈；shimmer 只裁切在状态标题字形内，不得生成动画卡片背景。流式行在状态标题后显示最新一行思考或工具活动，超宽时裁切并跟随最新内容。活动变化用约 300ms 的有界纵向替换动画且采用 latest-wins；`prefers-reduced-motion` 下直接替换并停止 shimmer。用户可手动展开完整时间线，状态更新不得强制改写用户的展开选择。
+1. 折叠触发：Sparkles + 标题。流式从首个真实 reasoning / tool 事件开始，以宿主绝对时间
+   每秒更新；完成态定格并持久化同一段墙钟耗时，不能用组件挂载次数、模拟 tick 或工具结果数
+   猜测。时间使用 `mm:ss`（超过一小时为 `hh:mm:ss`）机场翻页钟：变化数字由下进入、旧数字
+   向上退出，状态 shimmer 不得覆盖数字；`prefers-reduced-motion` 下只更新数字而不翻动。旧消息
+   没有运行时耗时字段时才退回「Thought for a few seconds」。
+2. 流式与完成态默认收起为一行；折叠行使用 token 驱动的浅色背景和小圆角，右侧展开箭头常驻可见，hover / focus 只做轻量加深；shimmer 只裁切在状态标题字形内，不得生成动画卡片背景。流式行在状态标题后显示最新一行思考或工具活动，超宽时裁切并跟随最新内容。活动变化用约 300ms 的有界纵向替换动画且采用 latest-wins；`prefers-reduced-motion` 下直接替换并停止 shimmer。用户可手动展开完整时间线，状态更新不得强制改写用户的展开选择。
 3. 展开：左侧 **1px 时间线** + 步骤行（thought / tool / observation）；active 步骤使用
    accent 脉冲，complete/error 使用稳定状态图标，并尊重 reduced-motion。
 4. 时间线内每条 thought / error 与每次 tool execution 都是独立折叠项，默认收起；
-   运行中只更新状态和 spinner，不得强制展开参数、结果或长错误。用户展开某一项时不影响其它项。
+   运行中只更新状态和 spinner，不得强制展开参数、结果或长错误。用户展开某一项时不影响其它项；关闭外层思考后再打开，仍保留各工具项的展开选择。
 5. 不要厚边框大卡片包住整块思考（避免 web 营销卡）。
-6. 连续的 tool execution 可折叠为一个工具组摘要；展开后必须保留原始顺序、每项状态、参数和结果。
+6. 连续的 tool execution 可折叠为一个工具组摘要；展开后必须保留原始顺序、每项状态、参数和结果。展开/收起采用有界高度过渡，收起动画结束后才卸载重内容，禁止正文瞬间跳动。
 
 实现：`ReasoningPanel`（原 `JanChainOfThought`）+ `AgentStepsView`。
 
@@ -129,10 +132,10 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 
 - 收起：与思考时间线一致的一行摘要（工具类别 + 状态 + 关键参数或结果摘要），超宽单行裁切；不使用独立厚卡片或 pill。命令、搜索、文件、网页、系统和模块工具使用稳定类别图标及语义字段（如 `command`、`query`、`path`、`url`），不直接倾倒 JSON。
 - JSON 输入/结果只有在能提取语义字段时才进入折叠摘要；`{}`、`}`、`]`、逗号等结构字符不得单独显示在工具行右侧。完整结构化结果保留在展开内容中。
-- 展开：轻边框参数/结果 pre。
+- 展开：轻边框参数/结果 pre；完成态只要工具已经返回，就必须展示结果区域，空字符串明确显示“无输出”，不得因 observation 去重而丢失 action 上的返回值。
 - 嵌在 Reasoning 列表内时避免双重标题噪音。
 - 连续两次及以上工具调用收成单个组行；组行展示数量、综合状态和最新活动，展开后仍逐项查看。
-- 折叠箭头默认隐藏，仅在 hover、键盘焦点或已展开时显示；隐藏不能影响键盘可达性。
+- 折叠行使用浅色背景、小圆角和常驻箭头形成明确的展开控件；箭头不得作为唯一状态信息，按钮仍需提供 `aria-expanded`。
 
 ---
 

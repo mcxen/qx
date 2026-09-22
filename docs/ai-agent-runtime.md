@@ -77,6 +77,8 @@ P仔创建带当前内容快照的后台 conversation，并复用同一 store、
 | `stream.ts` | 事件监听、超时、取消和增量 flush |
 | `function-loop.ts` / `react-loop.ts` | 两种 tool-calling transport 的 turn 编排 |
 | `tools.ts` / `tools-modules.ts` | 权限化工具目录与模块适配 |
+| `tools-files.ts` + Rust `qx_ai_files.rs` | 有界文件发现、读取、revision 校验写入与唯一匹配编辑 |
+| `tools-host-management.ts` | 模型侧宿主设置与插件生命周期工具适配 |
 | `module-actions.ts` | 模块/插件注册的稳定意图动作 |
 | `capabilities.ts` | skill 绑定的 module action、plugin command、agent tool 目录 |
 | `host-management.ts` | 可枚举 Qx 设置适配器与插件生命周期边界；不直接写存储/目录 |
@@ -85,6 +87,24 @@ P仔创建带当前内容快照的后台 conversation，并复用同一 store、
 | `memory.ts` | turn 前冻结的 memory snapshot 与工具适配 |
 
 模块通过注册表扩展动作，不在 Agent core 增长每功能 `switch`。插件用 `context.ai.actions.register()` 注册 namespaced action；disable/unload 时宿主清理。插件 hook 只能 dispatch 已声明的插件 command，不接受 iframe JS 回调。
+
+### 基础文件端口
+
+QxAI 对齐 coding-agent 常用的 Read / Glob / Write / Edit 意图，但执行通过 Qx 原生 Rust
+端口，不把 shell 命令伪装成结构化工具：
+
+```text
+files / glob_files / list_directory / file_info  -> 发现与检查
+read_file -> 有界文本 + sha256 revision
+write_file / edit_file -> expectedRevision 校验 -> blocking worker 写入
+grep -> 明确 root 下的内容搜索
+```
+
+`read_file` 只接受不超过 2 MiB 的 UTF-8、UTF-16 或 GB18030 文本，并按行分页；二进制与
+大文件明确拒绝。`glob_files` 不跟随 symlink，并限制遍历与返回数量。覆盖既有文件前必须先
+读取并提交最新 revision；`edit_file` 的 `oldText` 必须恰好匹配一次。写入和编辑属于 medium
+dangerous tool，SOLO 关闭时仍需用户确认。Text Toolbox 的 `docs_*` 继续负责 Qx 文档工作区，
+OCR 继续负责图片文字识别；这些领域端口不被通用文件工具替代。
 
 ### 宿主管理端口
 
@@ -119,7 +139,7 @@ Settings → AI Agent 的 dangerous-tools guard 默认开启，SOLO 默认关闭
 | guard on + SOLO on | 跳过确认，但仍记录 SOLO 运行语义 |
 
 无 `window.confirm` 的 headless context 把 ask 当 deny。安全判断必须解析嵌套 capability/action id，不能只看外层 `run_qx_capability` 名称。
-`set_qx_setting`、`set_plugin_enabled` 是 medium ask；`uninstall_plugin` 因同时删除插件持久
+`set_qx_setting`、`set_plugin_enabled`、`write_file`、`edit_file` 是 medium ask；`uninstall_plugin` 因同时删除插件持久
 数据是 high ask。SOLO 语义仍按上表执行。
 
 ## 5. Skills、Actions 与工具可见性

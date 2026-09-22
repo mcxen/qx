@@ -1045,6 +1045,7 @@ export default function QxAiChat() {
                             tokenSpeed={run?.liveTokenSpeed}
                             tokenCount={run?.liveTokenCount}
                             reasoningDurationMs={run?.reasoningMs}
+                            reasoningStartedAt={run?.reasoningStartedAt}
                           />
                         </div>
                       </div>

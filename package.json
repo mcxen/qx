@@ -1,7 +1,7 @@
 {
   "name": "qx",
   "private": true,
-  "version": "0.6.115",
+  "version": "0.6.116",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,7 @@
     "test:plugin-search": "node scripts/check-plugin-search.mjs",
     "test:plugin-shortcuts": "node --experimental-strip-types scripts/smoke-plugin-shortcuts.mjs",
     "test:qx-ai-agent": "node scripts/check-qx-ai-agent.mjs",
+    "test:qx-ai-browser": "node scripts/check-qx-ai-browser.mjs",
     "docs:check": "node scripts/check-docs.mjs",
     "convert:raycast": "node scripts/convert-raycast-extension.mjs",
     "prepare:search-tools": "node scripts/prepare-search-tools.mjs",

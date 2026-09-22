@@ -92,7 +92,11 @@ export function finishReasoningTiming(input: Partial<ReasoningTiming>, now: numb
 }
 
 export function resolveReasoningDuration(input: Partial<ReasoningTiming>, now: number): number {
-  if ((input.durationMs ?? 0) > 0) return Math.max(1, input.durationMs ?? 0);
+  // The user-visible "Thought for" clock is wall time from the first real
+  // reasoning/tool event through completion. `durationMs` still tracks active
+  // delta windows for diagnostics, but it must not make the displayed clock
+  // pause while a real tool is running or the provider is between deltas.
   if (input.startedAt != null) return Math.max(1, now - input.startedAt);
+  if ((input.durationMs ?? 0) > 0) return Math.max(1, input.durationMs ?? 0);
   return 0;
 }

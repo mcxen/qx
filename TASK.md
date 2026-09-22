@@ -13,6 +13,36 @@
 
 ## 当前工作
 
+### QxAI — 实时思考钟与原生文件工具（2026-09-22）
+
+- 思考耗时改为首个真实 reasoning / tool 事件起算的墙钟时间；运行中按秒对齐更新，完成后
+  持久化同一口径。折叠行使用 `mm:ss` / `hh:mm:ss` 机场翻页数字，并尊重减少动态偏好。
+- 对照 ZCode 的 Read / Glob / Write / Edit 分工，增加 Qx 原生 `file_info`、`list_directory`、
+  `glob_files`、`read_file`、`write_file` 与 `edit_file`；读取/遍历有界，覆盖与精确编辑要求
+  `read_file` 返回的 sha256 revision，写操作继续经过 dangerous-tools 确认。
+- 将超长 `tools.ts` 的文件/命令工具及宿主管理工具提取为独立适配层；Rust 文件 I/O 全部走
+  blocking worker。Agent、浏览器、TypeScript、完整仓库门禁、生产构建、Rust 文件回归、
+  `cargo fmt --check`、`cargo check` 与本地 Apple Silicon `.app` 构建均通过；跨平台桌面产物
+  由 `v0.6.116` Tag 工作流构建。
+
+### Settings — AI 供应商布局（2026-09-21）
+
+- 默认模型前置；工具开关与迭代上限归入工具与安全。供应商使用紧凑线性列表，新增按钮
+  与分区标题同排；新增/编辑进入 Dialog，内置模板仅编辑 API Key，关闭后恢复触发按钮焦点。
+- 设置导航默认 220px；模型表格根据内容栏宽响应，展开区域有界滚动。编辑器从超长
+  `AiProviderConfig.tsx` 提取为独立表单，保存仍使用原 store 端口。
+- 验证：完整检查、TypeScript 与生产构建通过；生产组件配合合成数据/mock IPC 完成
+  中英文、明暗、360/680/980/1400px 共 16 组浏览器检查，覆盖无横向溢出、编辑不推移列表、
+  Esc 焦点恢复、模拟保存与长模型列表。临时夹具已移除；未替换安装版或验证真实供应商接口，
+  本轮未涉及 Rust，未运行原生编译与 Windows 验收。
+
+### QxAI — 思考展开与工具返回值（2026-09-22）
+
+- 对照 ZCode 的 Reasoning / Tool disclosure：思考、步骤、工具组和单工具使用统一的有界高度过渡，收起动画结束后再卸载内容；关闭外层后仍保留内层工具的展开选择。
+- 展开行增加 token 驱动的浅背景、小圆角和常驻箭头；展开时间线采用有界滚动，流式且停留底部时跟随最新步骤，用户向上阅读后不抢滚动位置。
+- 修复单工具 action 已保存 `output`、重复 observation 被去重后，渲染层没有传入返回值的问题；空字符串返回明确显示“无输出”，工具组与运行中转完成复用同一结果区域。
+- 验证：QxAI Agent 门禁、TypeScript 与生产组件浏览器回归通过；浏览器覆盖中英文、明暗主题、单工具、工具组、空输出、流式完成、动画延迟卸载和展开状态恢复。尚未替换安装版或调用真实供应商/真实系统工具。
+
 ### Shell — Action / 分栏 / 反馈公共协议（2026-09-21）
 
 - QxShell 收敛为 chrome 组合，提取 Action 执行/菜单、窗口操作与底栏测量；各模块和插件宿主复用 shellProps 与 scroll/fill 内容模式。

@@ -12,6 +12,8 @@ const agentSource = [
   "../src/modules/qx-ai/react-agent.ts",
   "../src/modules/qx-ai/agent/index.ts",
   "../src/modules/qx-ai/agent/tools.ts",
+  "../src/modules/qx-ai/agent/tools-files.ts",
+  "../src/modules/qx-ai/agent/tools-host-management.ts",
   "../src/modules/qx-ai/agent/tools-modules.ts",
   "../src/modules/qx-ai/agent/module-actions.ts",
   "../src/modules/qx-ai/agent/prompts.ts",
@@ -36,6 +38,14 @@ const memoryExtractorSource = readFileSync(
 );
 const messageSource = readFileSync(
   new URL("../src/modules/qx-ai/message-rendering.tsx", import.meta.url),
+  "utf8",
+);
+const reasoningTimeSource = readFileSync(
+  new URL("../src/modules/qx-ai/ReasoningElapsedTime.tsx", import.meta.url),
+  "utf8",
+);
+const aiFilesBackendSource = readFileSync(
+  new URL("../src-tauri/src/qx_ai_files.rs", import.meta.url),
   "utf8",
 );
 const messageVariantsSource = readFileSync(
@@ -182,6 +192,13 @@ assert.match(settingsSource, /bash_enabled:\s*true/);
 assert.match(agentSource, /name:\s*"reveal_path"/);
 assert.match(agentSource, /name:\s*"copy_to_clipboard"/);
 assert.match(agentSource, /name:\s*"send_file"/);
+for (const toolName of ["file_info", "list_directory", "glob_files", "read_file", "write_file", "edit_file"]) {
+  assert.match(agentSource, new RegExp(`name:\\s*"${toolName}"`));
+}
+assert.match(aiFilesBackendSource, /MAX_TEXT_BYTES/);
+assert.match(aiFilesBackendSource, /expectedRevision from read_file/);
+assert.match(aiFilesBackendSource, /oldText must match exactly once/);
+assert.match(aiFilesBackendSource, /crate::runtime::blocking/);
 assert.match(agentSource, /clipboard_write_file_paths/);
 assert.match(storeSource, /attachments:\s*result\.attachments/);
 assert.match(messageSource, /qx-ai-attachments/);
@@ -198,7 +215,7 @@ for (const settingId of [
 assert.match(hostManagementSource, /await store\.flush\(\)/);
 assert.match(hostManagementSource, /invoke<Settings>\("update_settings"/);
 assert.doesNotMatch(hostManagementSource, /window\.(?:localStorage|sessionStorage)/);
-assert.match(messageSource, /function StepRow[\s\S]*?useState\(false\)/);
+assert.match(messageSource, /function StepRow[\s\S]*?useDisclosureState\(false, disclosureKey\)/);
 assert.match(messageSource, /className="qx-jan-step-header"/);
 assert.match(messageSource, /aria-expanded=\{open\}/);
 assert.match(messageSource, /defaultOpen=\{false\}/);
@@ -210,13 +227,28 @@ assert.match(messageSource, /!isJsonStructureOnly\(line\)/);
 assert.match(messageSource, /function ToolCallGroupPanel/);
 assert.match(messageSource, /className="qx-ai-reasoning-summary"/);
 assert.match(messageSource, /className="qx-ai-tool-activity"/);
+assert.match(messageSource, /output=\{step\.output\}/);
+assert.match(messageSource, /const hasOutput = output !== undefined/);
+assert.match(messageSource, /qxai\.tool\.noOutput/);
+assert.match(messageSource, /function useDisclosureState/);
+assert.match(messageSource, /DISCLOSURE_UNMOUNT_DELAY_MS = 300/);
 assert.doesNotMatch(messageSource, /if \(isStreaming\) setOpen\(true\)/);
 assert.match(qxAiCssSource, /\.qx-ai-reasoning-summary,[\s\S]*?white-space:\s*nowrap/);
 assert.match(qxAiCssSource, /\.qx-ai-activity-roll-line\.is-entering/);
 assert.match(qxAiCssSource, /\.qx-ai-tool-group-body/);
+assert.match(qxAiCssSource, /\.qx-ai-disclosure-content\s*\{[\s\S]*?grid-template-rows:\s*0fr/);
+assert.match(qxAiCssSource, /\.qx-ai-disclosure-content\.is-open\s*\{[\s\S]*?grid-template-rows:\s*1fr/);
 assert.match(qxAiCssSource, /prefers-reduced-motion[\s\S]*?qx-ai-activity-roll-line\.is-leaving/);
 assert.match(qxAiCssSource, /\.qx-jan-cot\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent/);
-assert.match(qxAiCssSource, /prefers-reduced-motion[\s\S]*?qx-jan-cot-title\.is-shimmer/);
+assert.match(qxAiCssSource, /prefers-reduced-motion[\s\S]*?qx-ai-reasoning-status\.is-shimmer/);
+assert.match(messageSource, /reasoningStartedAt=\{reasoningStartedAt\}/);
+assert.match(reasoningTimeSource, /now - startedAt/);
+assert.match(reasoningTimeSource, /window\.setTimeout\(tick/);
+assert.doesNotMatch(reasoningTimeSource, /setInterval/);
+assert.match(reasoningTimeSource, /qx-ai-flip-digit-old/);
+assert.match(reasoningTimeSource, /formatReasoningClock/);
+assert.match(qxAiCssSource, /@keyframes qx-ai-flip-digit-in/);
+assert.match(qxAiCssSource, /@keyframes qx-ai-flip-digit-out/);
 assert.doesNotMatch(messageSource, /<span className="qx-jan-shimmer">/);
 assert.match(messageActionsSource, /useLocale\(\)/);
 assert.match(messageActionsSource, /new Intl\.DateTimeFormat\(locale/);

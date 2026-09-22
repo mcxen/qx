@@ -5206,7 +5206,7 @@ dependencies = [
 
 [[package]]
 name = "qx"
-version = "0.6.115"
+version = "0.6.116"
 dependencies = [
  "ab_glyph",
  "arboard",
@@ -5225,6 +5225,7 @@ dependencies = [
  "fontdb",
  "fswalk",
  "gifski",
+ "glob",
  "hex",
  "image",
  "imageproc",
@@ -5259,6 +5260,7 @@ dependencies = [
  "tokio",
  "url",
  "urlencoding",
+ "walkdir",
  "window-vibrancy",
  "windows-sys 0.59.0",
  "wmi",

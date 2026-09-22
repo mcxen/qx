@@ -34,6 +34,7 @@ mod permissions;
 mod plugin_api;
 mod plugin_cli;
 mod plugin_system;
+mod qx_ai_files;
 mod qx_ai_mcp;
 mod qx_ai_memory;
 mod qx_ai_schedule;
@@ -769,6 +770,12 @@ pub fn run() {
             plugin_system::plugin_system_reveal_path,
             plugin_system::plugin_system_open_settings,
             plugin_api::plugin_ai_grep_search,
+            qx_ai_files::qxai_file_info,
+            qx_ai_files::qxai_read_file,
+            qx_ai_files::qxai_list_directory,
+            qx_ai_files::qxai_glob_files,
+            qx_ai_files::qxai_write_file,
+            qx_ai_files::qxai_edit_file,
             plugin_api::plugin_ai_memory_list,
             plugin_api::plugin_ai_memory_add,
             plugin_api::plugin_ai_memory_delete,

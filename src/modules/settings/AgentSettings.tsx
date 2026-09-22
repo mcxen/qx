@@ -293,10 +293,6 @@ export default function AgentSettings() {
       </div>
 
       {section === "agent-models" && <>
-      <SettingsCard title={t("agent.providers.title", "Providers & Keys")}>
-        <ProviderListSection />
-      </SettingsCard>
-
       <SettingsCard title={t("agent.basics.title", "Chat & Agent")}>
         <Row
           title={t("agent.mode", "Agent Mode")}
@@ -363,6 +359,13 @@ export default function AgentSettings() {
           />
         </Row>
 
+      </SettingsCard>
+
+      <ProviderListSection />
+      </>}
+
+      {section === "tools-safety" && <>
+      <SettingsCard title={t("agent.tools.enabled", "Tools")}>
         <Row
           title={t("agent.tools.enabled", "Tools")}
           description={t(
@@ -404,10 +407,6 @@ export default function AgentSettings() {
           />
         </Row>
       </SettingsCard>
-
-      </>}
-
-      {section === "tools-safety" && <>
       <SettingsCard
         title={t("agent.safety.title", "Safety & SOLO")}
         description={t(
@@ -493,7 +492,7 @@ export default function AgentSettings() {
             onChange={(value) => patchAgent({ memory_policy: value })}
           />
         </Row>
-        <Row title={t("agent.tools.search", "Apps & Files")} description={t("agent.tools.search.desc", "Search installed apps and the file index.")}>
+        <Row title={t("agent.tools.search", "Apps & Files")} description={t("agent.tools.search.desc", "Search apps; find, inspect, read, list, and safely edit local text files.")}>
           <div className="qx-agent-inline-toggles">
             <span>{t("agent.tools.apps", "Apps")}</span>
             <Toggle value={agent.app_search_enabled} onChange={(value) => patchAgent({ app_search_enabled: value })} />

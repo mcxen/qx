@@ -67,6 +67,18 @@ export const DANGEROUS_TOOLS: DangerousToolSpec[] = [
     gate: "ask",
   },
   {
+    name: "write_file",
+    level: "medium",
+    reason: "creates or replaces a local text file",
+    gate: "ask",
+  },
+  {
+    name: "edit_file",
+    level: "medium",
+    reason: "changes text inside a local file",
+    gate: "ask",
+  },
+  {
     name: "docs.write",
     level: "medium",
     reason: "module action that writes Text Toolbox files",

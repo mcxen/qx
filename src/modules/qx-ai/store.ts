@@ -87,6 +87,7 @@ export interface QxAiConversationRun {
   liveTokenCount?: number;
   reasoningStartedAt?: number;
   reasoningLastDeltaAt?: number;
+  /** Active reasoning delta time; the UI derives live wall time from reasoningStartedAt. */
   reasoningMs?: number;
   /** Last provider usage metadata; preferred over frontend estimates. */
   providerPromptTokenCount?: number;

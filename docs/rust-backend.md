@@ -62,6 +62,7 @@
 |---|---|
 | `g4f.rs` | 内置 OpenRouter（默认）与 DeepSeek BYOK provider + 自定义 OpenAI-compatible BYOK；内置供应商固定 endpoint/model，用户只保存 API Key；`qxai_stream_chat_events` 起有界后台 worker，通过 `qxai-stream` 事件回推 chunk（UTF-8/GB18030 容错 SSE），done 可带 provider usage、请求耗时和速率 |
 | `plugin_api.rs` | 面向插件的受控 AI 入口：`plugin_ai_chat/stream_chat/run_bash/grep_search/memory_*`；bash 子进程强制 timeout 且用 `bash -lc` 白名单 |
+| `qx_ai_files.rs` | QxAI 原生文件端口：metadata、目录列举、glob、分页文本读取及 revision 校验的 write/edit；2 MiB 文本、遍历/结果数有界，全部磁盘工作进入 blocking pool，既有文件拒绝无 revision 覆盖和非唯一编辑 |
 | `http_client.rs` | 复用的 reqwest 客户端（异步和 blocking 两份），设置 UA / timeout / accept-encoding |
 
 ## 插件 / 市场
