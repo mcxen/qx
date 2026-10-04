@@ -17,3 +17,4 @@ export * from "./clipboard";
 export * from "./ocr";
 export * from "./pathActions";
 export * from "./fileManager";
+export * from "./fileDialog";

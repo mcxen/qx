@@ -1,4 +1,37 @@
 import type { G4fMessage } from "./contracts";
+import type { G4fProvider } from "./store";
+
+/** Resolve current catalog names without rewriting persisted provider/model IDs. */
+export function resolveQxAiModelLabels(
+  providers: readonly G4fProvider[],
+  providerId: string,
+  modelId: string,
+) {
+  const provider = providers.find((item) => item.id === providerId);
+  const providerName = provider?.name.trim() || providerId;
+  const modelName = provider?.models.find((item) => item.id === modelId)?.name.trim() || modelId;
+  return {
+    provider: providerName,
+    model: modelName,
+    label: [providerName, modelName].filter(Boolean).join(" · "),
+  };
+}
+
+export function filterQxAiConversations<T extends { name: string; provider: string; model: string; createdAt: number }>(
+  conversations: readonly T[],
+  providers: readonly G4fProvider[],
+  query: string,
+): T[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  return [...conversations]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .filter((conversation) => !normalized || [
+      conversation.name,
+      conversation.provider,
+      conversation.model,
+      resolveQxAiModelLabels(providers, conversation.provider, conversation.model).label,
+    ].some((value) => value.toLocaleLowerCase().includes(normalized)));
+}
 
 export interface ConversationModelSnapshotSource {
   messages: G4fMessage[];

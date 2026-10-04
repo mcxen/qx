@@ -256,10 +256,12 @@ Custom Panel 的视觉令牌由 `src/plugin/pluginTheme.ts` 作为单一投影�
 
 ### OS 模态交互
 
-系统隐私面板与文件选择器会暂时把焦点交给 OS。进入前通过
+系统隐私面板与文件选择器会暂时把焦点交给 OS。隐私面板进入前通过
 `floating_set_external_interaction_active(true)` 挂起 blur auto-hide，主窗口重新
-获得焦点时由 native window event 自动清除；这比固定延时可靠，也保证操作完成后
-Esc / 外部点击恢复正常。macOS 未获 Full Disk Access 时文件索引保持 Spotlight-only，
+获得焦点时由 native window event 自动清除。文件选择统一经过 `src/system/fileDialog.ts`
+的 `openNativeFileDialog`：先确认宿主取得 `fileDialog: true` 的计数保护，再打开原生选择器，
+在选择、取消或失败后通过 `finally` 释放；中途焦点回传不能结束文件选择保护，多个选择器
+互不释放。保护不使用长固定延时，也不改变显式 Esc / hide 语义。macOS 未获 Full Disk Access 时文件索引保持 Spotlight-only，
 不得从后台遍历 Home 触发 Documents/Desktop 的零散 TCC 对话框。
 
 ## 6. 反模式（禁止）

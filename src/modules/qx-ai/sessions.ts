@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { openNativeFileDialog } from "../../system/fileDialog";
 import { openSystemPath } from "../../system/pathActions";
 import type { QxAiFileAttachment } from "./agent/types";
 import type { G4fConversation } from "./store";
@@ -27,7 +27,7 @@ export async function saveQxAiSession(conversation: G4fConversation): Promise<vo
 export async function chooseAndImportQxAiAttachments(
   conversationId: string,
 ): Promise<QxAiFileAttachment[]> {
-  const selection = await open({ multiple: true, directory: false });
+  const selection = await openNativeFileDialog({ multiple: true, directory: false });
   const paths = selection ? (Array.isArray(selection) ? selection : [selection]) : [];
   if (paths.length === 0) return [];
   return invoke<QxAiFileAttachment[]>("qxai_session_import_attachments", {

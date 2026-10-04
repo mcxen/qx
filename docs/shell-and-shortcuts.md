@@ -141,6 +141,12 @@ else                                   → show_and_navigate(route)
 前端 `App.tsx` focus listener 不自行决定 blur 是否隐藏，只在原生判定完成后同步真实窗口
 可见性；所有显式关闭仍必须走 Rust hide，不要裸 `getCurrentWindow().hide()`。
 
+文件/目录选择统一走 `src/system/fileDialog.ts` 的 `openNativeFileDialog`，不得由模块裸调
+dialog plugin。端口先等待 `floating_set_external_interaction_active({ active: true, fileDialog: true })`
+取得计数保护，再打开 OS 选择器，并在选择、取消或失败后释放。主窗中途 `Focused(true)`
+只清除隐私面板保护，不清除文件选择器保护；结束后不留下 120 秒的失焦免隐藏窗口。
+焦点判定与交互保护归 `floating_panel/interaction.rs`，原命令和 Rust 调用入口保持稳定。
+
 ---
 
 ## 3. 全局快捷键注册（`settings/mod.rs`）

@@ -12,6 +12,14 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前命令数由 `npm 
 
 新增命令后请同步更新本表和调用方。
 
+## floating panel 交互保护
+
+`floating_set_external_interaction_active(active: bool, fileDialog?: bool)`：省略 `fileDialog`
+时维持 OS 隐私面板的焦点返回清理语义。`fileDialog: true` 时 `active: true/false` 分别
+取得/释放一个文件选择器保护；保护持续到选择器完成，不被 `Focused(true)` 提前释放，
+也不附加固定 120 秒抑制。第一方文件/目录选择统一经 `src/system/fileDialog.ts`
+在打开前等待取得保护，并在 `finally` 中释放；失败不能静默跳过保护后继续打开选择器。
+
 ## apps
 
 | 命令 | 签名 | 用途 |

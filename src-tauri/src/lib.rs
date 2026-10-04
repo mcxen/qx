@@ -264,9 +264,9 @@ pub fn run() {
             }
             if matches!(event, tauri::WindowEvent::Focused(true)) {
                 floating_panel::cancel_pending_auto_hide();
-                // OS-owned privacy panels and file pickers temporarily take
-                // focus. Once Qx becomes key again, normal outside-click and
-                // Esc behavior resumes.
+                // Privacy panes finish on focus return. Scoped file-dialog
+                // leases survive intermediate focus events until selection,
+                // cancellation or failure releases them.
                 floating_panel::set_external_interaction_active_with_app(
                     &window.app_handle(),
                     false,

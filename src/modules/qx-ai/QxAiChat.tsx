@@ -54,6 +54,7 @@ import { QxAiModelSwitcher } from "./QxAiModelSwitcher";
 import { QxAiMessageActions } from "./message-actions";
 import { QxAiTokenCounter } from "./token-counter";
 import QxAiConversationList from "./QxAiConversationList";
+import { filterQxAiConversations, resolveQxAiModelLabels } from "./conversation-model";
 import {
   filterQxAiSkills,
   listQxAiSkills,
@@ -122,17 +123,10 @@ export default function QxAiChat() {
   const agentSettings = useSettingsStore((state) => state.settings.agent);
   const { focusList, focusDetail } = useQxMasterDetailFocus(shellRef, MASTER_DETAIL);
 
-  const filteredConversations = useMemo(() => {
-    const q = listQuery.trim().toLowerCase();
-    const sorted = [...conversations].sort((a, b) => b.createdAt - a.createdAt);
-    if (!q) return sorted;
-    return sorted.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q)
-        || c.provider.toLowerCase().includes(q)
-        || c.model.toLowerCase().includes(q),
-    );
-  }, [conversations, listQuery]);
+  const filteredConversations = useMemo(
+    () => filterQxAiConversations(conversations, providers, listQuery),
+    [conversations, providers, listQuery],
+  );
 
   const selectedIndex = useMemo(() => {
     if (!currentConversationId) return 0;
@@ -220,13 +214,11 @@ export default function QxAiChat() {
   );
   const activeModels = activeProvider?.models ?? [];
   const activeModel = activeModels.find((model) => model.id === conv?.model);
+  const activeLabels = resolveQxAiModelLabels(providers, conv?.provider ?? "", conv?.model ?? "");
   const modelLabel = useCallback(
     (providerId?: string, modelId?: string) => {
       if (!modelId) return "AI";
-      return providers
-        .find((provider) => provider.id === providerId)
-        ?.models.find((model) => model.id === modelId)?.name
-        || modelId;
+      return resolveQxAiModelLabels(providers, providerId ?? "", modelId).model;
     },
     [providers],
   );
@@ -636,7 +628,7 @@ export default function QxAiChat() {
               : userMessageCount > 0
                 ? t("qxai.messages", "{n} messages").replace("{n}", String(userMessageCount))
                 : conv?.provider
-                  ? `${conv.provider} · ${conv.model}`
+                  ? activeLabels.label
                   : t("qxai.island.conversations", "{n} conversations").replace(
                       "{n}",
                       String(conversations.length),
@@ -812,6 +804,7 @@ export default function QxAiChat() {
           separatorLabel={t("qxai.resizeList", "Resize conversation list")}
         >
           <QxAiConversationList
+            providers={providers}
             listRef={listRef}
             regionIds={MASTER_DETAIL}
             conversations={filteredConversations}
@@ -1008,8 +1001,8 @@ export default function QxAiChat() {
                     <div className="qx-ai-empty-state">
                       {conv.provider
                         ? t("qxai.empty.chat", "Chatting with {provider} ({model}). Type below.")
-                            .replace("{provider}", conv.provider)
-                            .replace("{model}", conv.model)
+                            .replace("{provider}", activeLabels.provider)
+                            .replace("{model}", activeLabels.model)
                         : t(
                             "qxai.empty.noProvider",
                             "No provider selected. Open Settings → AI Agent.",

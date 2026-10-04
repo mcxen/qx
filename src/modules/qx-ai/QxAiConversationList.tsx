@@ -3,12 +3,14 @@ import { Loader2 } from "lucide-react";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { qxRegionProps, type QxMasterDetailIds } from "../../hooks/useQxMasterDetail";
 import { useT } from "../../i18n";
-import type { G4fConversation, QxAiConversationRun } from "./store";
+import type { G4fConversation, G4fProvider, QxAiConversationRun } from "./store";
+import { resolveQxAiModelLabels } from "./conversation-model";
 
 interface QxAiConversationListProps {
   listRef: RefObject<HTMLDivElement | null>;
   regionIds: QxMasterDetailIds;
   conversations: G4fConversation[];
+  providers: G4fProvider[];
   runs: Record<string, QxAiConversationRun>;
   selectedId: string | null;
   loading: boolean;
@@ -23,6 +25,7 @@ export default function QxAiConversationList({
   listRef,
   regionIds,
   conversations,
+  providers,
   runs,
   selectedId,
   loading,
@@ -59,34 +62,37 @@ export default function QxAiConversationList({
           showIcon={false}
         />
       )}
-      {conversations.map((item, index) => (
-        <button
-          key={item.id}
-          type="button"
-          {...getItemProps(index)}
-          aria-selected={item.id === selectedId}
-          onClick={() => onSelect(item.id)}
-          onDoubleClick={() => onOpen(item.id)}
-        >
-          <span className="qx-list-copy">
-            <span className="qx-list-title">
-              <span className="qx-list-title-text" title={item.name}>
-                {item.name}
+      {conversations.map((item, index) => {
+        const { label } = resolveQxAiModelLabels(providers, item.provider, item.model);
+        return (
+          <button
+            key={item.id}
+            type="button"
+            {...getItemProps(index)}
+            aria-selected={item.id === selectedId}
+            onClick={() => onSelect(item.id)}
+            onDoubleClick={() => onOpen(item.id)}
+          >
+            <span className="qx-list-copy">
+              <span className="qx-list-title">
+                <span className="qx-list-title-text" title={item.name}>
+                  {item.name}
+                </span>
+                {runs[item.id]?.streaming ? (
+                  <Loader2
+                    size={13}
+                    className="qx-spin"
+                    aria-label={t("qxai.background.active", "Running in background")}
+                  />
+                ) : null}
               </span>
-              {runs[item.id]?.streaming ? (
-                <Loader2
-                  size={13}
-                  className="qx-spin"
-                  aria-label={t("qxai.background.active", "Running in background")}
-                />
-              ) : null}
+              <span className="qx-list-subtitle" title={label}>
+                {label}
+              </span>
             </span>
-            <span className="qx-list-subtitle" title={`${item.provider} · ${item.model}`}>
-              {item.provider} · {item.model}
-            </span>
-          </span>
-        </button>
-      ))}
+          </button>
+        );
+      })}
       {conversations.length === 0 && !loading && (
         <div className="qx-empty-state">
           {listQuery.trim()

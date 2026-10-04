@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { openNativeFileDialog } from "../../system/fileDialog";
 import {
   Check,
   ChevronDown,
@@ -211,16 +211,11 @@ export const CaptureToolbar = forwardRef<HTMLDivElement, CaptureToolbarProps>(fu
   const [audioInputs, setAudioInputs] = useState<AudioInput[]>([]);
   const [audioError, setAudioError] = useState(false);
   const chooseDirectory = async () => {
-    await invoke("floating_set_external_interaction_active", { active: true }).catch(() => {});
-    try {
-      const selected = await open({ directory: true, multiple: false });
-      if (typeof selected !== "string") return;
-      onSettingsChange(screenshot
-        ? { screenshot_destination: "custom", screenshot_custom_directory: selected }
-        : { recording_destination: "custom", recording_custom_directory: selected });
-    } finally {
-      await invoke("floating_set_external_interaction_active", { active: false }).catch(() => {});
-    }
+    const selected = await openNativeFileDialog({ directory: true, multiple: false });
+    if (typeof selected !== "string") return;
+    onSettingsChange(screenshot
+      ? { screenshot_destination: "custom", screenshot_custom_directory: selected }
+      : { recording_destination: "custom", recording_custom_directory: selected });
   };
 
   useEffect(() => {

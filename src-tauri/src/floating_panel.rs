@@ -7,7 +7,7 @@
 //! current foreground app. Inputs that need keyboard focus explicitly
 //! request key-window status through `floating_request_key`.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 #[cfg(target_os = "macos")]
 use std::thread;
@@ -15,6 +15,18 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewWindow};
 
 use crate::display::{display_area_for_current_cursor, DisplayArea};
+
+mod interaction;
+#[cfg(test)]
+use interaction::should_hide_after_focus_settles;
+// Preserve the shell port on every platform, including cfg-gated consumers.
+#[allow(unused_imports)]
+pub use interaction::{
+    auto_hide_suppressed, cancel_pending_auto_hide, capture_main_visible_active,
+    request_auto_hide_after_focus_settles, set_capture_main_visible_active,
+    set_external_interaction_active, set_external_interaction_active_with_app,
+    set_onboarding_active, suppress_auto_hide,
+};
 
 pub(crate) const MAIN_LABEL: &str = "main";
 static PREVIOUS_FOREGROUND_PID: OnceLock<Mutex<Option<i32>>> = OnceLock::new();
@@ -32,24 +44,6 @@ static LAST_HIDE_AT: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
 /// blur→hide does not immediately re-show the panel. Keep short — longer grace
 /// made deliberate double-tap summon feel unresponsive (~0.3s+ dead).
 const HIDE_TOGGLE_GRACE: Duration = Duration::from_millis(160);
-/// Ignore Focused(false) auto-hide until this instant (e.g. after screencap
-/// stop: show main then focus flickers and would look like Qx "quit").
-static SUPPRESS_AUTO_HIDE_UNTIL: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
-/// Sticky suppress while the macOS first-launch permission wizard is open
-/// (user spends time in System Settings without hiding Qx).
-static ONBOARDING_ACTIVE: AtomicBool = AtomicBool::new(false);
-/// Sticky while Qx has opened an OS-owned picker or privacy pane. The main
-/// window must survive the temporary focus transfer; focus returning to Qx
-/// ends the interaction and restores the normal Esc / outside-click lifecycle.
-static EXTERNAL_INTERACTION_ACTIVE: AtomicBool = AtomicBool::new(false);
-/// Sticky while the screenshot picker intentionally leaves the main Qx window
-/// visible so Qx itself can be selected.
-static CAPTURE_MAIN_VISIBLE_ACTIVE: AtomicBool = AtomicBool::new(false);
-/// Invalidates delayed blur decisions when focus moves between Qx-owned
-/// windows. A short settlement delay is required because macOS reports the
-/// main panel losing key status before the island becomes key.
-static AUTO_HIDE_BLUR_GENERATION: AtomicU64 = AtomicU64::new(0);
-const AUTO_HIDE_FOCUS_SETTLE: Duration = Duration::from_millis(80);
 
 fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
     PREVIOUS_FOREGROUND_PID.get_or_init(|| Mutex::new(None))
@@ -118,138 +112,22 @@ fn recently_closed() -> bool {
         .unwrap_or(false)
 }
 
-fn suppress_auto_hide_lock() -> &'static Mutex<Option<Instant>> {
-    SUPPRESS_AUTO_HIDE_UNTIL.get_or_init(|| Mutex::new(None))
-}
-
-/// Block auto-hide-on-blur for a short period after programmatically showing
-/// the panel (recording stop, region cancel, etc.).
-pub fn suppress_auto_hide(duration: Duration) {
-    if let Ok(mut guard) = suppress_auto_hide_lock().lock() {
-        *guard = Some(Instant::now() + duration);
-    }
-}
-
-/// Whether Focused(false) should skip auto-hide right now.
-pub fn auto_hide_suppressed() -> bool {
-    if ONBOARDING_ACTIVE.load(Ordering::SeqCst)
-        || EXTERNAL_INTERACTION_ACTIVE.load(Ordering::SeqCst)
-        || CAPTURE_MAIN_VISIBLE_ACTIVE.load(Ordering::SeqCst)
-    {
-        return true;
-    }
-    suppress_auto_hide_lock()
-        .lock()
-        .ok()
-        .and_then(|guard| *guard)
-        .map(|until| Instant::now() < until)
-        .unwrap_or(false)
-}
-
-pub fn set_capture_main_visible_active(active: bool) {
-    CAPTURE_MAIN_VISIBLE_ACTIVE.store(active, Ordering::SeqCst);
-}
-
-pub fn capture_main_visible_active() -> bool {
-    CAPTURE_MAIN_VISIBLE_ACTIVE.load(Ordering::SeqCst)
-}
-
-fn should_hide_after_focus_settles(
-    auto_hide_enabled: bool,
-    suppressed: bool,
-    main_visible: bool,
-    main_focused: bool,
-    island_focused: bool,
-) -> bool {
-    auto_hide_enabled && !suppressed && main_visible && !main_focused && !island_focused
-}
-
-/// Cancel a pending outside-Qx blur decision. Call whenever either Qx-owned
-/// interactive window becomes focused.
-pub fn cancel_pending_auto_hide() {
-    AUTO_HIDE_BLUR_GENERATION.fetch_add(1, Ordering::SeqCst);
-}
-
-/// Defer auto-hide until the OS has finished moving focus. The main panel and
-/// the floating island form one focus group: moving between them must not hide
-/// the main panel, while leaving both still follows the user's auto-hide rule.
-pub fn request_auto_hide_after_focus_settles(app: &AppHandle) {
-    let generation = AUTO_HIDE_BLUR_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(AUTO_HIDE_FOCUS_SETTLE).await;
-        if AUTO_HIDE_BLUR_GENERATION.load(Ordering::SeqCst) != generation {
-            return;
-        }
-
-        let auto_hide_enabled =
-            crate::settings::read_settings().appearance.window_behavior == "auto-hide";
-        let app_for_ui = app.clone();
-        let _ = crate::main_thread::ui(&app, move || {
-            // Validate and hide in the same UI transaction. A summon or focus
-            // change between a snapshot and a second UI hop must win.
-            if AUTO_HIDE_BLUR_GENERATION.load(Ordering::SeqCst) != generation {
-                return;
-            }
-            let main = app_for_ui.get_webview_window(MAIN_LABEL);
-            let island = app_for_ui.get_webview_window("island");
-            if should_hide_after_focus_settles(
-                auto_hide_enabled,
-                auto_hide_suppressed(),
-                main.as_ref()
-                    .and_then(|window| window.is_visible().ok())
-                    .unwrap_or(false),
-                main.as_ref()
-                    .and_then(|window| window.is_focused().ok())
-                    .unwrap_or(false),
-                island
-                    .as_ref()
-                    .and_then(|window| window.is_focused().ok())
-                    .unwrap_or(false),
-            ) {
-                hide_and_restore_focus(&app_for_ui);
-            }
-        })
-        .await;
-    });
-}
-
-/// Keep the main panel visible while the user grants macOS permissions.
-pub fn set_onboarding_active(active: bool) {
-    ONBOARDING_ACTIVE.store(active, Ordering::SeqCst);
-    if active {
-        // Also refresh the timed suppress as a safety net.
-        suppress_auto_hide(Duration::from_secs(120));
-    }
-}
-
 #[tauri::command]
 pub fn floating_set_onboarding_active(active: bool) {
     set_onboarding_active(active);
 }
 
-pub fn set_external_interaction_active(active: bool) {
-    EXTERNAL_INTERACTION_ACTIVE.store(active, Ordering::SeqCst);
-    if active {
-        suppress_auto_hide(Duration::from_secs(120));
-    }
-}
-
-/// Update the external-interaction guard and the native window ordering as one
-/// transition. The guard keeps Qx visible while an OS-owned surface is open;
-/// the native ordering lets that surface remain in front of Qx.
-pub fn set_external_interaction_active_with_app(app: &AppHandle, active: bool) {
-    set_external_interaction_active(active);
-    let app_for_ui = app.clone();
-    let _ = crate::main_thread::run_on_main(app, move || {
-        #[cfg(target_os = "macos")]
-        macos::set_external_interaction_window_mode(&app_for_ui, active);
-    });
-}
-
 #[tauri::command]
-pub fn floating_set_external_interaction_active(app: AppHandle, active: bool) {
-    set_external_interaction_active_with_app(&app, active);
+pub fn floating_set_external_interaction_active(
+    app: AppHandle,
+    active: bool,
+    file_dialog: Option<bool>,
+) {
+    if file_dialog.unwrap_or(false) {
+        interaction::set_file_dialog_active_with_app(&app, active);
+    } else {
+        set_external_interaction_active_with_app(&app, active);
+    }
 }
 
 /// Prefer our open flag; fall back to OS visibility for paths that only called

@@ -172,6 +172,9 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 | 用户手动改名 | `titleMode: manual`，不再覆盖 |
 
 列表行：`grid minmax(0,1fr)` + `.qx-list-title-text` ellipsis；spinner 不挤标题。
+副标题和 tooltip 使用供应商配置名称及模型目录名称（如“小红书 · dots3-note-prev”），
+不得在目录可用时显示 `custom:…` 内部 ID。空会话提示和位置 Island 使用同一名称解析；
+搜索支持这些显示名称及原 ID。目录暂未加载或条目已删除时回退原 ID，不改写会话/消息快照。
 
 ---
 

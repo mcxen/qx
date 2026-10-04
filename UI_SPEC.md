@@ -1199,6 +1199,8 @@ useEscBack({
 - 打开的 Dialog / Popover / Dropdown / Actions 菜单优先于模块级联；最内层 overlay 先关。
 - 打开 macOS 系统设置、权限页或文件选择器等 OS-owned surface 时，Qx 主面板保持可见但临时降为普通窗口层级，
   不得强制压在系统窗口上；外部 surface 关闭后，用户点击回 Qx，主面板恢复浮窗层级且不得因失焦自动隐藏。
+- 文件/目录选择统一通过 `openNativeFileDialog` 取得宿主计数保护；选择、取消或失败后释放。
+  中途焦点回传不结束文件选择保护，完成后恢复普通失焦收起规则，不留长固定延时。
 
 **B. 可见按钮 · `escapeAction`**
 

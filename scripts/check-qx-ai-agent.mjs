@@ -262,6 +262,35 @@ assert.match(qxAiCssSource, /\.qx-jan-message-actions\s*\{[\s\S]*?justify-conten
 // assistant message/variant freezes the provider/model that actually generated it.
 assert.match(storeSource, /withMessageModelSnapshots\(repairedConversation\)/);
 assert.match(conversationModelSource, /function withMessageModelSnapshots/);
+
+// Catalog names are presentation; renamed/deleted catalogs cannot mutate IDs.
+{
+  const exported = {};
+  runInNewContext(ts.transpileModule(conversationModelSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { exports: exported });
+  const providers = [{
+    id: "custom:mutgy9fkna1v8n0",
+    name: "小红书",
+    models: [{ id: "dots3-note-prev", name: "我的笔记模型" }],
+  }];
+  const conversations = [{
+    name: "电脑软件列表", provider: providers[0].id, model: "dots3-note-prev", createdAt: 1,
+  }, { name: "Hello", provider: "deleted", model: "old-model", createdAt: 2 }];
+  const original = JSON.stringify(conversations);
+  const names = exported.resolveQxAiModelLabels(providers, providers[0].id, "dots3-note-prev");
+  assert.equal(names.label, "小红书 · 我的笔记模型");
+  assert.equal(exported.filterQxAiConversations(conversations, providers, "小红书").length, 1);
+  assert.equal(exported.filterQxAiConversations(conversations, providers, "我的笔记模型").length, 1);
+  assert.equal(exported.filterQxAiConversations(conversations, providers, "custom:mutgy").length, 1);
+  assert.equal(exported.filterQxAiConversations(conversations, providers, "DOTS3").length, 1);
+  assert.equal(exported.filterQxAiConversations(conversations, providers, "")[0].createdAt, 2);
+  providers[0].name = "重命名的供应商";
+  assert.equal(exported.resolveQxAiModelLabels(providers, providers[0].id, "dots3-note-prev").provider, providers[0].name);
+  assert.equal(exported.resolveQxAiModelLabels(providers, providers[0].id, "unlisted").label, "重命名的供应商 · unlisted");
+  assert.equal(exported.resolveQxAiModelLabels([], "deleted", "old-model").label, "deleted · old-model");
+  assert.equal(JSON.stringify(conversations), original);
+}
 assert.match(storeSource, /provider: selection\.provider,[\s\S]*?model: selection\.model,[\s\S]*?role: "assistant"|role: "assistant",[\s\S]*?provider: selection\.provider,[\s\S]*?model: selection\.model/);
 assert.match(messageVariantsSource, /provider: message\.provider/);
 assert.match(messageVariantsSource, /model: message\.model/);
