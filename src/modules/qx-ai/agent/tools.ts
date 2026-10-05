@@ -25,6 +25,7 @@ import {
 } from "./capabilities";
 import { listQxAiHooks } from "./hooks";
 import { HOST_MANAGEMENT_TOOLS } from "./tools-host-management";
+import { INTERACTION_TOOLS } from "./tools-interaction";
 
 import { mutateMemory, runMemoryDream } from "./memory";
 
@@ -912,6 +913,7 @@ export const TOOLS: ToolSpec[] = [
       return truncate(`Updated MCP config:\n${JSON.stringify(config, null, 2)}`);
     },
   },
+  ...INTERACTION_TOOLS,
   ...CAPABILITY_TOOLS,
   ...HOST_MANAGEMENT_TOOLS,
   ...MODULE_ACTION_TOOLS,

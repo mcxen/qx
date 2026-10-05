@@ -145,6 +145,8 @@ macOS 通过 `open -a "Google Chrome"` 启动，找不到应用时播放会明�
 
 `plugin_ai_list_providers`、`plugin_ai_default_model`、`plugin_ai_agent_settings`、`plugin_ai_chat(req)`、`plugin_ai_stream_chat(req)`、`plugin_ai_stream_chat_events(request_id, req)`、`plugin_ai_run_bash(req)`（有 timeout）、`plugin_ai_grep_search(req)`、`plugin_ai_memory_list/add/delete`。QxAI 的宿主动作不另造 OS 分支：路径打开/定位复用 `plugin_system_open_path/reveal_path`，文本复制复用 `plugin_clipboard_write`，文件复制复用 `clipboard_write_file_paths`，发送文件先经 `clipboard_file_metadata` 校验并作为对话附件返回。
 
+会话 JSON 的助手 `steps` 可包含有界 `question` / `suggestions` UI 数据，随候选版本保存；提问/推荐不新增 IPC，回答仍走普通用户消息。模型输入只投影正文和附件，不发送 UI 字段。
+
 QxAI 内置会话存储命令：`qxai_sessions_load`、`qxai_session_save`、
 `qxai_sessions_save`（兼容批量恢复）、`qxai_sessions_index`、
 `qxai_session_import_attachments/delete`、`qxai_sessions_directory`。布局为

@@ -15,6 +15,8 @@ import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { useT } from "../../i18n";
 import { useStore } from "../../store";
 import { AiMessageContent } from "../qx-ai/message-rendering";
+import { QxAiInteraction } from "../qx-ai/QxAiInteraction";
+import { questionFromSteps } from "../qx-ai/interaction";
 import { presentQxAiError } from "../qx-ai/error-presentation";
 import { useG4fStore } from "../qx-ai/store";
 import { usePzaiStore } from "./store";
@@ -295,11 +297,17 @@ export default function PzaiAssistantPanel({
               <div key={`${message.createdAt ?? index}-${index}`} className={`qx-pzai-assistant-message is-${message.role}`}>
                 <div className={`qx-ai-message-bubble is-jan is-${message.role}`}>
                   <AiMessageContent
-                    content={message.content}
+                    content={questionFromSteps(message.steps) ? "" : message.content}
                     reasoning={message.reasoning}
                     steps={message.steps}
                     attachments={message.attachments}
                   />
+                  {message.role === "assistant" && <QxAiInteraction
+                    steps={message.steps} active={!initializing && !streaming && index === visibleMessages.length - 1}
+                    onSend={async (text) => {
+                      inputRef.current?.focus({ preventScroll: true });
+                      await useG4fStore.getState().sendFollowUp(conversationId, message, text);
+                    }} />}
                 </div>
               </div>
             ))}

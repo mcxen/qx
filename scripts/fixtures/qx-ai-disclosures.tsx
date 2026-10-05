@@ -67,6 +67,22 @@ const groupSteps: AgentStep[] = [
   },
 ];
 
+const thoughtTexts = locale === "zh-CN"
+  ? [
+      "### 查询已安装的软件\n读取系统注册表，保留软件名称与版本。",
+      "按类别整理软件清单。保留重复安装的信息供用户核对。",
+      `**核对软件来源**\n${"核对软件名称与版本。".repeat(30)}`,
+      "\n---\n```text\n代码不是标题\n```\n",
+      "逐项核对软件名称、版本和安装来源，保留系统组件和用户应用的区别，避免把重复安装、已卸载残留和缺失版本的软件条目误判为同一种安装状态。".repeat(6),
+    ]
+  : [
+      "### Inspect installed applications\nRead the registry, keeping application names and versions.",
+      "Group the installed applications. Keep duplicate installations for review.",
+      `**Verify application sources**\n${"Check names and versions. ".repeat(30)}`,
+      "\n---\n```text\nCode is not a title\n```\n",
+      "Verify application names, versions and installation sources before grouping the installed applications. ".repeat(6),
+    ];
+
 const modelProviders = [
   {
     id: "openrouter",
@@ -109,6 +125,12 @@ function Fixture() {
       state: "running",
     },
   ]);
+  const [thoughtSteps, setThoughtSteps] = useState<AgentStep[]>(thoughtTexts.map((text, index) => ({
+    id: `thought-${index}-${runKey}`,
+    kind: "thought",
+    text,
+    state: index === 0 ? "running" : "completed",
+  })));
   const transcriptScroll = useQxAiConversationScroll({
     conversationId: `fixture-${runKey}-${transcriptConversation}`,
     revision: transcriptRows.join("\0"),
@@ -128,6 +150,11 @@ function Fixture() {
           output: "Live result returned",
           state: "completed" as const,
         })));
+      },
+      appendThought() {
+        setThoughtSteps((steps) => steps.map((step, index) => index === 0
+          ? { ...step, text: `${step.text}\nAdditional streamed detail.`, state: "completed" }
+          : step));
       },
     },
   });
@@ -223,6 +250,9 @@ function Fixture() {
       </section>
       <section className="qx-ai-message-bubble is-jan is-assistant" data-fixture="live">
         <AgentStepsView steps={liveSteps} streaming reasoningStartedAt={liveStartedAt} />
+      </section>
+      <section className="qx-ai-message-bubble is-jan is-assistant" data-fixture="thoughts">
+        <AgentStepsView steps={thoughtSteps} />
       </section>
     </main>
   );

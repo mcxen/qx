@@ -44,6 +44,8 @@ export function buildReactSystemPrompt(
       : null,
     ruleIf("grep", "- Use grep only to search file contents under an explicit root directory. Never use grep as a filename-search fallback."),
     ruleIf("apps", "- Use apps only when the user is looking for an installed application, not a document or folder."),
+    ruleIf("ask_user_question", "- ask_user_question ends this turn with visible questions. Ask only for essential missing information; wait for the explicit answer. It never approves dangerous tools."),
+    ruleIf("suggest_next_actions", "- suggest_next_actions offers up to three useful optional follow-ups; then finish the answer. Suggestions execute only after the user sends one."),
     names.has("open_path") || names.has("reveal_path") || names.has("copy_to_clipboard") || names.has("send_file") || names.has("notify")
       ? "- Use open_path, reveal_path, copy_to_clipboard, send_file, and notify only when they directly fulfill the user's request; these tools have visible host side effects."
       : null,

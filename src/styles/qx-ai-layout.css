@@ -1,5 +1,80 @@
 /* QxAI transcript layout refinements shared by the real workbench and browser fixture. */
 
+.qx-ai-question, .qx-ai-suggestions { min-width: 0; margin-top: 10px; }
+.qx-ai-interaction-label { margin-bottom: 6px; font-size: 11px; font-weight: 600; color: var(--qx-text-tertiary); }
+.qx-ai-question fieldset { min-width: 0; margin: 0 0 10px; padding: 0; border: 0; }
+.qx-ai-question legend { max-width: 100%; padding: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.qx-ai-question legend small { display: block; margin-bottom: 3px; font-size: 11px; font-weight: 400; color: var(--qx-text-tertiary); }
+.qx-ai-question-options { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+.qx-ai-question-option.qx-shadcn-button { width: 100%; min-height: 34px; height: auto; padding: 7px 8px; justify-content: flex-start; gap: 8px; text-align: left; white-space: normal; box-shadow: none; border: 1px solid var(--qx-border-1); }
+.qx-ai-question-option.qx-shadcn-button[aria-pressed="true"] { background: var(--qx-bg-component-3); border-color: var(--qx-border-2); }
+.qx-ai-question-option-copy { display: grid; flex: 1; min-width: 0; gap: 2px; overflow-wrap: anywhere; }
+.qx-ai-question-option-copy strong { font-size: 12px; font-weight: 500; }
+.qx-ai-question-option-copy small { font-size: 11px; font-weight: 400; color: var(--qx-text-secondary); }
+.qx-ai-interaction-recommended { flex: 0 0 auto; color: var(--qx-text-tertiary); font-size: 10px; font-weight: 400; }
+.qx-ai-question-custom.qx-shadcn-textarea { min-height: 32px; max-height: 120px; padding: 6px 8px; font-size: 12px; resize: vertical; }
+.qx-ai-question-actions { display: flex; justify-content: flex-end; gap: 4px; }
+.qx-ai-suggestion-options { display: flex; flex-wrap: wrap; gap: 5px; }
+.qx-ai-suggestion-options > .qx-shadcn-button { max-width: 100%; height: auto; min-height: 28px; gap: 6px; padding: 5px 8px; white-space: normal; text-align: left; font-size: 12px; box-shadow: none; }
+.qx-ai-suggestion-options > .qx-shadcn-button > span { min-width: 0; overflow-wrap: anywhere; }
+
+.qx-ai-message.is-jan.is-assistant .qx-ai-message-meta {
+  padding-inline: 0;
+}
+
+.qx-qxai-chat-shell .qx-action-panel > .qx-action-title {
+  padding-inline: 0;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.qx-qxai-chat-shell .qx-action-panel > .qx-ai-config-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--qx-text-tertiary);
+}
+
+/* Skills are a keyboard command list, sharing the compact row hierarchy. */
+.qx-ai-skill-options.is-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+}
+
+.qx-ai-skill-card {
+  padding: 7px 8px;
+  gap: 2px 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.qx-ai-skill-card:hover,
+.qx-ai-skill-card.is-selected {
+  border-color: transparent;
+  background: var(--qx-bg-component-3);
+  box-shadow: none;
+  outline: none;
+}
+
+.qx-ai-skill-card:focus-visible {
+  outline: 1px solid var(--qx-accent);
+  outline-offset: -1px;
+}
+
+.qx-ai-skill-card-icon {
+  border: 0;
+  background: transparent;
+  color: var(--qx-text-secondary);
+}
+
+.qx-ai-skill-card-copy small {
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .qx-ai-scroll-to-latest.qx-shadcn-button {
   position: absolute;
   left: 50%;

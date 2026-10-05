@@ -54,6 +54,7 @@ import {
 } from "./conversation-title";
 import { removeLegacySyntheticErrorMessages } from "./error-presentation";
 import { withMessageModelSnapshots } from "./conversation-model";
+import { questionFromSteps } from "./interaction";
 
 export type { AgentStep, G4fMessage, QxAiFileAttachment } from "./contracts";
 
@@ -451,6 +452,8 @@ interface G4fStore {
   loadSessions: () => Promise<void>;
 
   sendMessage: (content: string, skill?: QxAiSkillDocument, conversationId?: string, attachments?: QxAiFileAttachment[]) => Promise<void>;
+  /** Latest-reply controls share the same send path across chat and reading projections. */
+  sendFollowUp: (conversationId: string, source: G4fMessage, content: string) => Promise<void>;
   runNextQueuedMessage: (conversationId: string) => void;
   removeQueuedMessage: (id: string) => void;
   /** Update a queued message body (and optional skill) before it runs. */
@@ -1384,7 +1387,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
 
         // Smart memory evaluates the conversation itself. Tool count is never a
         // trigger, and the selective extractor may validly return no candidates.
-        if (agentSettings.memory_tool_enabled && agentSettings.memory_policy === "smart") {
+        if (!result.awaitingUserInput && agentSettings.memory_tool_enabled && agentSettings.memory_policy === "smart") {
           const { scheduleTurnMemory } = await import("./turn-memory");
           scheduleTurnMemory({
             user: content, assistant: result.finalAnswer,
@@ -1395,7 +1398,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           });
         }
 
-        scheduleNext();
+        if (!result.awaitingUserInput) scheduleNext();
         return;
       }
 
@@ -1555,8 +1558,17 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     }
   },
 
+  sendFollowUp: async (conversationId, source, content) => {
+    const conversation = get().conversations.find((item) => item.id === conversationId);
+    if (!content.trim() || source.role !== "assistant" || get().runs[conversationId]?.streaming
+      || conversation?.messages[conversation.messages.length - 1] !== source) return;
+    await get().sendMessage(content, undefined, conversationId);
+  },
+
   runNextQueuedMessage: (conversationId) => {
     if (get().runs[conversationId]?.streaming) return;
+    const messages = get().conversations.find((conversation) => conversation.id === conversationId)?.messages;
+    if (questionFromSteps(messages?.[messages.length - 1]?.steps)) return;
     const queue = get().messageQueue;
     const next = queue.find((message) => message.conversationId === conversationId);
     if (!next) {

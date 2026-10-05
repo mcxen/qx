@@ -45,6 +45,8 @@ import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { AiMessageContent } from "./message-rendering";
+import { QxAiInteraction } from "./QxAiInteraction";
+import { questionFromSteps } from "./interaction";
 import {
   QxAiScrollToLatestButton,
   useQxAiConversationScroll,
@@ -919,7 +921,7 @@ export default function QxAiChat() {
                               </div>
                             ) : (
                               <AiMessageContent
-                                content={msg.content}
+                                content={questionFromSteps(msg.steps) ? "" : msg.content}
                                 reasoning={msg.reasoning}
                                 steps={msg.steps}
                                 attachments={msg.attachments}
@@ -929,6 +931,16 @@ export default function QxAiChat() {
                                 reasoningDurationMs={msg.reasoningDurationMs}
                               />
                             )}
+                            {msg.role === "assistant" && !isEditing && <QxAiInteraction
+                              key={`${conv?.id}-${messageIndex}-${msg.activeVariant ?? 0}`}
+                              steps={msg.steps} active={isLastAssistant && !isCurrentConversationStreaming && canChat}
+                              onSend={async (text) => {
+                                const state = useG4fStore.getState();
+                                if (!canChat || !conv || state.currentConversationId !== conv.id) return;
+                                conversationScroll.scrollToLatest();
+                                composerRef.current?.focus({ preventScroll: true });
+                                await state.sendFollowUp(conv.id, msg, text);
+                              }} />}
                           </div>
                           {msg.role === "user" || msg.role === "assistant" ? (
                             <QxAiMessageActions

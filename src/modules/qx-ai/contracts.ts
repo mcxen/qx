@@ -1,4 +1,5 @@
 import type { QxAiSkillDocument } from "./skills";
+import type { QxAiQuestionRequest, QxAiSuggestion } from "./interaction";
 
 export interface AgentStep {
   id: string;
@@ -7,6 +8,9 @@ export interface AgentStep {
   input?: string;
   output?: string;
   text?: string;
+  /** Validated UI intents, persisted with the owning tool step and assistant variant. */
+  question?: QxAiQuestionRequest;
+  suggestions?: QxAiSuggestion[];
   state: "running" | "completed" | "error";
 }
 

@@ -1,5 +1,8 @@
 /* ====== Spec Shell ====== */
 .qx-shell {
+  /* Shared text axis: shell inset + search border/padding + magnifier/gap. */
+  --qx-shell-search-x: var(--qx-shell-chrome-x);
+  --qx-shell-list-x: max(4px, calc(var(--qx-shell-search-x) + 41px - 50px));
   position: relative;
   display: grid;
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
@@ -224,6 +227,10 @@
      WebView2 does not reliably inherit a parent data-tauri-drag-region through
      the full-width search/control children. */
   padding-left: 32px;
+}
+
+.qx-shell.is-windows-host {
+  --qx-shell-search-x: 32px;
 }
 
 .qx-shell-window-drag-handle {

@@ -33,17 +33,23 @@
   background: color-mix(in srgb, var(--qx-bg-component-1) 72%, transparent);
   min-width: 0;
   overflow-x: hidden;
+  padding: 6px 8px 10px;
+  padding-inline-start: var(--qx-shell-list-x, 8px);
+}
+
+.qx-ai-conversation-list > .qx-section-header {
+  padding-inline-start: 50px;
+  min-height: 26px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* List rows: full pane width, ellipsis titles (spinner stays visible). */
 .qx-ai-conversation-list > button {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding-inline: 10px;
 }
 
 .qx-ai-conversation-list .qx-list-copy {
@@ -60,6 +66,9 @@
   min-width: 0;
   max-width: 100%;
   width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
 }
 
 .qx-ai-conversation-list .qx-list-title-text {
@@ -2093,6 +2102,10 @@
 }
 
 .qx-jan-step-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--qx-text-secondary);

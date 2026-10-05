@@ -153,6 +153,7 @@ plist 解析或 SQLite 写入；新装、删除或原位替换时只重建变化
 
 `QxModuleSearch`：Shell `search` 槽统一滤框（wrap + icon + input）。
 Launcher `SearchBar` 负责召唤/聚焦语义，视觉委托给同一组件。
+Shell 的 `--qx-shell-search-x` / `--qx-shell-list-x` 统一搜索与列表文字轴，包含 Windows 拖拽区 inset；Workbench 与 QxAI 复用宿主列表轨道，插件继续只发布条目数据，不自行补像素偏移。
 
 ### 主从布局键盘（左列表 + 中间内容）
 

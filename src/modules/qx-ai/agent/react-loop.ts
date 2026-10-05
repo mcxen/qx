@@ -1,4 +1,5 @@
 import type { G4fMessage } from "../store";
+import { pausedQuestionResult } from "../interaction";
 import { ensureBuiltinQxAiHooks } from "./hooks";
 import { parseAgentResponse } from "./parse";
 import { buildReactSystemPrompt } from "./prompts";
@@ -146,6 +147,8 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
         steps,
         attachments,
       );
+      const paused = pausedQuestionResult(steps);
+      if (paused) return { ...paused, attachments };
       scratchpad += `${lastRaw.trim()}\nObservation: ${observation}\n`;
       continue;
     }

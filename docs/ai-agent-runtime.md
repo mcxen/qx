@@ -144,6 +144,14 @@ Settings → AI Agent 的 dangerous-tools guard 默认开启，SOLO 默认关闭
 
 ## 5. Skills、Actions 与工具可见性
 
+### 用户交互工具
+
+`agent/tools-interaction.ts` 注册 `ask_user_question` 与 `suggest_next_actions`，仍经过 Agent/tools 总开关和标准 hooks；前者兼容模型返回的 `AskYourQuestion` / `AskUserQuestion` 名称。`interaction.ts` 统一校验模型输入与会话恢复的数据，限制题数、选项数、文本长度、重复项与推荐数。
+
+工具结果扩展 `AgentStep.question` / `suggestions`，与已有 steps 一起保存在当前助手消息及候选版本中；Rust 会话仍保存 JSON，不新增 IPC 或阻塞等待用户的服务。Native 与 ReAct 在有效提问后返回 `awaitingUserInput` 并结束当轮；同一 native batch 的其它工具不执行。提问错误仍按普通工具错误回传模型。Store 暂停队列和自动记忆提取，直到显式用户消息继续。
+
+QxAI/P仔通过同一个 `sendFollowUp(conversationId, sourceMessage, content)` 端口检查最新助手消息身份和运行状态，再复用 `sendMessage`。历史或过期控件不提交，建议不直接执行宿主动作，下一轮仍经过原有权限与危险工具确认。自由文本回答与跳过也是普通用户消息；问题记录保留为历史，不作为永久等待状态。只有 Agent/tools 开启的请求可生成新的结构化交互，旧记录仍可阅读。
+
 Skills 位于 `~/.qx/skills`，frontmatter mode 为 `fixed | smart | disabled`。Skill 可声明稳定 capability id；宿主在 turn 前注入当前 available/missing 绑定，模型通过统一 capability tool 执行，而不是猜 API。
 
 工具只有同时满足以下条件才进入 schema / ReAct prompt：

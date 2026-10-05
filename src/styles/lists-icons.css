@@ -351,6 +351,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 6px 8px 10px;
+  padding-inline-start: var(--qx-shell-list-x, 8px);
   border-right: 0;
   background: color-mix(in srgb, var(--qx-bg-component-1) 44%, transparent);
 }
@@ -382,6 +383,7 @@
   justify-content: space-between;
   min-height: 26px;
   padding-inline: 10px;
+  padding-inline-start: 50px;
 }
 
 .qx-host-workbench-virtual-canvas,
@@ -559,7 +561,8 @@
   .qx-host-workbench-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-.qx-host-workbench-row.qx-list-row {
+.qx-host-workbench-row.qx-list-row,
+.qx-ai-conversation-list > button {
   position: relative;
   grid-template-columns: 30px minmax(0, 1fr) minmax(0, auto);
   align-items: center;
@@ -574,7 +577,8 @@
   padding-bottom: 8px;
 }
 
-.qx-host-workbench-row.qx-list-row.is-active {
+.qx-host-workbench-row.qx-list-row.is-active,
+.qx-ai-conversation-list > button.is-active {
   background: color-mix(in srgb, var(--qx-accent) 8%, var(--qx-bg-component-3));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qx-accent) 22%, transparent);
 }

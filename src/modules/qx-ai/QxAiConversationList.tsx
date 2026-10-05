@@ -1,5 +1,5 @@
 import type { HTMLAttributes, RefObject } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, MessageSquare } from "lucide-react";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { qxRegionProps, type QxMasterDetailIds } from "../../hooks/useQxMasterDetail";
 import { useT } from "../../i18n";
@@ -73,6 +73,7 @@ export default function QxAiConversationList({
             onClick={() => onSelect(item.id)}
             onDoubleClick={() => onOpen(item.id)}
           >
+            <span className="qx-host-workbench-icon" aria-hidden="true"><MessageSquare size={18} /></span>
             <span className="qx-list-copy">
               <span className="qx-list-title">
                 <span className="qx-list-title-text" title={item.name}>

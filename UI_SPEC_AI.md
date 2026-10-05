@@ -1,6 +1,6 @@
 # QxAI Chat UI Spec
 
-> 状态：Current · 适用版本：v0.6.83+ · Owner：Frontend · 最后复核：2026-10-02
+> 状态：Current · 适用版本：v0.6.83+ · Owner：Frontend · 最后复核：2026-10-05
 > **结构标杆**：[AI Elements](https://elements.ai-sdk.dev/)（Conversation / Message / Reasoning / Tool / PromptInput / Queue）  
 > **视觉标杆**：[Beautiful UI](https://www.beautifului.dev/)（field 气泡、Thinking 时间线、stream caret、ink 发送方钮）  
 > 实现落点：`src/modules/qx-ai/**`、`src/styles/qx-ai.css`、`src/styles/qx-ai-layout.css`、`src/styles/qx-ai-model-switcher.css`
@@ -75,6 +75,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 6. 发送、附件、模型能力、API key 与工具运行错误统一进入 Bottom Island `error` 状态；Composer、消息正文和工具收起行下方不得临时增长错误行。工具历史中的失败详情只在用户主动展开该步骤后显示。
 7. Transcript 与 Composer 使用同一条 `min(760px, 100%)` 内容轴和相同水平 inset；分栏拖动、原生滚动条出现和 760px 以下单栏切换不得造成横向跳动。
 8. 实时输出只在用户已停留底部时跟随。用户向上滚动后必须保持当前阅读位置，在 Composer 上方显示不占布局高度的“回到最新消息”按钮；点击后立即贴底并恢复跟随。切换会话时按会话恢复本次进程内的阅读位置，不得让其它会话的流式增量抢滚动。
+9. 助手模型名、正文和时间戳共用阅读列左边界；Context 的分组标题使用一致的紧凑字级和 inset。
 
 ### Esc
 
@@ -123,6 +124,10 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
    accent 脉冲，complete/error 使用稳定状态图标，并尊重 reduced-motion。
 4. 时间线内每条 thought / error 与每次 tool execution 都是独立折叠项，默认收起；
    运行中只更新状态和 spinner，不得强制展开参数、结果或长错误。用户展开某一项时不影响其它项；关闭外层思考后再打开，仍保留各工具项的展开选择。
+   每条 thought 的收起行显示「思考 · 简短标题」：优先取供应商返回正文中的 Markdown
+   小标题，没有小标题时取首个有效正文行的首句。标题去掉 Markdown 标记、最多 60 个
+   Unicode 字符并单行省略；无有效正文时保留本地化“思考”。标题只是已有内容的本地预览，
+   不额外请求模型、推断未返回的推理或改写持久化原文；流式更新不重置折叠状态。
 5. 不要厚边框大卡片包住整块思考（避免 web 营销卡）。
 6. 连续的 tool execution 可折叠为一个工具组摘要；展开后必须保留原始顺序、每项状态、参数和结果。展开/收起采用有界高度过渡，收起动画结束后才卸载重内容，禁止正文瞬间跳动。
 
@@ -151,6 +156,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 4. 左侧动作簇为附件 + 模型切换器；队列在 composer **上方**。模型触发器始终保留图标、浅底、圆角和下拉箭头，宽度不足时先隐藏供应商名，再截断模型名，不得把入口移出窄窗。
 5. 模型弹层按供应商分组，常用模型优先；能力与上下文标签只在模型行显示一次。长目录提供搜索、方向键循环、当前项勾选和“管理模型”入口；切换仅影响当前会话后续 turn，流式生成期间锁定。
 6. token 占用与发送按钮组成右侧紧凑动作簇，垂直居中；不得让 token 按钮占据整条弹性中栏或漂在发送按钮上方。
+7. 模型弹层搜索文字、模型名与供应商标题共用左文字轴。Skill 选择器使用紧凑单列命令行，描述单行省略；保留方向键、Enter、Esc 和可见焦点，不叠加独立卡片阴影。
 
 ---
 
@@ -160,6 +166,14 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 - 点击文案 → 回填 composer 并离队；X 删除。
 - 多条可滚，max-height 限制，避免顶破输入。
 - 行内编辑/删除动作只在 hover 或 `focus-within` 显示，保留稳定列宽，避免出现时推动文案。
+
+### 结构化提问与下一步
+
+- `ask_user_question`（兼容 `AskYourQuestion` / `AskUserQuestion`）只用于缺少关键输入；1–4 题，每题 2–4 个选项，可单选、多选、自定义回答和跳过。推荐不预选，不能代替危险工具确认。
+- 问题在消息正文区域显示紧凑表单，不能藏在折叠思考中；单题单选点击即发送，多题/多选明确提交。按钮的 Enter / Space 使用原生激活，不能触发 Shell 发送草稿。
+- 提问结束当前生成并暂停该会话队列；回答或跳过经普通用户 turn 继续。切换会话、重启、候选版本切换后保留问题，历史问题只读；不保留等待用户的网络连接或运行时 Promise。
+- `suggest_next_actions` 提供最多 3 个可选下一步，最多 1 个推荐；只在最新助手回复完成后可发送。点击发送该选项的完整 prompt，不直接调用宿主动作、不额外发起后台推荐请求；保留未发送草稿、附件与 Skill。
+- QxAI 与 P仔共用相同交互控件与最新消息校验。布局使用 Qx token、可换行按钮和有界自定义输入，适配中英、明暗和窄窗。
 
 ---
 
@@ -171,7 +185,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 | 首轮助手结束 | 后台 `g4f_chat` 生成短标题（失败保留兜底） |
 | 用户手动改名 | `titleMode: manual`，不再覆盖 |
 
-列表行：`grid minmax(0,1fr)` + `.qx-list-title-text` ellipsis；spinner 不挤标题。
+列表行复用宿主 Workbench 的图标 / 两行文字 / trailing accessory 三轨，图标轨 30px、最小行高 52px；标题 13px，单行 ellipsis，spinner 不挤标题。搜索文字、标题和分组标题左对齐，窄窗隐藏列表时不压缩聊天阅读轴。
 副标题和 tooltip 使用供应商配置名称及模型目录名称（如“小红书 · dots3-note-prev”），
 不得在目录可用时显示 `custom:…` 内部 ID。空会话提示和位置 Island 使用同一名称解析；
 搜索支持这些显示名称及原 ID。目录暂未加载或条目已删除时回退原 ID，不改写会话/消息快照。

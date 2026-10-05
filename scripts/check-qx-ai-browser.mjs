@@ -154,11 +154,56 @@ try {
       await expect(liveTool).toContainText(locale === "zh" ? "已使用" : "Used");
       await liveTool.click();
       await expect(live.locator("pre.is-output")).toContainText("Live result returned");
+
+      const thoughts = page.locator('[data-fixture="thoughts"]');
+      const thoughtReasoning = thoughts.locator('[data-qx-ai="reasoning"] > button');
+      await thoughtReasoning.click();
+      const thoughtHeaders = thoughts.locator(".qx-jan-step-header");
+      const thoughtLabel = locale === "zh" ? "思考" : "Thought";
+      const heading = locale === "zh" ? "查询已安装的软件" : "Inspect installed applications";
+      await expect(thoughtHeaders.nth(0)).toHaveText(`${thoughtLabel} · ${heading}`);
+      await expect(thoughtHeaders.nth(1)).toHaveText(locale === "zh"
+        ? "思考 · 按类别整理软件清单。"
+        : "Thought · Group the installed applications.");
+      await expect(thoughtHeaders.nth(2)).toHaveText(locale === "zh"
+        ? "思考 · 核对软件来源"
+        : "Thought · Verify application sources");
+      await expect(thoughtHeaders.nth(3)).toHaveText(thoughtLabel);
+      assert.ok((await thoughtHeaders.nth(4).textContent()).endsWith("…"));
+      for (const header of await thoughtHeaders.all()) {
+        await expect(header).toHaveAttribute("aria-expanded", "false");
+      }
+      await thoughtHeaders.nth(0).focus();
+      await page.keyboard.press("Enter");
+      await expect(thoughtHeaders.nth(0)).toHaveAttribute("aria-expanded", "true");
+      await expect(thoughts.locator(".qx-jan-thought-text")).toContainText("###");
+      await page.evaluate(() => window.qxAiDisclosureFixture.appendThought());
+      await expect(thoughtHeaders.nth(0)).toHaveText(`${thoughtLabel} · ${heading}`);
+      await expect(thoughtHeaders.nth(0)).toHaveAttribute("aria-expanded", "true");
+      await expect(thoughts.locator(".qx-jan-thought-text")).toContainText("Additional streamed detail.");
+      await expect(thoughtHeaders.nth(1)).toHaveAttribute("aria-expanded", "false");
     }
   }
   await page.setViewportSize({ width: 360, height: 720 });
   await page.goto(`${base}?locale=zh&theme=dark`);
   const narrowLayout = page.locator('[data-fixture="layout"]');
+  const narrowThoughts = page.locator('[data-fixture="thoughts"]');
+  await narrowThoughts.locator('[data-qx-ai="reasoning"] > button').click();
+  const thoughtGeometry = await narrowThoughts.evaluate((element) => {
+    const header = element.querySelector(".qx-jan-step:last-child .qx-jan-step-header");
+    const label = header.querySelector(".qx-jan-step-label");
+    return {
+      overflow: element.scrollWidth > element.clientWidth,
+      clipped: label.scrollWidth > label.clientWidth,
+      arrowVisible: header.querySelector(".qx-jan-chevron").getBoundingClientRect().right
+        <= element.getBoundingClientRect().right,
+      singleLine: getComputedStyle(label).whiteSpace === "nowrap",
+    };
+  });
+  assert.equal(thoughtGeometry.overflow, false, "thought titles must fit narrow timelines");
+  assert.equal(thoughtGeometry.clipped, true, "long thought titles must ellipsize");
+  assert.equal(thoughtGeometry.arrowVisible, true, "title must leave room for disclosure arrow");
+  assert.equal(thoughtGeometry.singleLine, true);
   const narrowOverflow = await narrowLayout.evaluate((element) => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,

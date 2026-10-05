@@ -36,6 +36,7 @@ import { useT } from "../../i18n";
 import { openSystemPath, revealSystemPath } from "../../system/pathActions";
 import type { AgentStep, QxAiFileAttachment } from "./agent/types";
 import { ReasoningElapsedTime } from "./ReasoningElapsedTime";
+import { reasoningStepTitle } from "./reasoning-title";
 
 const MarkdownRenderer = lazy(() => import("./MarkdownRenderer"));
 
@@ -635,6 +636,7 @@ function StepRow({
         type="button"
         className="qx-jan-step-header"
         aria-expanded={open}
+        title={label}
         onClick={() => setOpen((value) => !value)}
       >
         <span className="qx-jan-step-rail" aria-hidden="true">
@@ -730,7 +732,7 @@ export const AgentStepsView = memo(function AgentStepsView({
               key={step.id}
               disclosureKey={`step:${step.id}`}
               status={step.state === "running" ? "active" : "complete"}
-              label={t("qxai.cot.thoughtStep", "Thought")}
+              label={[t("qxai.cot.thoughtStep", "Thought"), reasoningStepTitle(step.text)].filter(Boolean).join(" · ")}
             >
               <div className="qx-jan-thought-text">{step.text}</div>
             </StepRow>

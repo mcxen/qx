@@ -105,13 +105,12 @@
 }
 
 .qx-ai-model-group-label {
-  padding: 5px 7px 3px;
+  padding: 5px 7px 3px 32px;
   color: var(--qx-text-tertiary);
   font-size: 10px;
   font-weight: 600;
   line-height: 1.2;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .qx-ai-model-option.qx-shadcn-button {
@@ -120,7 +119,7 @@
   height: auto;
   justify-content: flex-start;
   gap: 8px;
-  padding: 5px 7px;
+  padding: 5px 7px 5px 29px;
   border-radius: 6px;
   color: var(--qx-text-secondary);
   box-shadow: none;

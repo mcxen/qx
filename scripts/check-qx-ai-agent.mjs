@@ -328,7 +328,7 @@ assert.match(
 );
 assert.match(
   toolRunnerSource,
-  /updateActionStep\(actionStep, opts, \{ state: "completed", output: observation \}\)/,
+  /updateActionStep\(actionStep, opts, \{\s*state: "completed", output: observation, question: result\.question, suggestions: result\.suggestions,\s*\}\)/,
 );
 
 // Native reasoning is recorded as an ordered Agent step for every model turn.

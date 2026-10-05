@@ -29,6 +29,7 @@ const steps = [
   ["plugin-preferences", "scripts/check-plugin-preferences.mjs"],
   ["display-brightness", "scripts/check-display-brightness.mjs"],
   ["qx-ai-agent", "scripts/check-qx-ai-agent.mjs"],
+  ["qx-ai-interaction", "scripts/check-qx-ai-interaction.mjs"],
 ];
 
 let failed = 0;

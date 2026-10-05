@@ -1,4 +1,5 @@
 import type { G4fMessage } from "../store";
+import { canonicalInteractionTool, pausedQuestionResult, questionFromSteps } from "../interaction";
 import { ensureBuiltinQxAiHooks } from "./hooks";
 import { buildQxHostSystemPrompt } from "./prompts";
 import { createOrderedReasoningRecorder, streamFunctionCallingOnce } from "./stream";
@@ -34,7 +35,7 @@ async function runToolCalls(
   opts: AgentRunOptions,
   attachments: QxAiFileAttachment[],
 ): Promise<Array<{ callId: string; name: string; observation: string }>> {
-  const jobs = toolCalls.map(async (call) => {
+  const execute = async (call: typeof toolCalls[number]) => {
     const name = call.function?.name ?? "";
     const rawArgs = call.function?.arguments ?? "{}";
     let parsedArgs: unknown = rawArgs;
@@ -53,10 +54,24 @@ async function runToolCalls(
       attachments,
     );
     return { callId: call.id, name, observation };
-  });
+  };
+
+  // Ask before executing sibling calls: missing information cannot authorize other work.
+  const questionCalls = toolCalls.filter((call) => canonicalInteractionTool(call.function?.name ?? "") === "ask_user_question");
+  if (questionCalls.length) {
+    const checked: Array<{ callId: string; name: string; observation: string }> = [];
+    for (const call of questionCalls) {
+      checked.push(await execute(call));
+      if (questionFromSteps(steps)) return toolCalls.map((call) => checked.find((result) => result.callId === call.id) ?? {
+        callId: call.id, name: call.function?.name ?? "", observation: "Not executed: awaiting user input.",
+      });
+    }
+    const remaining = await Promise.all(toolCalls.filter((call) => !questionCalls.includes(call)).map(execute));
+    return [...checked, ...remaining];
+  }
 
   // Parallel execution for multi-tool turns (harness speed path).
-  return Promise.all(jobs);
+  return Promise.all(toolCalls.map(execute));
 }
 
 export async function runFunctionCallingAgent(
@@ -188,6 +203,8 @@ export async function runFunctionCallingAgent(
     });
 
     const results = await runToolCalls(enabled, toolCalls, steps, runOpts, attachments);
+    const paused = pausedQuestionResult(steps);
+    if (paused) return { ...paused, attachments };
     for (const result of results) {
       working.push({
         role: "tool",

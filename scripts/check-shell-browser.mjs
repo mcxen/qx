@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const page = await browser.newPage({ viewport: { width: 1200, height: 700 } });
+const primaryModifier = await page.evaluate(() => /win/i.test(`${navigator.platform} ${navigator.userAgent}`) ? "Control" : "Meta");
+const pressPrimary = (key) => page.keyboard.press(`${primaryModifier}+${key}`);
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const base = process.env.QX_FIXTURE_URL ?? "http://127.0.0.1:1420/scripts/fixtures/shell-contracts.html";
@@ -27,7 +29,7 @@ try {
   await resolve(); await expect(primary).toBeEnabled();
   await contextRun.click(); await resolve(); await expect(primary).toBeEnabled();
   await root.focus(); await page.keyboard.press("Enter"); await resolve();
-  await page.keyboard.press("Meta+k");
+  await pressPrimary("k");
   await expect(page.getByRole("menu")).toBeVisible();
   await expect(page.getByRole("menuitem").first()).toBeFocused();
   await page.keyboard.press("Enter"); await resolve();
@@ -38,7 +40,7 @@ try {
   await expect(page.getByRole("menu")).toBeVisible();
   await page.keyboard.press("Escape"); await resolve();
   await expect(page.getByRole("menu")).toBeHidden();
-  await root.focus(); await page.keyboard.press("Meta+m"); await resolve();
+  await root.focus(); await pressPrimary("m"); await resolve();
   const filter = page.getByRole("combobox");
   await expect(filter).toBeFocused();
   await filter.fill("Child"); await page.keyboard.press("ArrowLeft");
@@ -52,13 +54,13 @@ try {
   assert.equal((await calls()).at(-1), "child");
   await expect(page.getByRole("menu")).toBeHidden();
 
-  await root.focus(); await page.keyboard.press("Meta+m");
-  await page.keyboard.press("Meta+j");
+  await root.focus(); await pressPrimary("m");
+  await pressPrimary("j");
   await expect(page.getByRole("menuitem", { name: "Fast child" })).toBeVisible();
   await resolve();
   await expect(page.getByRole("menuitem", { name: "Fast child" })).toBeVisible();
   await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
-  await root.focus(); await page.keyboard.press("Meta+e");
+  await root.focus(); await pressPrimary("e");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /View error details/ }).click();
   await expect(page.getByRole("dialog")).toContainText("Submenu failure");
@@ -67,10 +69,10 @@ try {
   await page.keyboard.press("Escape");
   assert.ok(!(await calls()).includes("disabled"));
 
-  await root.focus(); await page.keyboard.press("Meta+m");
+  await root.focus(); await pressPrimary("m");
   await invoke("route", "another-route"); await resolve();
   await expect(page.getByRole("menu")).toBeHidden();
-  await root.focus(); await page.keyboard.press("Meta+f");
+  await root.focus(); await pressPrimary("f");
   await expect(page.getByRole("button", { name: /View error details/ })).toBeVisible();
   await page.getByRole("button", { name: /View error details/ }).click();
   await expect(page.getByRole("dialog")).toContainText("Expected failure");
@@ -78,13 +80,13 @@ try {
   assert.ok(!(await calls()).includes("leave"), "dialog Esc must not leave Shell");
 
   await invoke("guard", "cancel");
-  await root.focus(); await page.keyboard.press("Meta+g");
+  await root.focus(); await pressPrimary("g");
   assert.ok(!(await calls()).includes("guarded"));
-  await invoke("guard", "allow"); await page.keyboard.press("Meta+g");
+  await invoke("guard", "allow"); await pressPrimary("g");
   const guarded = page.locator(".qx-shell-context").getByRole("button", { name: /^Guarded command/ });
   await expect(guarded).toBeDisabled();
   await resolve(); await expect(guarded).toBeEnabled();
-  await invoke("guard", "fail"); await page.keyboard.press("Meta+g");
+  await invoke("guard", "fail"); await pressPrimary("g");
   await page.getByRole("button", { name: /View error details: Actions/ }).click();
   await expect(page.getByRole("dialog")).toContainText("Guard failed");
 

@@ -1275,6 +1275,7 @@ search={
 ```
 
 - 结构固定：`.qx-search-wrap` + `.qx-search-icon` + `.qx-plugin-search`（样式在 `toolbar.css`）。
+- Workbench 与 QxAI 左列表共用宿主文字轴：搜索输入、列表标题和分组标题左对齐，图标保留固定轨道；Windows 拖拽区的 inset 由 Shell 统一计算，不在插件或单个条目中补偏移。
 - `autoFocus` 是显式的一次性意图；省略时默认 `false`，且后续 pointer 操作不会触发重聚焦。
 - 业务逻辑（改选中、拉数据）留在父组件 `onChange`；不要再手写三层 div/input。
 - Launcher 主搜索仍用 `SearchBar`（召唤聚焦 / store），但其内部已复用 `QxModuleSearch` 同一套 chrome。

@@ -6,6 +6,8 @@ import type { AgentStep, QxAiFileAttachment } from "../contracts";
 export interface ToolExecutionResult {
   observation: string;
   attachments?: QxAiFileAttachment[];
+  question?: import("../interaction").QxAiQuestionRequest;
+  suggestions?: import("../interaction").QxAiSuggestion[];
 }
 
 /** Provider usage/timing metadata normalized at the stream boundary. */
@@ -69,6 +71,8 @@ export interface AgentRunResult {
   attachments: QxAiFileAttachment[];
   /** Failed runs are UI errors, never durable assistant messages. */
   failed?: boolean;
+  /** Current turn is complete, but queued work must wait for the user's answer. */
+  awaitingUserInput?: boolean;
 }
 
 export const MAX_OBSERVATION_CHARS = 4000;

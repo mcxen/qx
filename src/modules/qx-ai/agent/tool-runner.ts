@@ -6,6 +6,7 @@ import {
   runQxAiHooks,
   type QxAiHookPatch,
 } from "./hooks";
+import { canonicalInteractionTool } from "../interaction";
 import {
   appendAttachments,
   nextStepId,
@@ -70,7 +71,7 @@ export async function executeToolWithHooks(
   steps.push(actionStep);
   opts.onStep(actionStep);
 
-  const tool = enabled.find((t) => t.name === name);
+  const tool = enabled.find((t) => t.name === canonicalInteractionTool(name));
   let observation: string;
   if (!tool) {
     observation = `Error: tool "${name}" is not available. Enabled: ${
@@ -85,7 +86,9 @@ export async function executeToolWithHooks(
       }));
       observation = result.observation;
       appendAttachments(attachments, result.attachments);
-      updateActionStep(actionStep, opts, { state: "completed", output: observation });
+      updateActionStep(actionStep, opts, {
+        state: "completed", output: observation, question: result.question, suggestions: result.suggestions,
+      });
     } catch (err) {
       observation = `Error: ${err instanceof Error ? err.message : String(err)}`;
       updateActionStep(actionStep, opts, { state: "error", output: observation });
