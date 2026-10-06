@@ -8,7 +8,7 @@
 use std::collections::HashSet;
 
 use tauri::utils::config::Color;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
 
 const SURFACE_PREFIX: &str = "macro-cursor-overlay-";
 
@@ -91,7 +91,7 @@ fn show_now(app: &AppHandle) -> Result<(), String> {
         let window = if let Some(existing) = app.get_webview_window(&label) {
             existing
         } else {
-            WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+            crate::webview_policy::window_builder(app, &label, WebviewUrl::App(url.into()))
                 .title("Qx Macro Cursor")
                 .inner_size(logical_width, logical_height)
                 .resizable(false)

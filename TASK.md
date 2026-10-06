@@ -13,6 +13,17 @@
 
 ## 当前工作
 
+### Fix — WebView 浏览器默认行为（2026-10-06）
+
+- 所有窗口使用统一原生 policy 与 document-start/子 frame 兜底，关闭网页查找、打印、
+  刷新、历史导航、整页缩放与 release DevTools；业务同键动作、编辑菜单、复制粘贴和 IME 优先。
+  未声明专用动作的 `Cmd/Ctrl+F` 聚焦并选中当前模块搜索。
+- 辅助窗统一创建端口，主窗显式关闭 autofill/zoom。真实 WebView2 消融发现新 controller
+  会重置共享 profile 的 autofill，现已在创建期关闭，门禁禁止模块绕过此端口。
+- 验证：完整 check、TypeScript/Vite、MSVC fmt/check、464 项浏览器/沙箱回归、
+  120 组生产 Shell 布局与交互回归、3 窗口 × 9 项真实 WebView2 设置通过。
+  Windows MSI/NSIS 最终构建通过；本机 v0.6.117 未替换，安装态物理按键与 macOS 实机未验。
+
 ### QxAI — 结构化提问与快捷下一步（2026-10-05）
 
 - `ask_user_question` 兼容 AskYourQuestion / AskUserQuestion；有界问题与选项持久化在工具步骤中，Native/ReAct 提问后结束当轮并暂停队列。单选快发、多选/多题提交、自定义回答与跳过不隐式授权其它工具。

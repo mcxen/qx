@@ -84,6 +84,8 @@ search-cancel = { path = "vendor/cardinal/search-cancel" }
 fswalk = { path = "vendor/cardinal/fswalk" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "=0.38.2"
+windows-core = "=0.61.2"
 window-vibrancy = "0.6"
 xcap = { version = "0.9", features = ["wgc"] }
 wmi = "0.15.1"

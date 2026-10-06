@@ -10,9 +10,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl};
 
 const LABEL: &str = "update-progress";
 const WIDTH: f64 = 376.0;
@@ -277,7 +275,7 @@ fn ensure_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     if let Some(window) = app.get_webview_window(LABEL) {
         return Ok(window);
     }
-    WebviewWindowBuilder::new(
+    crate::webview_policy::window_builder(
         app,
         LABEL,
         WebviewUrl::App("index.html?surface=update-progress".into()),

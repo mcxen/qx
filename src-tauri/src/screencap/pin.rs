@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
 
 const PIN_PREFIX: &str = "capture-pin-";
 const MAX_PINS: usize = 16;
@@ -199,7 +199,7 @@ fn open_pin_now(
         format!("index.html?view=capture-pin&id={id}&path={encoded}&initialZoom={initial_zoom:.8}");
     // Seamless pin: undecorated + transparent; the WebView *is* the image.
     // Soft OS shadow stays so the floating photo still lifts off the desktop.
-    let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+    let window = crate::webview_policy::window_builder(app, &label, WebviewUrl::App(url.into()))
         .title("Qx Pin")
         .inner_size(320.0, 240.0)
         .min_inner_size(MIN_LOGICAL_EDGE, MIN_LOGICAL_EDGE)

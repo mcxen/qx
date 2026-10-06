@@ -27,7 +27,9 @@
         "skipTaskbar": false,
         "focus": true,
         "shadow": true,
-        "acceptFirstMouse": true
+        "acceptFirstMouse": true,
+        "generalAutofillEnabled": false,
+        "zoomHotkeysEnabled": false
       }
     ],
     "security": {

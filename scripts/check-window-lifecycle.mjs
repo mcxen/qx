@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
@@ -74,6 +74,16 @@ assert.match(island, /run_ui\(&worker_app,[\s\S]*VISIBILITY_GENERATION[\s\S]*sho
 assert.match(read("src/island/float/IslandFloatBridge.tsx"), /disposed \|\| revision !== visibilityRevision/);
 assert.doesNotMatch(read("src/modules/screencap/ScreenRecorder.tsx"), /await win\.show\(\)/);
 const composition = read("src-tauri/src/lib.rs");
+assert.match(composition, /\.plugin\(webview_policy::init\(\)\)/);
+assert.match(read("src-tauri/src/webview_policy.rs"), /js_init_script_on_all_frames\(script\)/);
+for (const file of readdirSync(new URL("../src-tauri/src/", import.meta.url), { recursive: true })) {
+  if (file.endsWith(".rs") && file !== "webview_policy.rs") {
+    assert.doesNotMatch(read(`src-tauri/src/${file}`), /WebviewWindowBuilder::new\(/, `${file} bypasses the creation-time WebView policy`);
+  }
+}
+const configuredWindow = JSON.parse(read("src-tauri/tauri.conf.json")).app.windows[0];
+assert.equal(configuredWindow.generalAutofillEnabled, false);
+assert.equal(configuredWindow.zoomHotkeysEnabled, false);
 assert.match(composition, /screencap::close_surface/);
 assert.match(composition, /qx_update_progress_cancel/);
 assert.match(composition, /"type": "close-float"/);

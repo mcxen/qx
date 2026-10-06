@@ -4,10 +4,7 @@
 //! v1: host-only show/hide; float flag defaults off in appearance settings.
 
 use serde::{Deserialize, Serialize};
-use tauri::{
-    AppHandle, LogicalSize, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewUrl,
-    WebviewWindowBuilder,
-};
+use tauri::{AppHandle, LogicalSize, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewUrl};
 
 const ISLAND_LABEL: &str = "island";
 const ISLAND_WIDTH: f64 = 400.0;
@@ -122,7 +119,7 @@ fn ensure_island_window(app: &AppHandle, always_on_top: bool) -> Result<(), Stri
         crate::auxiliary_window::make_non_activating(&island)?;
         return Ok(());
     }
-    let island = WebviewWindowBuilder::new(
+    let island = crate::webview_policy::window_builder(
         app,
         ISLAND_LABEL,
         WebviewUrl::App("index.html?surface=island".into()),

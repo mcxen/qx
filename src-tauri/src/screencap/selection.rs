@@ -1,8 +1,5 @@
 use tauri::utils::config::Color;
-use tauri::{
-    command, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
-    WebviewWindowBuilder,
-};
+use tauri::{command, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
 
 use super::controls::{
     hide as hide_recording_controls_internal, restore_surface as restore_capture_surface,
@@ -305,7 +302,7 @@ fn show_region_picker_internal(
         }
 
         if app_for_ui.get_webview_window(PICKER_LABEL).is_none() {
-            WebviewWindowBuilder::new(
+            crate::webview_policy::window_builder(
                 &app_for_ui,
                 PICKER_LABEL,
                 WebviewUrl::App("index.html?view=region-picker".into()),

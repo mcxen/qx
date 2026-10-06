@@ -669,6 +669,21 @@ export function useShellActions({
     onKeyDown?.(event);
     if (event.defaultPrevented) return;
 
+    // Client find focuses the module's search after explicit action/feature
+    // handlers have declined it. The WebView's Find on Page is never used.
+    if (matchesQxShortcut(nativeEvent, "CmdOrCtrl+F")) {
+      const search = shellRef.current?.querySelector<HTMLInputElement>(
+        ".qx-shell-search-slot input:not([disabled]):not([readonly])",
+      );
+      if (search && search.getClientRects().length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        search.focus({ preventScroll: true });
+        search.select();
+        return;
+      }
+    }
+
     if (handleNavigationKeyDown(event, navigation)) return;
 
     // Shell is the final keyboard fallback. Inner views, dialogs and search

@@ -21,6 +21,26 @@
 
 ## 1. 设计目标
 
+### WebView 的桌面行为边界
+
+`webview_policy.rs` 在 Tauri composition root 注册一次，自动覆盖配置创建的主窗、
+运行时创建/复用的 Island、Tray、截图/录屏、贴图、更新与宏浮层，以及插件子 frame。
+Windows 在 WebView-ready 的 UI 线程关闭 browser accelerators、键盘/捏合整页缩放、
+swipe history、网页表单自动填充与密码保存；DOM 业务事件和原生编辑键继续投递。
+运行时窗口必须经同一模块的 `window_builder` 创建；配置主窗显式关闭
+`generalAutofillEnabled` / `zoomHotkeysEnabled`。WebView2 的 autofill 是 profile 共享值，
+创建新 controller 时的默认 true 会覆盖已关闭的旧窗口，不能只依赖 ready 后再关闭。
+不要在 `AcceleratorKeyPressed` 中统一吞键，也不要注册进程级键盘钩子。
+
+`src/shell/webviewDefaults.js` 在 document-start 注入所有 frame；窗口 bubble 阶段
+仅取消尚未被业务处理的浏览器默认动作，绝不提前设置 `defaultPrevented` 或停止传播。
+因此 RSS 的 `Cmd/Ctrl+R`、剪贴板的 `Cmd/Ctrl+P`、插件 Reload Panel 等仍由原动作端口
+执行。QxShell 在业务 handler 之后将未处理的 `Cmd/Ctrl+F` 交给当前模块搜索；
+Dialog/菜单优先，搜索保持选区与焦点连续性。右键仍先交给 Qx/Radix，只有非编辑区的
+浏览器兜底菜单被取消；输入框保留原生编辑菜单。滚轮先由图片预览处理，其余修饰滚轮
+不得缩放整个客户端。release 禁用 DevTools，debug 保留。原生设置失败按窗口 label
+写入 `webview.policy`，不得静默宣称策略生效。
+
 1. **Launcher 召唤与当前窗口显隐分离**：`toggle_launcher` 隐藏时显示 Launcher 并聚焦搜索、显示时隐藏；`toggle_window` 只切换显隐，不改变当前 route / 子界面。
    前端 `setTab` **不得**清空 launcher `results`；Option+Space 重开应先 paint 缓存首页，再后台刷新（见 `docs/frontend-architecture.md`）。
 2. **模块快捷键**（剪贴板 / RSS / GIF）：打开对应 tab；若已在该 tab 再按 → 隐藏窗口；若窗口开着但在别的 tab → 切到该模块。
@@ -440,6 +460,13 @@ Launcher 结果右键通过 `QxShell.actionMenuRequest` 发布 viewport 坐标�
 ---
 
 ## 8. 快速验证
+
+浏览器默认动作回归：`node scripts/check-webview-policy.mjs`（本机 Chrome）；
+Shell 的动作优先、搜索聚焦、Dialog/IME/布局回归：`npm run test:shell-browser`
+（先运行 Vite）。Windows 的独立 `webview_policy_probe` example 复用生产 policy 与
+创建入口，只创建隔离的空白 WebView2，不读取 Qx 用户设置；分别核对配置主窗与动态
+辅助窗口的九项原生设置。构建时与 `window_lifecycle_probe` 一样嵌入现有 Windows
+manifest。原生探针、浏览器回归和安装态物理按键验收是独立证据。
 
 1. 启用剪贴板快捷键（默认建议 `Alt+V`）→ 按一次打开剪贴板 → 再按隐藏。
 2. 窗口在 launcher 时按剪贴板快捷键 → 切到 clipboard（不先关）。

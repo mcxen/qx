@@ -57,6 +57,7 @@ mod updater;
 mod v2ex;
 mod watchdog;
 mod weather;
+mod webview_policy;
 mod window_composition;
 #[cfg(target_os = "windows")]
 mod windows_process;
@@ -201,6 +202,7 @@ pub fn run() {
     // single-instance must register before deep-link so secondary launches on
     // Windows/Linux forward `qx://…` into the existing process.
     tauri::Builder::default()
+        .plugin(webview_policy::init())
         .manage(terminal::TerminalManager::default())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // Focus the running helper when the user re-opens a deep link or

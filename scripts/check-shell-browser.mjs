@@ -1,8 +1,10 @@
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const page = await browser.newPage({ viewport: { width: 1200, height: 700 } });
+await page.addInitScript(readFileSync(new URL("../src/shell/webviewDefaults.js", import.meta.url), "utf8"));
 const primaryModifier = await page.evaluate(() => /win/i.test(`${navigator.platform} ${navigator.userAgent}`) ? "Control" : "Meta");
 const pressPrimary = (key) => page.keyboard.press(`${primaryModifier}+${key}`);
 const errors = [];
@@ -16,6 +18,17 @@ const invoke = (name, value) => page.evaluate(([name, value]) => window.fixture[
 const resolve = () => page.evaluate(() => window.fixture.deferred.shift()?.());
 const calls = () => page.evaluate(() => window.fixture.calls);
 try {
+  // With no explicit find action, Ctrl/Cmd+F belongs to the module search.
+  await open("mode=layout");
+  const findSearch = page.locator(".qx-shell-search-slot input");
+  await findSearch.fill("current query");
+  await page.locator(".qx-shell").focus();
+  await pressPrimary("f");
+  await expect(findSearch).toBeFocused();
+  assert.deepEqual(await findSearch.evaluate((input) => [input.selectionStart, input.selectionEnd]), [0, 13]);
+  await page.keyboard.type("replacement");
+  await expect(findSearch).toHaveValue("replacement");
+
   await open();
   const root = page.locator(".qx-shell");
   const primary = page.locator(".qx-shell-actions .variant-primary");

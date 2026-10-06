@@ -1,7 +1,5 @@
 use tauri::utils::config::Color;
-use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
 
 use super::geometry::covers_full_display;
 use super::types::PickerSession;
@@ -182,7 +180,7 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
         let shade = if let Some(existing) = app.get_webview_window(&label) {
             existing
         } else {
-            WebviewWindowBuilder::new(
+            crate::webview_policy::window_builder(
                 app,
                 &label,
                 // monitorId lets the shade webview request a handoff without a

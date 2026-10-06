@@ -510,6 +510,11 @@ Actions 不是说明列表。每个可见业务 action 都必须执行一个真�
 
 `menuKey` 与 `kbd` 不同：前者仅在 Actions 菜单打开时生效，不会抢走搜索输入；后者是可选的
 窗口内完整快捷键，业务动作使用 `CmdOrCtrl+…` 等可移植写法，不能用单字母 `kbd` 抢占输入。
+
+宿主统一关闭 WebView 的网页查找、打印、刷新、历史导航与整页缩放，插件 iframe 同样
+遵循此策略。相同按键仍可声明为业务 Action；不要依赖浏览器默认行为，也不要自己加
+吞键监听。未绑定专用动作的 `Cmd/Ctrl+F` 聚焦宿主搜索，原生文本编辑、IME 和已处理的
+图片缩放/右键菜单保持可用。详见 [`docs/shell-and-shortcuts.md`](../../docs/shell-and-shortcuts.md)。
 插件 action id 不得使用宿主保留的 `__qx:` 前缀；打开/关闭详情和资讯 HTML 保存等宿主动作
 不会进入插件 `onAction`。宿主还会在每个 Panel 的 Actions 末尾统一追加“插件设置…”，
 直接打开 Settings → Extensions → 当前插件的配置 Dialog 并保留 Esc 回程；它不是 Qx

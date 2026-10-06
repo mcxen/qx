@@ -125,6 +125,9 @@ Workbench 表单是宿主受控的纯数据端口；长正文通过有界 `texta
 - 设置文案依赖 `useT(key, fallback)`，不散落硬编码中文/英文分支。
 - 开机启动是 host capability：Settings 只持久化用户意图，
   `src-tauri/src/startup.rs` 统一负责原生注册和启动参数语义；UI 与功能模块不得直接写平台启动项。
+- WebView 默认动作属于根级 `webview_policy`：主窗配置与统一辅助窗 builder 在创建期
+  关闭共享 autofill，ready hook 统一应用平台设置，document-start 脚本只在业务响应后
+  取消浏览器兜底；模块不复制 browser 快捷键列表，也不注册全局吞键钩子。
 - 运行时 import 图必须无环：契约下沉到中立模块，catalogue 不反向写 registry，
   RPC 通过窄回调端口调度命令。`npm run check` 自动阻止循环求值与未注册 `invoke`。
 

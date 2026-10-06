@@ -12,6 +12,7 @@
 |---|---|
 | `main.rs` | thin wrapper，只调 `qx::run()` |
 | `lib.rs` | 应用装配：托盘、全局快捷键、`generate_handler!`、`ActivationPolicy::Accessory`、`safe_init` 启动子系统 |
+| `webview_policy.rs` | 所有 WebView 的创建期策略与桌面浏览器行为；统一 builder 保持共享 autofill profile，Windows native settings 与跨平台 document-start/子 frame 默认动作兜底，见 shell-and-shortcuts |
 | `floating_panel.rs` | 主窗口面板化；`PANEL_OPEN` / `ACTIVE_ROUTE`；`toggle` / `toggle_route`；hide 必须经此模块；Windows 在此关闭会退化成矩形黑边的 DWM undecorated shadow（见 shell-and-shortcuts） |
 | `island_window.rs` | 通用桌面浮岛 webview（`island` label）；几何/拖动/缩小与 session 快照推送；不是 main NSPanel |
 | `file_manager.rs` | Finder / Explorer 选择快照与重命名/归拢/ZIP 写操作（blocking worker） |

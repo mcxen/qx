@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use tauri::utils::config::Color;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
 
 use super::state::{picker, CONTROLS_PINNED};
 use crate::display::{capture_monitor, cursor_monitor, tauri_monitor_for_capture};
@@ -115,7 +115,7 @@ pub(super) fn show(app: &AppHandle) -> Result<(), String> {
 
 fn show_now(app: &AppHandle) -> Result<(), String> {
     if app.get_webview_window(CONTROL_LABEL).is_none() {
-        WebviewWindowBuilder::new(
+        crate::webview_policy::window_builder(
             app,
             CONTROL_LABEL,
             WebviewUrl::App("index.html?view=recording-controls".into()),

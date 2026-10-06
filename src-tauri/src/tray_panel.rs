@@ -5,10 +5,7 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
-    WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
 
 use crate::display::{
     capture_monitor_id_for_display_area, display_area_for_window, pointer_anchor_on_display,
@@ -62,7 +59,7 @@ fn ensure_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     if let Some(window) = app.get_webview_window(LABEL) {
         return Ok(window);
     }
-    WebviewWindowBuilder::new(
+    crate::webview_policy::window_builder(
         app,
         LABEL,
         WebviewUrl::App("index.html?surface=tray".into()),
