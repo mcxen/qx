@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Check, Pin, Search, SlidersHorizontal } from "lucide-react";
+import { Check, ChevronDown, Pin, Search, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   Button,
@@ -17,6 +17,7 @@ import type { HomeDashboardWidgetId } from "../modules/settings/store";
 import { useSettingsStore } from "../modules/settings/store";
 import { toggleLauncherEntryPin, isManageableLauncherEntry } from "./entryManage";
 import { LauncherAppIcon } from "../ResultsList";
+import { retainOverlayScrollbars } from "../utils/overlayScrollbar";
 
 type PinFilter = "all" | "apps" | "modules";
 
@@ -60,6 +61,13 @@ export default function LauncherHomePopover({
   const [catalog, setCatalog] = useState<AppEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [scrollPort, setScrollPort] = useState<HTMLDivElement | null>(null);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  useEffect(() => {
+    if (!scrollPort || !open) return;
+    return retainOverlayScrollbars(scrollPort, setCanScrollDown);
+  }, [open, scrollPort]);
 
   const loadApps = useCallback(async (search: string) => {
     setLoading(true);
@@ -147,6 +155,7 @@ export default function LauncherHomePopover({
         align="end"
         side="left"
         sideOffset={10}
+        collisionPadding={16}
         className="qx-launcher-home-popover"
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
@@ -155,6 +164,8 @@ export default function LauncherHomePopover({
           setOpen(false);
         }}
       >
+        <div ref={setScrollPort} className="qx-launcher-home-popover-scroll" role="region" tabIndex={0} aria-label={t("launcher.home.configure", "Configure home")}>
+          <div className="qx-launcher-home-popover-content">
         <div className="qx-launcher-home-popover-header">
           <div>
             <strong>{t("launcher.home.configure", "Configure home")}</strong>
@@ -252,6 +263,12 @@ export default function LauncherHomePopover({
             ))}
           </div>
         </div>
+          </div>
+        </div>
+        {canScrollDown && <div className="qx-launcher-home-scroll-hint">
+          <ChevronDown size={12} aria-hidden="true" />
+          <span>{t("launcher.home.scrollMore", "Scroll down to see more")}</span>
+        </div>}
       </PopoverContent>
     </Popover>
   );

@@ -108,7 +108,7 @@ const capturePickerWindowSource = readFileSync(
 const listIconsStyles = readFileSync(
   new URL("../src/styles/lists-icons.css", import.meta.url),
   "utf8",
-);
+) + readFileSync(new URL("../src/styles/media-viewer.css", import.meta.url), "utf8");
 
 const articleMetadata = resolveWorkbenchDetailMetadata({
   title: "Post",
@@ -387,7 +387,8 @@ assert.match(
   /Math\.min\(\s*viewport\.width\s*\/\s*naturalWidth,\s*viewport\.height\s*\/\s*naturalHeight,\s*\)/s,
 );
 assert.match(mediaViewerSource, /event\.metaKey\s*\|\|\s*event\.ctrlKey/);
-assert.match(mediaViewerSource, /scroll\.scrollLeft\s*\+=\s*event\.deltaX/);
+assert.match(mediaViewerSource, /stage\.addEventListener\("wheel", onWheel, \{ passive: false \}\)/);
+assert.doesNotMatch(mediaViewerSource, /isMouseWheel|window\.addEventListener\("keydown"/);
 assert.match(mediaViewerSource, /scroll\.scrollTop\s*\+=\s*event\.deltaY/);
 assert.match(
   listIconsStyles,

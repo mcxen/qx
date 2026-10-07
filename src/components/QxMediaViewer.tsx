@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Download, Minus, Plus, X } from "lucide-react";
 import {
   Button,
@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "./ui";
 import { useT } from "../i18n";
+import { shouldIgnoreBareShortcut } from "../utils/keyboard";
 
 const MEDIA_DECODE_CACHE_TTL_MS = 15 * 60 * 1_000;
 const MEDIA_DECODE_CACHE_MAX_ENTRIES = 24;
@@ -55,6 +56,7 @@ interface QxMediaViewerProps {
   initialIndex?: number;
   onOpenChange: (open: boolean) => void;
   onDownload?: (image: QxMediaViewerImage) => void | Promise<void>;
+  resolveUrl?: (url: string) => Promise<string>;
 }
 
 /** Shared host media viewer for built-in readers and plugin Workbench details. */
@@ -64,6 +66,7 @@ export default function QxMediaViewer({
   initialIndex = 0,
   onOpenChange,
   onDownload,
+  resolveUrl,
 }: QxMediaViewerProps) {
   const t = useT();
   const [index, setIndex] = useState(initialIndex);
@@ -74,9 +77,14 @@ export default function QxMediaViewer({
     height: number;
   } | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [source, setSource] = useState<{ url: string; src: string } | null>(null);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [stage, setStage] = useState<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const visibleImageRef = useRef<HTMLImageElement | null>(null);
   const zoomRef = useRef(1);
+  const anchorRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const dragRef = useRef<{
     pointerId: number;
     x: number;
@@ -85,6 +93,8 @@ export default function QxMediaViewer({
     scrollTop: number;
   } | null>(null);
   const image = images[index];
+  const src = resolveUrl ? source?.url === image?.url ? source?.src : undefined : image?.url;
+  const failed = Boolean(image && failedUrl === image.url);
   const imageSetKey = useMemo(
     () => images.map((item) => item.url).join("\u0000"),
     [images],
@@ -96,12 +106,24 @@ export default function QxMediaViewer({
     zoomRef.current = 1;
     setZoom(1);
     setMetrics(null);
+    setFailedUrl(null);
+    anchorRef.current = null;
     dragRef.current = null;
   }, [imageSetKey, images.length, initialIndex, open]);
 
+  useEffect(() => {
+    if (!open || !image || !resolveUrl) return;
+    let active = true;
+    void resolveUrl(image.url).then((resolved) => {
+      if (active) setSource({ url: image.url, src: resolved });
+    }).catch(() => { if (active) setFailedUrl(image.url); });
+    return () => { active = false; };
+  }, [image?.url, open, resolveUrl]);
+
   const recordImageMetrics = useCallback((element: HTMLImageElement) => {
-    if (!image || element.naturalWidth <= 0 || element.naturalHeight <= 0) return;
-    setMetrics({
+    if (!image || element !== visibleImageRef.current || element.naturalWidth <= 0 || element.naturalHeight <= 0) return;
+    setMetrics((previous) => previous?.url === image.url
+      && previous.width === element.naturalWidth && previous.height === element.naturalHeight ? previous : {
       url: image.url,
       width: element.naturalWidth,
       height: element.naturalHeight,
@@ -125,10 +147,9 @@ export default function QxMediaViewer({
   const syncPreviewLayout = useCallback(() => {
     const scroll = scrollRef.current;
     if (scroll) {
-      setViewport({
-        width: Math.max(0, scroll.clientWidth - 4),
-        height: Math.max(0, scroll.clientHeight - 4),
-      });
+      const width = Math.max(0, scroll.clientWidth - 4);
+      const height = Math.max(0, scroll.clientHeight - 4);
+      setViewport((previous) => previous.width === width && previous.height === height ? previous : { width, height });
     }
     if (visibleImageRef.current?.complete) {
       recordImageMetrics(visibleImageRef.current);
@@ -146,37 +167,38 @@ export default function QxMediaViewer({
 
     const scroll = scrollRef.current;
     const rect = scroll?.getBoundingClientRect();
-    const anchorX = scroll && rect && anchor
-      ? scroll.scrollLeft + anchor.x - rect.left
-      : null;
-    const anchorY = scroll && rect && anchor
-      ? scroll.scrollTop + anchor.y - rect.top
-      : null;
+    const imageRect = visibleImageRef.current?.getBoundingClientRect();
+    if (scroll && rect && imageRect?.width && imageRect.height) {
+      const x = anchor?.x ?? rect.left + scroll.clientWidth / 2;
+      const y = anchor?.y ?? rect.top + scroll.clientHeight / 2;
+      anchorRef.current = {
+        x: (x - imageRect.left) / imageRect.width,
+        y: (y - imageRect.top) / imageRect.height,
+        offsetX: x - rect.left,
+        offsetY: y - rect.top,
+      };
+    }
 
     zoomRef.current = next;
     setZoom(next);
-
-    // Keep the point under the pointer stable while a wheel/pinch gesture
-    // changes the image size. The scroll range is updated after React lays
-    // out the resized canvas.
-    if (scroll && anchorX !== null && anchorY !== null) {
-      requestAnimationFrame(() => {
-        const ratio = next / currentZoom;
-        scroll.scrollLeft = Math.max(0, anchorX * ratio - (anchor?.x ?? 0));
-        scroll.scrollTop = Math.max(0, anchorY * ratio - (anchor?.y ?? 0));
-      });
-    }
   }, [syncPreviewLayout]);
 
-  const move = useCallback((delta: number) => {
+  const resetZoom = useCallback(() => {
+    anchorRef.current = null;
     zoomRef.current = 1;
     setZoom(1);
+    scrollRef.current?.scrollTo(0, 0);
+  }, []);
+
+  const move = useCallback((delta: number) => {
+    if (images.length < 2) return;
+    resetZoom();
     setMetrics(null);
+    setFailedUrl(null);
     setIndex((current) => {
-      if (images.length < 2) return current;
       return (current + delta + images.length) % images.length;
     });
-  }, [images.length]);
+  }, [images.length, resetZoom]);
 
   const changeZoom = useCallback((delta: number) => {
     setZoomLevel(zoomRef.current + delta);
@@ -200,37 +222,41 @@ export default function QxMediaViewer({
     const indexes = offsets.map(
       (offset) => (index + offset + images.length) % images.length,
     );
-    for (const [priorityIndex, candidateIndex] of indexes.entries()) {
-      const url = images[candidateIndex]?.url;
-      if (!url) continue;
-      const cached = mediaDecodeCache.get(url);
-      if (cached) {
-        cached.lastAccessedAt = now;
-        mediaDecodeCache.delete(url);
-        mediaDecodeCache.set(url, cached);
-        continue;
-      }
-      const candidate = new Image();
-      candidate.decoding = "async";
-      candidate.fetchPriority = Math.abs(offsets[priorityIndex]) <= 1 ? "high" : "low";
-      candidate.src = url;
-      mediaDecodeCache.set(url, { image: candidate, lastAccessedAt: now });
-      void candidate.decode().catch(() => {
-        // Visible media retains its normal error behavior; predecode is best effort.
-      });
+    let active = true;
+    for (const candidateIndex of new Set(indexes)) {
+      const originalUrl = images[candidateIndex]?.url;
+      if (!originalUrl) continue;
+      void (resolveUrl ? resolveUrl(originalUrl) : Promise.resolve(originalUrl)).then((url) => {
+        if (!active) return;
+        const cached = mediaDecodeCache.get(url);
+        if (cached) {
+          cached.lastAccessedAt = now;
+          mediaDecodeCache.delete(url);
+          mediaDecodeCache.set(url, cached);
+          return;
+        }
+        const candidate = new Image();
+        candidate.decoding = "async";
+        candidate.fetchPriority = candidateIndex === index ? "high" : "low";
+        candidate.src = url;
+        mediaDecodeCache.set(url, { image: candidate, lastAccessedAt: now });
+        void candidate.decode().catch(() => {
+          // Visible media retains its normal error behavior; predecode is best effort.
+        });
+        pruneMediaDecodeCache();
+        scheduleMediaDecodeCachePrune();
+      }).catch(() => { /* A failed neighbor must not block the selected image. */ });
     }
-    pruneMediaDecodeCache(now);
-    scheduleMediaDecodeCachePrune();
-  }, [images, index, open]);
+    return () => { active = false; };
+  }, [images, index, open, resolveUrl]);
 
   useEffect(() => {
-    if (zoom > 1) return;
     const scroll = scrollRef.current;
     if (scroll) {
       scroll.scrollLeft = 0;
       scroll.scrollTop = 0;
     }
-  }, [image?.url, zoom]);
+  }, [image?.url, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -241,30 +267,30 @@ export default function QxMediaViewer({
     const observer = new ResizeObserver(updateViewport);
     observer.observe(scroll);
     return () => observer.disconnect();
-  }, [image?.url, open, syncPreviewLayout]);
+  }, [image?.url, open, stage, syncPreviewLayout]);
 
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        event.preventDefault();
-        event.stopPropagation();
-        move(event.key === "ArrowRight" ? 1 : -1);
-      } else if (event.key === "+" || event.key === "=") {
-        event.preventDefault();
-        changeZoom(0.25);
-      } else if (event.key === "-") {
-        event.preventDefault();
-        changeZoom(-0.25);
-      } else if (event.key === "0") {
-        event.preventDefault();
-        zoomRef.current = 1;
-        setZoom(1);
+    if (!stage) return;
+    const onWheel = (event: WheelEvent) => {
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? scroll.clientHeight : 1;
+      if (event.metaKey || event.ctrlKey) {
+        setZoomLevel(zoomRef.current * Math.exp(-event.deltaY * unit * 0.0025), { x: event.clientX, y: event.clientY });
+      } else {
+        scroll.scrollLeft += (event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX) * unit;
+        if (!event.shiftKey || event.deltaX) scroll.scrollTop += event.deltaY * unit;
       }
     };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [changeZoom, move, open]);
+    // React's delegated wheel listener is passive; use a local cancellable
+    // listener so pinch never zooms the WebView or scrolls the background.
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+  }, [open, stage, setZoomLevel]);
 
   const longScreenshot = Boolean(
     image
@@ -299,9 +325,52 @@ export default function QxMediaViewer({
     };
   }, [image, longScreenshot, metrics, viewport.height, viewport.width, zoom]);
 
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    const scroll = scrollRef.current;
+    const imageRect = visibleImageRef.current?.getBoundingClientRect();
+    if (!anchor || !scroll || !imageRect || !renderedSize) return;
+    const rect = scroll.getBoundingClientRect();
+    scroll.scrollLeft += imageRect.left + anchor.x * imageRect.width - rect.left - anchor.offsetX;
+    scroll.scrollTop += imageRect.top + anchor.y * imageRect.height - rect.top - anchor.offsetY;
+    anchorRef.current = null;
+  }, [renderedSize]);
+
   return (
     <Dialog open={open && Boolean(image)} onOpenChange={onOpenChange}>
-      <DialogContent className="qx-host-workbench-media-dialog">
+      <DialogContent
+        className="qx-host-workbench-media-dialog"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          scrollRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus({ preventScroll: true });
+        }}
+        onEscapeKeyDown={(event) => {
+          if (event.isComposing) event.preventDefault();
+          event.stopPropagation();
+        }}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.defaultPrevented || shouldIgnoreBareShortcut(event.nativeEvent) || event.altKey || event.metaKey || event.ctrlKey) return;
+          const scroll = scrollRef.current;
+          if (event.key === "+" || event.key === "=") changeZoom(0.25);
+          else if (event.key === "-") changeZoom(-0.25);
+          else if (event.key === "0") resetZoom();
+          else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            if (scroll && scroll.scrollWidth > scroll.clientWidth + 1) scroll.scrollLeft += event.key === "ArrowRight" ? 60 : -60;
+            else move(event.key === "ArrowRight" ? 1 : -1);
+          } else if (scroll && ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+            if (event.key === "Home") scroll.scrollTop = 0;
+            else if (event.key === "End") scroll.scrollTop = scroll.scrollHeight;
+            else scroll.scrollTop += (event.key.endsWith("Up") ? -1 : 1) * (event.key.startsWith("Page") ? scroll.clientHeight * 0.9 : 60);
+          } else return;
+          event.preventDefault();
+        }}
+      >
         <Button
           type="button"
           variant="ghost"
@@ -320,43 +389,15 @@ export default function QxMediaViewer({
         </DialogHeader>
         {image ? (
           <div
+            ref={setStage}
             className="qx-host-workbench-media-preview-stage"
-            onWheel={(event) => {
-              if (event.metaKey || event.ctrlKey) {
-                event.preventDefault();
-                event.stopPropagation();
-                setZoomLevel(
-                  zoomRef.current * Math.exp(-event.deltaY * 0.0025),
-                  { x: event.clientX, y: event.clientY },
-                );
-                return;
-              }
-              // A traditional mouse wheel uses line-sized deltas. Use it as
-              // a zoom gesture; pixel-sized two-finger scrolling remains
-              // available for panning an already enlarged image. macOS
-              // trackpad pinch arrives through the ctrl/meta path above.
-              const isMouseWheel = event.deltaMode === WheelEvent.DOM_DELTA_LINE
-                || Math.abs(event.deltaY) >= 30;
-              if (isMouseWheel) {
-                event.preventDefault();
-                event.stopPropagation();
-                const deltaY = event.deltaMode === WheelEvent.DOM_DELTA_LINE
-                  ? event.deltaY * 16
-                  : event.deltaY;
-                setZoomLevel(
-                  zoomRef.current * Math.exp(-deltaY * 0.004),
-                  { x: event.clientX, y: event.clientY },
-                );
-                return;
-              }
-              if (zoom <= 1) return;
-              const scroll = scrollRef.current;
-              if (!scroll) return;
-              event.preventDefault();
-              event.stopPropagation();
-              scroll.scrollLeft += event.deltaX;
-              scroll.scrollTop += event.deltaY;
+            onPointerMove={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              const x = event.clientX - rect.left;
+              const edge = Math.min(rect.width * 0.12, 88);
+              event.currentTarget.dataset.edge = x < edge ? "previous" : x > rect.width - edge ? "next" : "";
             }}
+            onPointerLeave={(event) => { delete event.currentTarget.dataset.edge; }}
           >
             {images.length > 1 ? (
               <div className="qx-host-workbench-media-preview-nav-zone is-previous">
@@ -377,13 +418,14 @@ export default function QxMediaViewer({
               className={[
                 "qx-host-workbench-media-preview-scroll",
                 `is-${orientation}`,
-                zoom > 1 ? "is-enlarged" : zoom < 1 ? "is-reduced" : "",
+                zoom > 1 || longScreenshot ? "is-enlarged" : zoom < 1 ? "is-reduced" : "",
               ].filter(Boolean).join(" ")}
               tabIndex={0}
+              aria-busy={!failed && metrics?.url !== image.url}
               aria-label={t("plugins.workbench.imagePreviewHint", "Full-size preview of the selected image")}
               onPointerDown={(event) => {
-                if (zoom <= 1 || event.button !== 0) return;
                 const scroll = event.currentTarget;
+                if (event.button !== 0 || (scroll.scrollWidth <= scroll.clientWidth && scroll.scrollHeight <= scroll.clientHeight)) return;
                 dragRef.current = {
                   pointerId: event.pointerId,
                   x: event.clientX,
@@ -414,8 +456,12 @@ export default function QxMediaViewer({
                 dragRef.current = null;
                 event.currentTarget.classList.remove("is-dragging");
               }}
+              onLostPointerCapture={(event) => {
+                dragRef.current = null;
+                event.currentTarget.classList.remove("is-dragging");
+              }}
             >
-              {renderedSize ? (
+              {failed ? <span className="qx-host-workbench-media-error" role="status">{t("plugins.workbench.imageUnavailable", "Image unavailable")}</span> : !src ? <span className="qx-host-workbench-media-error" role="status">{t("plugins.workbench.loading", "Loading…")}</span> : renderedSize ? (
                 <div
                   className="qx-host-workbench-media-preview-canvas"
                   style={{
@@ -426,10 +472,12 @@ export default function QxMediaViewer({
                   <img
                     key={image.url}
                     ref={setVisibleImageRef}
-                    src={image.url}
+                    src={src}
+                    draggable={false}
                     alt={image.alt || ""}
                     className={zoom === 1 ? undefined : "is-zoomed"}
                     onLoad={(event) => recordImageMetrics(event.currentTarget)}
+                    onError={() => setFailedUrl(image.url)}
                     style={{
                       objectFit: image.fit || "contain",
                       width: `${renderedSize.width}px`,
@@ -443,10 +491,12 @@ export default function QxMediaViewer({
                 <img
                   key={image.url}
                   ref={setVisibleImageRef}
-                  src={image.url}
+                  src={src}
+                  draggable={false}
                   alt={image.alt || ""}
                   className={zoom === 1 ? undefined : "is-zoomed"}
                   onLoad={(event) => recordImageMetrics(event.currentTarget)}
+                  onError={() => setFailedUrl(image.url)}
                   style={{
                     objectFit: image.fit || "contain",
                     // Keep zoom functional during WebKit's image-metric gap.
@@ -476,10 +526,7 @@ export default function QxMediaViewer({
                 size="sm"
                 className="qx-host-workbench-media-zoom-value"
                 aria-label={t("plugins.workbench.resetZoom", "Reset zoom")}
-                onClick={() => {
-                  zoomRef.current = 1;
-                  setZoom(1);
-                }}
+                onClick={resetZoom}
               >
                 {Math.round(zoom * 100)}%
               </Button>

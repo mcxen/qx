@@ -100,6 +100,37 @@ function scheduleUpdate(state: OverlayState): void {
   state.frame = window.requestAnimationFrame(() => update(state));
 }
 
+/** Keep the shared thin thumbs visible while a bounded panel overflows. */
+export function retainOverlayScrollbars(target: HTMLElement, onCanScrollDown: (value: boolean) => void): () => void {
+  const state: OverlayState = { target, vertical: createThumb(target.ownerDocument, "vertical"), horizontal: createThumb(target.ownerDocument, "horizontal") };
+  target.dataset.qxScrollbarPersistent = "";
+  const refresh = () => {
+    if (state.frame != null) return;
+    state.frame = window.requestAnimationFrame(() => {
+      update(state);
+      onCanScrollDown(target.scrollHeight - target.clientHeight - target.scrollTop > 2);
+    });
+  };
+  const observer = new ResizeObserver(refresh);
+  observer.observe(target);
+  if (target.firstElementChild) observer.observe(target.firstElementChild);
+  target.ownerDocument.addEventListener("scroll", refresh, { capture: true, passive: true });
+  const surface = target.parentElement;
+  surface?.addEventListener("animationend", refresh);
+  window.addEventListener("resize", refresh, { passive: true });
+  refresh();
+  return () => {
+    observer.disconnect();
+    target.ownerDocument.removeEventListener("scroll", refresh, true);
+    surface?.removeEventListener("animationend", refresh);
+    window.removeEventListener("resize", refresh);
+    if (state.frame != null) window.cancelAnimationFrame(state.frame);
+    delete target.dataset.qxScrollbarPersistent;
+    state.vertical.remove();
+    state.horizontal.remove();
+  };
+}
+
 /** Install once per document. Safe for the main window and auxiliary surfaces. */
 export function installOverlayScrollbars(doc: Document = document): () => void {
   const flag = "__qxOverlayScrollbarsInstalled" as const;
@@ -116,6 +147,7 @@ export function installOverlayScrollbars(doc: Document = document): () => void {
   const onScroll = (event: Event) => {
     const next = scrollTarget(doc, event.target);
     if (!next) return;
+    if (next.hasAttribute("data-qx-scrollbar-persistent")) { hide(state); return; }
     if (state.target && state.target !== next) state.target.removeAttribute(ATTR);
     state.target = next;
     next.setAttribute(ATTR, "");

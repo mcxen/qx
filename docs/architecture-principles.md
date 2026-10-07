@@ -200,6 +200,7 @@ blocking HTTP · filesystem · native APIs
 | 子系统 | 文档 | SOLID 要点 |
 |---|---|---|
 | Shell / 快捷键 | `shell-and-shortcuts.md` | S：键盘策略集中；O：统一注册生命周期扩展动作 |
+| 滚动表面 | `src/utils/overlayScrollbar.ts`、`UI_SPEC.md` | 持续溢出提示使用 `retainOverlayScrollbars` 复用细线滚动条与测量；组件只消费剩余滚动状态，卸载时释放观察器和浮层 |
 | Island | `qx-island-architecture.md` | D：session 倒置；I：slot/action 窄接口 |
 | 插件 | `plugin-architecture.md`, `public/doc/raycast-plugin-conversion.md` | O：host registrations/adapters 扩展；L：跨端 command 同形 |
 | 设置 / i18n | `settings-panel.md`, `src/i18n.ts` | I：按页拆分；D：文案依赖 key 而非组件内写死语言 |
@@ -245,7 +246,11 @@ List/Gallery + Detail + Actions + tabs/search 的市场模块都应发布纯数�
 Sysinfo、Brew、Unsplash 等业务只负责领域状态。插件信任边界仍留在
 `workbenchTypes.normalizePluginWorkbenchState`，宿主 Shell 负责样式、焦点、导航与
 Esc。图片详情的自适应比例、加载失败与全尺寸预览也属于宿主能力，插件不得尝试从
-隐藏 iframe 覆盖宿主 CSS 或另起 lightbox。异步集合仍以插件业务 state 为最终事实源；
+隐藏 iframe 覆盖宿主 CSS 或另起 lightbox。
+共享 `QxMediaViewer` 通过可选 URL resolver 接入 Workbench 图片缓存，只解析当前项及相邻预取项；
+Dialog 自有滚动、指针和键盘响应，异步解析取消后不能重开或替换新选择。查看器样式集中在
+`src/styles/media-viewer.css`，内置阅读器和插件使用同一缩放/平移语义。
+异步集合仍以插件业务 state 为最终事实源；
 `mountWorkbench()` 返回的 controller 在 SDK 内按稳定 id 合并 `updateItems`，并把同一
 keyed mutation 交给宿主信任边界；宿主不接受 DOM patch。宿主为每个插件保存有界、版本化的
 Workbench 成功快照，打开时先恢复 stale 内容，再用完整快照或 mutation 增量更新。业务领域

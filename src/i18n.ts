@@ -1638,6 +1638,7 @@ const zh: Record<string, string> = {
   "launcher.home.edit": "编辑主页组件",
   "launcher.home.configure": "配置主页",
   "launcher.home.configureHint": "添加置顶入口并选择主页卡片",
+  "launcher.home.scrollMore": "向下滚动查看更多",
   "launcher.home.pinnedEntries": "置顶入口",
   "launcher.home.searchEntries": "搜索应用和模块…",
   "launcher.home.entryFilter": "入口类型",

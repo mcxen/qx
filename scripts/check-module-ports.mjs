@@ -1123,7 +1123,7 @@ if (bundleProductionModule("src/plugin/pluginSdkFactory.ts", sdkOut)) {
 const workbenchViewSource = read("src/plugin/PluginWorkbenchView.tsx");
 const mediaViewerSource = read("src/components/QxMediaViewer.tsx");
 const rssArticleSource = read("src/modules/rss/ArticleList.tsx");
-const workbenchStyleSource = read("src/styles/lists-icons.css");
+const workbenchStyleSource = read("src/styles/lists-icons.css") + read("src/styles/media-viewer.css");
 const overlayScrollbarSource = read("src/utils/overlayScrollbar.ts");
 if (!workbenchViewSource.includes("<QxMediaViewer") || !rssArticleSource.includes("<QxMediaViewer")) {
   fail("Workbench and RSS must share the host QxMediaViewer");
@@ -1149,7 +1149,7 @@ if (!overlayScrollbarSource.includes("dataset.qxScrollbarHorizontalLift")) {
 if (
   !mediaViewerSource.includes("Math.exp(-event.deltaY")
   || !mediaViewerSource.includes("event.metaKey || event.ctrlKey")
-  || !mediaViewerSource.includes("scroll.scrollLeft += event.deltaX")
+  || !mediaViewerSource.includes('stage.addEventListener("wheel", onWheel, { passive: false })')
   || !mediaViewerSource.includes("scroll.scrollTop += event.deltaY")
 ) {
   fail("shared media preview must reserve wheel zoom for Cmd/Ctrl and pan enlarged images");

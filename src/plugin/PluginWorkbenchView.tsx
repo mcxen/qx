@@ -296,7 +296,10 @@ function WorkbenchDetailImage({
         <button
           type="button"
           className={`${className} is-zoomable`}
-          onClick={() => onPreview(image, collection?.length ? collection : [image])}
+          onClick={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
+            onPreview(image, collection?.length ? collection : [image]);
+          }}
           aria-label={image.alt ? `${previewText}: ${image.alt}` : previewText}
         >
           {content}
@@ -789,11 +792,9 @@ export default function PluginWorkbenchView({
   const openPreview = (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => {
     const images = collection.length ? collection : [image];
     const index = Math.max(0, images.findIndex((candidate) => candidate === image || candidate.url === image.url));
-    void Promise.all(images.map(async (candidate) => ({
-      ...candidate,
-      url: await resolveWorkbenchImageUrl(pluginId, candidate.url),
-    }))).then((resolved) => setPreview({ images: resolved, index }));
+    setPreview({ images, index });
   };
+  const resolvePreviewUrl = useCallback((url: string) => resolveWorkbenchImageUrl(pluginId, url), [pluginId]);
   const downloadPreviewImage = useCallback(async (image: QxMediaViewerImage) => {
     const workbenchImage = image as PluginWorkbenchImage;
     if (workbenchImage.downloadId) {
@@ -905,6 +906,7 @@ export default function PluginWorkbenchView({
         open={Boolean(preview)}
         images={preview?.images || []}
         initialIndex={preview?.index || 0}
+        resolveUrl={resolvePreviewUrl}
         onOpenChange={(open) => {
           if (!open) setPreview(null);
         }}
