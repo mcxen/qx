@@ -13,6 +13,12 @@
 
 ## 当前工作
 
+### Release — v0.6.119（2026-10-07）
+
+- 合入共享大图查看、配置主页滚动与已完成的 WebView 默认行为修复；相对 v0.6.118 累计 1,620 行改动，触发 change-volume 发版门禁。
+- 验证：完整 check、TypeScript/Vite、macOS cargo fmt/check 通过；生产 Shell/Workbench 大图浏览器回归加载最新 document policy，确认缩放、平移、Esc/焦点和异步关闭行为兼容。
+- 插件目录仍固定在远端开发分支可达的 `f48ca36142ae1d034b9ba72af4b7544e11d91e5a`，不发布另一检出中的 Speedtest 市场草稿。安装版未替换；跨平台产物状态以 Tag 工作流单次快照为准。
+
 ### Fix — WebView 浏览器默认行为（2026-10-06）
 
 - 所有窗口使用统一原生 policy 与 document-start/子 frame 兜底，关闭网页查找、打印、
