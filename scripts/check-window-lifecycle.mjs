@@ -67,6 +67,14 @@ await assert.rejects(loadFileDialog(
 assert.match(read("src/modules/qx-ai/sessions.ts"), /await openNativeFileDialog/);
 assert.match(read("src/modules/screencap/CaptureToolbar.tsx"), /await openNativeFileDialog/);
 const picker = read("src-tauri/src/screencap/picker_window.rs");
+const captureSelection = read("src-tauri/src/screencap/selection.rs");
+assert.doesNotMatch(picker + captureSelection, /get_webview_window\(PICKER_LABEL\)/,
+  "capture consumers must resolve the live logical picker after native recovery");
+assert.match(picker, /ensure_reusable_window/);
+assert.match(picker, /region-picker-recovery-/);
+const capability = JSON.parse(read("src-tauri/capabilities/default.json"));
+assert.ok(capability.windows.includes("region-picker-recovery-*"));
+assert.ok(capability.windows.includes("region-picker-shade-*"));
 const ready = picker.split("fn screencap_region_picker_ready")[1].split("pub(crate) fn is_picker_surface")[0];
 assert.match(ready, /run_ui[\s\S]*is_visible\(\)[\s\S]*is_recording\(\)[\s\S]*reassert_interactive/);
 const island = read("src-tauri/src/island_window.rs");

@@ -6,6 +6,8 @@
     "main",
     "recording-controls",
     "region-picker",
+    "region-picker-recovery-*",
+    "region-picker-shade-*",
     "island",
     "update-progress",
     "tray-panel",

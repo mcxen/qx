@@ -13,6 +13,18 @@
 
 ## 当前工作
 
+### Hotfix — Windows 截图圈选句柄失效（2026-10-08）
+
+- 修复 `show region picker: the underlying handle is not available` 后持续复用失效窗口的问题。
+  根级窗口端口验证 HWND/IsWindow；仅失效时换私有 native label 重建，健康 HWND 继续复用。
+  picker、外屏 shade、就绪握手、穿透、Esc/原生关闭与录屏边框共用逻辑窗口解析；补齐恢复窗与 shade capability。
+- 显示失败时隐藏所有圈选层并清空 session/冻结快照；窗口展示与跨屏跟踪归入 picker_window，selection 收敛至 1000 行以内。
+- 验证：完整 check、TypeScript/Vite、Windows MSVC fmt/check；真实 WebView2 的失效 HWND 注入、重建、逻辑标签解析及连续复用通过，原有 3 窗口 × 9 项浏览器策略断言通过。
+  最终 Windows Tauri release 构建与 MSI/NSIS 打包通过。
+  原生 probe 退出仍有既有 Chrome_WidgetWin_0 unregister 1412 诊断，不记作零诊断运行。
+- 紧急发布使用 v0.6.120；插件 revision 保持 f48ca36142ae1d034b9ba72af4b7544e11d91e5a。
+  未替换本机安装版，完整截图成品、多屏/录屏和 macOS 安装态仍待复核；远端构建只取一次状态快照。
+
 ### Release — v0.6.119（2026-10-07）
 
 - 合入共享大图查看、配置主页滚动与已完成的 WebView 默认行为修复；相对 v0.6.118 累计 1,620 行改动，触发 change-volume 发版门禁。

@@ -1,13 +1,263 @@
 use tauri::utils::config::Color;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
 
-use super::geometry::covers_full_display;
-use super::types::PickerSession;
-use crate::display::{all_capture_monitors, capture_monitor, tauri_monitor_for_capture};
+use super::geometry::{capture_coordinate_scale, covers_full_display};
+use super::selection::{
+    host_is_multi_display, on_display_topology_changed, screencap_region_select_status_with_restore,
+};
+use super::state::{
+    picker as picker_session, picker_pointer_following, picker_session_is_current,
+    set_picker_pointer_follow,
+};
+use super::types::{CaptureMode, PickerSession};
+use crate::display::{
+    all_capture_monitors, capture_monitor, capture_monitor_for_tauri, cursor_monitor,
+    tauri_monitor_for_capture,
+};
 use crate::window_composition::set_cloaked as set_windows_cloaked;
 
 pub(super) const PICKER_LABEL: &str = "region-picker";
 const SHADE_PREFIX: &str = "region-picker-shade-";
+
+pub(super) fn picker(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    crate::window_composition::reusable_window(app, PICKER_LABEL)
+}
+
+pub(super) fn show(
+    app: &AppHandle,
+    mode: CaptureMode,
+    selected_monitor_id: Option<u32>,
+    main_was_visible: bool,
+) -> Result<(), String> {
+    let selected_capture = match selected_monitor_id {
+        Some(monitor_id) => capture_monitor(Some(monitor_id))?,
+        None => {
+            let monitor = cursor_monitor(app)
+                .or_else(|| app.primary_monitor().ok().flatten())
+                .ok_or_else(|| "No display found".to_string())?;
+            capture_monitor_for_tauri(app, &monitor)?
+        }
+    };
+    let monitor = tauri_monitor_for_capture(app, &selected_capture)?;
+    let position = monitor.position();
+    let size = monitor.size();
+    let scale = monitor.scale_factor().max(1.0);
+    // Logical size of the selected display (matches CSS clientX/Y in the picker).
+    let logical_w = size.width as f64 / scale;
+    let logical_h = size.height as f64 / scale;
+    let logical_x = position.x as f64 / scale;
+    let logical_y = position.y as f64 / scale;
+    let monitor_id = selected_capture
+        .id()
+        .map_err(|error| format!("display id: {error}"))?;
+    if super::snapshot::descriptor(monitor_id).is_none() {
+        return Err("Selected display is not part of the frozen desktop frame".to_string());
+    }
+    let monitor_name = selected_capture
+        .friendly_name()
+        .or_else(|_| selected_capture.name())
+        .unwrap_or_else(|_| "Display".to_string());
+    let capture_width = selected_capture
+        .width()
+        .map_err(|error| format!("display width: {error}"))?;
+    let coordinate_scale = capture_coordinate_scale(capture_width, logical_w);
+    // Fresh open always force-refreshes inventory (hot-plug since last open).
+    // Relocations reuse the session flag; topology revalidation / display
+    // monitor may flip it while the picker stays open.
+    let multi_display = if selected_monitor_id.is_none() {
+        host_is_multi_display(true)
+    } else {
+        picker_session()
+            .lock()
+            .ok()
+            .and_then(|session| session.as_ref().map(|session| session.multi_display))
+            .unwrap_or_else(|| host_is_multi_display(false))
+    };
+    if let Ok(mut session) = picker_session().lock() {
+        *session = Some(PickerSession {
+            mode,
+            monitor_id,
+            monitor_name,
+            coordinate_scale,
+            logical_area: None,
+            frame_x: position.x,
+            frame_y: position.y,
+            multi_display,
+            main_was_visible,
+        });
+    }
+    // Window create/show/focus are AppKit main-thread only when reached from async commands.
+    let app_for_ui = app.clone();
+    let pos_x = position.x;
+    let pos_y = position.y;
+    let size_w = size.width;
+    let size_h = size.height;
+    crate::main_thread::run_on_main(&app_for_ui.clone(), move || {
+        // Multi-display only: outer shades on non-active screens. Single-display
+        // skips this entirely (no shade windows, no extra monitor enumeration
+        // beyond the early count already cached on macOS).
+        if multi_display {
+            show_shades(&app_for_ui, monitor_id)?;
+        } else {
+            hide_shades(&app_for_ui);
+        }
+
+        let picker = crate::window_composition::ensure_reusable_window(
+            &app_for_ui,
+            PICKER_LABEL,
+            |native_label| {
+                crate::webview_policy::window_builder(
+                    &app_for_ui,
+                    native_label,
+                    WebviewUrl::App("index.html?view=region-picker".into()),
+                )
+                .title("Qx Region Picker")
+                .inner_size(logical_w, logical_h)
+                .position(logical_x, logical_y)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .decorations(false)
+                .transparent(true)
+                // WebView2 defaults to an opaque black controller background even
+                // when the native window is transparent. Alpha=0 is the explicit
+                // Windows 8+ transparent WebView contract in Tauri.
+                .background_color(Color(0, 0, 0, 0))
+                .shadow(false)
+                // AppKit capture surfaces use a native IME-safe level. Tauri's
+                // generic macOS floating state would overwrite that level.
+                .always_on_top(!cfg!(target_os = "macos"))
+                .skip_taskbar(true)
+                .focused(true)
+                .accept_first_mouse(true)
+                // Picker must never end up in the recording itself.
+                .content_protected(true)
+                .visible(false)
+                .build()
+                .map_err(|error| format!("open region picker: {error}"))
+            },
+        )?;
+        let _ = picker.set_content_protected(true);
+        #[cfg(not(target_os = "macos"))]
+        let _ = picker.set_always_on_top(true);
+        prepare_for_show(&picker);
+        // Cover the selected display exactly. Physical size/position matches the
+        // monitor framebuffer; CSS clientX/Y stay in logical points (DPR scaled).
+        let _ = picker.set_position(PhysicalPosition::new(pos_x, pos_y));
+        let _ = picker.set_size(PhysicalSize::new(size_w, size_h));
+        crate::window_composition::show(&picker)
+            .map_err(|error| format!("show region picker: {error}"))?;
+        prepare_for_show(&picker);
+        let _ = picker.set_ignore_cursor_events(false);
+        let _ = picker.set_focus();
+        prepare_for_show(&picker);
+        Ok::<(), String>(())
+    })??;
+    if let Some(status) = screencap_region_select_status_with_restore(false) {
+        let _ = app.emit("screencap:picker", status);
+    }
+    Ok(())
+}
+
+fn session_is_multi_display() -> bool {
+    picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.as_ref().map(|session| session.multi_display))
+        .unwrap_or(false)
+}
+
+pub(super) fn start_pointer_display_tracker(app: AppHandle, generation: u64) {
+    // Always spawn: single-display stays on a slow topology watch so plugging
+    // an external monitor mid-session can promote into multi-display mode.
+    // Multi-display uses the fast 12ms cursor handoff loop.
+    if !session_is_multi_display() {
+        set_picker_pointer_follow(false);
+    }
+    tauri::async_runtime::spawn(async move {
+        let mut fast = tokio::time::interval(std::time::Duration::from_millis(12));
+        fast.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_topology = std::time::Instant::now()
+            .checked_sub(std::time::Duration::from_secs(1))
+            .unwrap_or_else(std::time::Instant::now);
+
+        loop {
+            if !picker_session_is_current(generation) {
+                break;
+            }
+
+            // Hot-plug revalidation (~2Hz while open). display_monitor also
+            // calls on_display_topology_changed; this covers the case where
+            // the picker opened single-display and a monitor appears before
+            // the next 2s poll, or the OS report lags the first attach.
+            if last_topology.elapsed() >= std::time::Duration::from_millis(500) {
+                last_topology = std::time::Instant::now();
+                // Force refresh so attach between display_monitor's 2s polls is seen.
+                on_display_topology_changed(&app, true);
+            }
+
+            if !session_is_multi_display() {
+                // Single-display: no cursor handoff work — just wait for topology.
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                continue;
+            }
+
+            fast.tick().await;
+            if !picker_session_is_current(generation) {
+                break;
+            }
+            if !picker_pointer_following(generation) {
+                continue;
+            }
+            // Light path: only cursor position + monitor geometry (no xcap).
+            let Some(cursor_display) = cursor_monitor(&app) else {
+                continue;
+            };
+            let cursor_position = cursor_display.position();
+            let current = picker_session().lock().ok().and_then(|session| {
+                session.as_ref().map(|session| {
+                    (
+                        session.mode,
+                        session.monitor_id,
+                        session.frame_x,
+                        session.frame_y,
+                        session.main_was_visible,
+                    )
+                })
+            });
+            let Some((mode, current_monitor_id, frame_x, frame_y, main_was_visible)) = current
+            else {
+                break;
+            };
+            // Same physical origin ⇒ still on the active display (cheap reject).
+            if cursor_position.x == frame_x && cursor_position.y == frame_y {
+                continue;
+            }
+            let Ok(capture) = capture_monitor_for_tauri(&app, &cursor_display) else {
+                continue;
+            };
+            let Ok(monitor_id) = capture.id() else {
+                continue;
+            };
+            // Matching capture id is authoritative when origins differ slightly
+            // across DPI / origin rounding (common on Windows mixed-DPI).
+            if monitor_id == current_monitor_id {
+                continue;
+            }
+            if !picker_pointer_following(generation) {
+                continue;
+            }
+            if let Err(error) = show(&app, mode, Some(monitor_id), main_was_visible) {
+                crate::diagnostics::log(
+                    crate::diagnostics::LogLevel::Warn,
+                    "screencap.pointer_follow",
+                    "failed to move capture picker to pointer display",
+                    serde_json::json!({ "error": error, "monitorId": monitor_id }),
+                );
+            }
+        }
+    });
+}
 
 pub(super) fn shade_label(monitor_id: u32) -> String {
     format!("{SHADE_PREFIX}{monitor_id}")
@@ -20,7 +270,7 @@ pub(super) fn screencap_region_picker_ready(
 ) -> Result<Option<super::PickerStatus>, String> {
     let ui_app = app.clone();
     crate::runtime::run_ui(&app, move || {
-        let Some(picker) = ui_app.get_webview_window(PICKER_LABEL) else {
+        let Some(picker) = picker(&ui_app) else {
             return Ok(None);
         };
         if !picker.is_visible().unwrap_or(false) || super::commands::is_recording() {
@@ -36,7 +286,9 @@ pub(super) fn screencap_region_picker_ready(
 }
 
 pub(crate) fn is_picker_surface(label: &str) -> bool {
-    label == PICKER_LABEL || label.starts_with(SHADE_PREFIX)
+    label == PICKER_LABEL
+        || label.starts_with("region-picker-recovery-")
+        || label.starts_with(SHADE_PREFIX)
 }
 
 #[cfg(target_os = "macos")]
@@ -160,7 +412,10 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
         .collect::<std::collections::HashSet<_>>();
 
     for window in app.webview_windows().into_values() {
-        if window.label().starts_with(SHADE_PREFIX) && !desired_shades.contains(window.label()) {
+        let desired = desired_shades.iter().any(|label| {
+            window.label() == label || window.label().starts_with(&format!("{label}-recovery-"))
+        });
+        if window.label().starts_with(SHADE_PREFIX) && !desired {
             hide_surface(&window);
         }
     }
@@ -168,7 +423,7 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
     for (shade_id, shade_x, shade_y, shade_w, shade_h, shade_scale) in &shade_displays {
         let label = shade_label(*shade_id);
         if *shade_id == active_monitor_id {
-            if let Some(active_shade) = app.get_webview_window(&label) {
+            if let Some(active_shade) = crate::window_composition::reusable_window(app, &label) {
                 hide_surface(&active_shade);
             }
             continue;
@@ -177,40 +432,39 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
         let logical_height = *shade_h as f64 / *shade_scale;
         let logical_x = *shade_x as f64 / *shade_scale;
         let logical_y = *shade_y as f64 / *shade_scale;
-        let shade = if let Some(existing) = app.get_webview_window(&label) {
-            existing
-        } else {
-            crate::webview_policy::window_builder(
-                app,
-                &label,
-                // monitorId lets the shade webview request a handoff without a
-                // second IPC to discover which display it covers.
-                WebviewUrl::App(
-                    format!("index.html?view=region-picker-shade&monitorId={shade_id}").into(),
-                ),
-            )
-            .title("Qx Capture Shade")
-            .inner_size(logical_width, logical_height)
-            .position(logical_x, logical_y)
-            .resizable(false)
-            .maximizable(false)
-            .minimizable(false)
-            .decorations(false)
-            .transparent(true)
-            .background_color(Color(0, 0, 0, 0))
-            .shadow(false)
-            // macOS uses a native capture level below; keeping Tauri's
-            // generic floating state enabled would continuously reset it.
-            .always_on_top(!cfg!(target_os = "macos"))
-            .skip_taskbar(true)
-            .focused(false)
-            // First click on an outer display must activate that picker surface.
-            .accept_first_mouse(true)
-            .content_protected(true)
-            .visible(false)
-            .build()
-            .map_err(|error| format!("open capture shade: {error}"))?
-        };
+        let shade =
+            crate::window_composition::ensure_reusable_window(app, &label, |native_label| {
+                crate::webview_policy::window_builder(
+                    app,
+                    native_label,
+                    // monitorId lets the shade webview request a handoff without a
+                    // second IPC to discover which display it covers.
+                    WebviewUrl::App(
+                        format!("index.html?view=region-picker-shade&monitorId={shade_id}").into(),
+                    ),
+                )
+                .title("Qx Capture Shade")
+                .inner_size(logical_width, logical_height)
+                .position(logical_x, logical_y)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .decorations(false)
+                .transparent(true)
+                .background_color(Color(0, 0, 0, 0))
+                .shadow(false)
+                // macOS uses a native capture level below; keeping Tauri's
+                // generic floating state enabled would continuously reset it.
+                .always_on_top(!cfg!(target_os = "macos"))
+                .skip_taskbar(true)
+                .focused(false)
+                // First click on an outer display must activate that picker surface.
+                .accept_first_mouse(true)
+                .content_protected(true)
+                .visible(false)
+                .build()
+                .map_err(|error| format!("open capture shade: {error}"))
+            })?;
         let _ = shade.set_content_protected(true);
         #[cfg(not(target_os = "macos"))]
         let _ = shade.set_always_on_top(true);
@@ -268,9 +522,8 @@ pub(super) fn hide(app: &AppHandle) {
 pub(super) fn reassert_interactive(app: &AppHandle) -> Result<(), String> {
     let app = app.clone();
     crate::main_thread::run_on_main(&app.clone(), move || {
-        let picker = app
-            .get_webview_window(PICKER_LABEL)
-            .ok_or_else(|| "region picker window is unavailable".to_string())?;
+        let picker =
+            picker(&app).ok_or_else(|| "region picker window is unavailable".to_string())?;
         picker
             .set_ignore_cursor_events(false)
             .map_err(|error| format!("picker input: {error}"))?;
@@ -299,7 +552,7 @@ pub(super) fn restore_editable_selection(app: &AppHandle, session: &PickerSessio
     let monitor_id = session.monitor_id;
     let app = app.clone();
     crate::main_thread::run_on_main(&app.clone(), move || {
-        let Some(picker) = app.get_webview_window(PICKER_LABEL) else {
+        let Some(picker) = picker(&app) else {
             return false;
         };
         let Ok(capture) = capture_monitor(Some(monitor_id)) else {
@@ -363,9 +616,8 @@ pub(super) fn show_recording_frame(
         let scale = monitor.scale_factor().max(1.0);
         let logical_width = monitor.size().width as f64 / scale;
         let logical_height = monitor.size().height as f64 / scale;
-        let picker = app
-            .get_webview_window(PICKER_LABEL)
-            .ok_or_else(|| "region picker window is unavailable".to_string())?;
+        let picker =
+            picker(&app).ok_or_else(|| "region picker window is unavailable".to_string())?;
         hide_surface(&picker);
         // Full-screen capture has no exterior to dim.
         if covers_full_display(&area, logical_width, logical_height) {

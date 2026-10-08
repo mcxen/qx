@@ -1,7 +1,80 @@
 //! Presentation control for reusable native windows. Call on the UI thread.
 //! Cloaking supplements hide; it does not change visibility, focus or geometry.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::Manager;
+
+static RECOVERY_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Resolve a logical reusable surface only while its native window is alive.
+/// Tauri can retain a managed label after native/WebView creation fails.
+pub(crate) fn reusable_window(app: &tauri::AppHandle, label: &str) -> Option<tauri::WebviewWindow> {
+    let recovery_prefix = format!("{label}-recovery-");
+    app.get_webview_window(label)
+        .filter(native_window_is_available)
+        .or_else(|| {
+            app.webview_windows().into_values().find(|window| {
+                window.label().starts_with(&recovery_prefix) && native_window_is_available(window)
+            })
+        })
+}
+
+/// UI-thread creation/recovery port. Keep healthy HWNDs; replace an unusable
+/// managed label with a fresh native identity without waiting on the UI thread
+/// for Tauri's asynchronous Destroyed event to remove the old label.
+pub(crate) fn ensure_reusable_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    create: impl FnOnce(&str) -> Result<tauri::WebviewWindow, String>,
+) -> Result<tauri::WebviewWindow, String> {
+    if let Some(window) = reusable_window(app, label) {
+        return Ok(window);
+    }
+    let recovery_prefix = format!("{label}-recovery-");
+    let stale_windows: Vec<_> = app
+        .webview_windows()
+        .into_values()
+        .filter(|window| window.label() == label || window.label().starts_with(&recovery_prefix))
+        .collect();
+    let canonical_label_is_taken = stale_windows.iter().any(|window| window.label() == label);
+    for stale in stale_windows {
+        crate::diagnostics::log(
+            crate::diagnostics::LogLevel::Warn,
+            "window.composition",
+            "replacing unavailable reusable window",
+            serde_json::json!({ "window": stale.label() }),
+        );
+        let _ = stale.destroy();
+    }
+    let native_label = if canonical_label_is_taken {
+        format!(
+            "{label}-recovery-{}",
+            RECOVERY_GENERATION.fetch_add(1, Ordering::Relaxed) + 1
+        )
+    } else {
+        label.to_string()
+    };
+    let window = create(&native_label)?;
+    if !native_window_is_available(&window) {
+        let _ = window.destroy();
+        return Err(format!("native window creation failed: {label}"));
+    }
+    Ok(window)
+}
+
+#[cfg(target_os = "windows")]
+fn native_window_is_available(window: &tauri::WebviewWindow) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::IsWindow;
+    window
+        .hwnd()
+        .map(|hwnd| unsafe { IsWindow(hwnd.0) != 0 })
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn native_window_is_available(window: &tauri::WebviewWindow) -> bool {
+    window.inner_size().is_ok()
+}
 
 /// All reusable surfaces share one ordered show/hide transaction. Dispatching
 /// here also keeps worker callers from racing a queued Tauri Show with cloak.

@@ -21,6 +21,26 @@
 
 ## 1. 设计目标
 
+### 截图窗口的原生可用性与恢复
+
+截图 picker 与外屏 shade 通过 `window_composition::ensure_reusable_window` 创建/复用，
+并通过 `reusable_window` 按逻辑标签解析。Tauri 注册表中存在窗口不代表原生句柄仍可用；
+Windows 必须同时取得 HWND 并通过 `IsWindow`。失效窗口销毁后使用新的私有
+`*-recovery-*` native label 重建，避免 UI 线程等待异步 Destroyed 事件、撞上旧标签或继续复用
+失效句柄。健康窗口保留原 HWND，show/hide、content protection 与 cloak 顺序不变。
+恢复后的圈选、就绪握手、倒计时穿透、Esc/原生关闭和录屏边框都必须解析同一逻辑窗口；
+capability 只扩展到 picker recovery 与 shade label。创建/显示失败必须隐藏已映射的遮罩、
+清空 picker session 和冻结快照，再恢复捕获前界面。
+
+原生回归使用 `src-tauri/examples/webview_policy_probe.rs` 的隔离 WebView2 窗口：健康 HWND
+复用、在 Tauri 清理标签前销毁 HWND、重建与恢复后的逻辑解析/连续 show/hide。从 `src-tauri/`
+使用 MSVC 执行以下命令；示例退出码是验证结果，不会加载 Qx 用户设置或插件：
+
+```powershell
+cargo rustc --release --example webview_policy_probe -- -C link-arg=/MANIFEST:EMBED -C link-arg=/MANIFESTINPUT:examples/window_lifecycle_probe.manifest
+./target/release/examples/webview_policy_probe.exe
+```
+
 ### WebView 的桌面行为边界
 
 `webview_policy.rs` 在 Tauri composition root 注册一次，自动覆盖配置创建的主窗、

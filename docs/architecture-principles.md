@@ -130,6 +130,9 @@ Workbench 表单是宿主受控的纯数据端口；长正文通过有界 `texta
   取消浏览器兜底；模块不复制 browser 快捷键列表，也不注册全局吞键钩子。
 - 运行时 import 图必须无环：契约下沉到中立模块，catalogue 不反向写 registry，
   RPC 通过窄回调端口调度命令。`npm run check` 自动阻止循环求值与未注册 `invoke`。
+- 可复用捕获窗口的原生可用性与身份恢复归根级 `window_composition`；截图模块按逻辑标签
+  解析窗口，不以 Tauri 注册表存在作为 HWND 有效的证据。私有恢复 label 不改变公开 IPC 或
+  capture session 形状，所有圈选/录屏消费者共享这一解析端口。
 
 ### QxAI：异步解耦、高可用与可扩展边界
 
